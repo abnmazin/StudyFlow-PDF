@@ -1,5 +1,6 @@
 import 'package:pdfrx/pdfrx.dart' hide PdfDocument;
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 
 import 'package:provider/provider.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -76,7 +77,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   bool _isLatex = false; // NEW: LaTeX annotation mode
   bool _showBorder = true;
   Color _borderColor = const Color(0xFF000000);  // Black border by default
-  Color _bgColor = const Color(0xFFFEF3C7);  // Light yellow background for visibility
+  Color _bgColor = Colors.transparent;  // Transparent background by default
   // _activePointerCount removed - using native onScale gesture
 
   // Current drawing state
@@ -122,6 +123,29 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     _searchFocusNode.dispose(); // Dispose node
     _textSearcher?.dispose();
     super.dispose();
+  }
+
+  // ─── UNDO HANDLER: Global Ctrl+Z / Cmd+Z ──────────────────────────────────
+  /// Handles undo action with smart detection of text field focus.
+  /// If a text field is currently focused (like DraggableTextWidget),
+  /// we don't override the native text undo. Otherwise, we undo the last
+  /// annotation (highlight or comment).
+  void _handleUndo(AppProvider app, String? editingCommentId) {
+    // Check if actively editing a comment (in text field)
+    // If so, let the text field handle undo natively
+    if (editingCommentId != null) {
+      debugPrint('⌨️  Undo: Text editor active, skipping global undo');
+      return;
+    }
+
+    // Check if search box is visible and might have focus
+    if (_isSearchVisible) {
+      debugPrint('⌨️  Undo: Search box active, proceeding with global undo');
+    }
+
+    // Execute global undo
+    debugPrint('🔙 Undo: Reverting last annotation...');
+    app.undoLastAction();
   }
 
   @override
@@ -215,6 +239,16 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                 control: true,
               ): () =>
                   _pdfController.zoomDown(),
+              // Ctrl+Z → Undo (Windows/Linux)
+              const SingleActivator(
+                LogicalKeyboardKey.keyZ,
+                control: true,
+              ): () => _handleUndo(app, _editingCommentId),
+              // Cmd+Z → Undo (macOS)
+              const SingleActivator(
+                LogicalKeyboardKey.keyZ,
+                meta: true,
+              ): () => _handleUndo(app, _editingCommentId),
             },
       child: Focus(
         autofocus: true,
@@ -561,43 +595,26 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   Widget _buildPdfViewerCore(PdfItem pdf) {
     return PdfViewer.file(
       pdf.path,
-      // The dynamic key forces Flutter to destroy the old widget and build a new one
       key: ValueKey(
         '${pdf.path}_${_needsReload ? DateTime.now().millisecondsSinceEpoch : 'stable'}',
       ),
       controller: _pdfController,
-
       params: PdfViewerParams(
-        // 🚀 CRITICAL MEMORY THROTTLE: Force pdfrx to keep ONLY ~30MB of page textures in RAM (approx 3-5 pages depending on DPI).
-        // If the user scrolls past this, old pages are immediately destroyed from Native Memory.
         maxImageBytesCachedOnMemory: 10 * 1024 * 1024,
-
-        // 2. RESOURCE PROTECTION
-        // Cap max zoom to prevent memory spikes (4000x4000px textures).
         maxScale: 4.0,
         minScale: 0.5,
-
-        // 3. SMOOTH SCROLL PHYSICS
         scrollPhysics: const BouncingScrollPhysics(
           parent: AlwaysScrollableScrollPhysics(),
         ),
-
-        // 4. SMART OVERLAYS (Optimized)
         pageOverlaysBuilder: (context, pageRect, page) {
-          // Use the RepaintBoundary here too if annotations are heavy
           return [
             RepaintBoundary(
               child: _buildPageOverlay(context, pageRect, page, pdf),
             ),
           ];
         },
-
-        // 5. MEMORY MANAGEMENT
-        // Remove the loading banner to prevent layout thrashing
         loadingBannerBuilder: (context, bytesDownloaded, totalBytes) =>
             const SizedBox.shrink(),
-
-        // 6. INTERACTION TUNING
         enableKeyboardNavigation:
             _editingCommentId == null && !_isSearchVisible,
         onViewerReady: (document, controller) {
@@ -618,25 +635,18 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
           if (pagesPassed > 0 && timeDiff > 0) {
             _pagesSinceLastFlush += pagesPassed;
 
-            // Calculate scroll velocity (pages per millisecond)
             final scrollSpeed = pagesPassed / timeDiff;
-
-            // Smart Dynamic Threshold: trim more frequently when scrolling fast
             final dynamicThreshold = scrollSpeed > _kSpeedThreshold
                 ? _kFastThreshold
                 : _kSlowThreshold;
 
-            // DOUBLE STRIKE: Periodic mid-scroll cleanup
             if (_pagesSinceLastFlush >= dynamicThreshold) {
-              // Layer 1: Clear pdfrx texture cache if the API is available
               try {
                 // ignore: avoid_dynamic_calls
                 (_pdfController as dynamic).clearImageCache?.call();
               } catch (_) {}
 
-              // Layer 2: Force Windows to release native memory
               _trimWindowsMemory();
-
               _pagesSinceLastFlush = 0;
               debugPrint(
                 '🧠 Smart trim | speed: ${scrollSpeed.toStringAsFixed(4)} pages/ms'
@@ -648,7 +658,6 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
           _lastTimestamp = now;
           _lastReportedPage = currentPage;
 
-          // POST-SCROLL STRIKE (Debouncer)
           if (_scrollDebounce?.isActive ?? false) {
             _scrollDebounce!.cancel();
           }
@@ -661,7 +670,6 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
               );
               setState(() {});
 
-              // Final deep cleanup after scroll ends
               Future.delayed(const Duration(milliseconds: 100), () {
                 try {
                   // ignore: avoid_dynamic_calls
@@ -673,18 +681,6 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
             }
           });
         },
-        textSelectionParams: PdfTextSelectionParams(
-          onTextSelectionChange: (selection) async {
-            if (!mounted) return;
-            setState(() => _textSelection = selection);
-            try {
-              final ranges = await selection.getSelectedTextRanges();
-              if (mounted && ranges.isEmpty) {
-                setState(() => _textSelection = null);
-              }
-            } catch (_) {}
-          },
-        ),
       ),
       initialPageNumber: pdf.lastPage ?? 1,
     );
@@ -1612,6 +1608,14 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTapUp: (details) {
+                  // 1. Guard Clause: Prevent spawning new text if we are currently editing one.
+                  // Clicking outside should only close the active text (handled by onTapOutside).
+                  final appProvider = context.read<AppProvider>();
+                  if (appProvider.activeEditingCommentId != null) {
+                    return; 
+                  }
+
+                  // 2. Normal Tool Logic
                   if (_tool == ToolType.cursor) {
                     _handleSelectionTap(
                       details.localPosition,
@@ -1620,7 +1624,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                       scale,
                     );
                   } else if (_tool == ToolType.text) {
-                    // Trigger text comment creation
+                    // Only create new text if we are NOT currently editing another one
                     _addTextAt(details.localPosition / scale, page.pageNumber);
                   } else {
                     // Clear selection if tapping with a drawing tool
@@ -2015,10 +2019,11 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     }
 
     if (selectedShape != null) {
+      final shape = selectedShape;
       setState(() {
-        _selectedHighlightId = selectedShape!.id;
-        _color = selectedShape!.color;
-        _strokeWidth = selectedShape!.strokeWidth;
+        _selectedHighlightId = shape.id;
+        _color = shape.color;
+        _strokeWidth = shape.strokeWidth;
       });
       if (!_isRightPanelOpen) setState(() => _isRightPanelOpen = true);
     } else {

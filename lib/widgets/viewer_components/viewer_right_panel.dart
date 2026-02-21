@@ -5,8 +5,6 @@ import 'package:provider/provider.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import '../../models/models.dart';
 import '../../providers/app_state.dart';
-import '../dialogs/merge_pdf_dialog.dart';
-import '../dialogs/images_to_pdf_dialog.dart';
 
 class StudyFlowRightPanel extends StatelessWidget {
   final ToolType activeTool;
@@ -75,6 +73,7 @@ class StudyFlowRightPanel extends StatelessWidget {
         ? (editingStyles!['fontSize'] as num).toDouble()
         : fontSize;
 
+    // Color is managed per tool below
     final effectiveColor = (isGlobalEditing && editingStyles?['color'] != null)
         ? Color(editingStyles!['color'])
         : activeColor;
@@ -130,8 +129,6 @@ class StudyFlowRightPanel extends StatelessWidget {
             child: Row(
               children: [
                 _buildPanelTab(0, LucideIcons.settings, 'Tools'),
-                _buildPanelTab(1, LucideIcons.bot, 'AI Chat'),
-                _buildPanelTab(2, LucideIcons.languages, 'Translate'),
               ],
             ),
           ),
@@ -670,82 +667,12 @@ class StudyFlowRightPanel extends StatelessWidget {
                           ),
                         ),
 
-                      // ─── QUICK TOOLS ────────────────────────────────────
-                      const SizedBox(height: 32),
-                      const Divider(color: Color(0xFFE2E8F0)),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Quick Tools',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white, // Fixed Dark: White
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Card(
-                        elevation: 0,
-                        color: const Color(0xFF1E293B), // Fixed Dark: Slate 800
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          side: const BorderSide(
-                            color: Color(0xFF334155), // Fixed Dark: Slate 700
-                          ),
-                        ),
-                        child: Column(
-                          children: [
-                            ListTile(
-                              leading: const Icon(
-                                LucideIcons.combine,
-                                color: Color(0xFF8B5CF6),
-                              ),
-                              title: Text(
-                                'Merge PDFs',
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.white, // Fixed Dark: White
-                                ),
-                              ),
-                              onTap: () => showDialog(
-                                context: context,
-                                builder: (context) => const MergePdfDialog(),
-                              ),
-                            ),
-                            Divider(
-                              height: 1,
-                              color: const Color(
-                                0xFF334155,
-                              ), // Fixed Dark: Slate 700
-                            ),
-                            ListTile(
-                              leading: const Icon(
-                                LucideIcons.image,
-                                color: Color(0xFF10B981),
-                              ),
-                              title: Text(
-                                'Images to PDF',
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.white, // Fixed Dark: White
-                                ),
-                              ),
-                              onTap: () => showDialog(
-                                context: context,
-                                builder: (context) => const ImagesToPdfDialog(),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+
                     ],
                   ),
                 ),
 
-                // TAB 1: AI ASSISTANT
-                _buildAIPanelPlaceholder(),
 
-                // TAB 2: TRANSLATE
-                _buildTranslatePanelPlaceholder(),
               ],
             ),
           ),
@@ -838,47 +765,7 @@ class StudyFlowRightPanel extends StatelessWidget {
     );
   }
 
-  Widget _buildAIPanelPlaceholder() => Center(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(
-          LucideIcons.bot,
-          size: 48,
-          color: Color(0xFF94A3B8),
-        ), // Fixed Dark: Slate 400
-        const SizedBox(height: 16),
-        const Text(
-          "AI Assistant Ready",
-          style: TextStyle(
-            color: Color(0xFF94A3B8),
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ],
-    ),
-  );
 
-  Widget _buildTranslatePanelPlaceholder() => Center(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(
-          LucideIcons.languages,
-          size: 48,
-          color: Color(0xFF94A3B8),
-        ), // Fixed Dark: Slate 400
-        const SizedBox(height: 16),
-        const Text(
-          "Translation Ready",
-          style: TextStyle(
-            color: Color(0xFF94A3B8),
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ],
-    ),
-  );
 
   // Helper method to show color picker dialog
   Future<void> _showColorPicker(

@@ -90,7 +90,9 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
       _focusNode.unfocus();
     }
 
-    if (!widget.isEditing && widget.content != oldWidget.content) {
+    // CRITICAL FIX: NEVER reset controller text while user is actively editing (focus is on the field)
+    // This would destroy the cursor position and selection
+    if (!widget.isEditing && !_focusNode.hasFocus && widget.content != oldWidget.content) {
       _controller.text = widget.content;
     }
 
@@ -150,7 +152,9 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppProvider>();
+    // CRITICAL FIX: Use read() instead of watch() to prevent rebuilds that destroy TextField cursor state
+    // Only fetch editing styles without triggering rebuilds on every provider change
+    final app = context.read<AppProvider>();
     final tempStyles = widget.isEditing
         ? app.getEditingStyles(widget.commentId)
         : null;
@@ -197,9 +201,27 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
           child: IntrinsicWidth(
             child: Focus(
               onKeyEvent: (node, event) {
-                if (event.logicalKey == LogicalKeyboardKey.space) {
-                  return KeyEventResult.skipRemainingHandlers;
+                // CRITICAL: Allow TextField to receive arrow keys for cursor navigation
+                // Only consume them AFTER TextField handles them to prevent PDF viewer shortcuts
+                final key = event.logicalKey;
+                
+                // Let arrow keys and navigation keys pass through to TextField
+                if (key == LogicalKeyboardKey.arrowLeft ||
+                    key == LogicalKeyboardKey.arrowRight ||
+                    key == LogicalKeyboardKey.arrowUp ||
+                    key == LogicalKeyboardKey.arrowDown ||
+                    key == LogicalKeyboardKey.home ||
+                    key == LogicalKeyboardKey.end) {
+                  // Return ignored to let TextField handle them first
+                  // TextField will consume them, preventing parent widgets from seeing them
+                  return KeyEventResult.ignored;
                 }
+                
+                // Allow space key for typing
+                if (key == LogicalKeyboardKey.space) {
+                  return KeyEventResult.ignored;
+                }
+                
                 return KeyEventResult.ignored;
               },
               child: TextField(
@@ -209,9 +231,10 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
                 maxLines: null,
                 minLines: 1,
                 style: style,
+                enableInteractiveSelection: true,
                 decoration: const InputDecoration(
                   border: InputBorder.none,
-                  hintText: 'اكتب هنا...',
+                  // hintText: 'اكتب هنا...',
                   isDense: true,
                   contentPadding: EdgeInsets.zero,
                 ),

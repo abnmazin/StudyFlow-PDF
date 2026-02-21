@@ -24,6 +24,12 @@ class AppProvider extends ChangeNotifier {
   bool _isSaving = false;
   bool _needsSave = false;
 
+  // ─── UNDO SYSTEM ───────────────────────────────────────────────────────────
+  /// Global action history stack. Each action (highlight, comment) is recorded.
+  /// Format: "{pdfId}:{actionType}:{actionId}"
+  /// actionType can be 'highlight' or 'comment'
+  final List<String> _actionHistory = [];
+
   // --- Statistics Getters ---
   int get totalPdfs => _classes.fold(0, (sum, cls) => sum + cls.pdfs.length);
 
@@ -364,6 +370,11 @@ class AppProvider extends ChangeNotifier {
       var pdfIndex = cls.pdfs.indexWhere((p) => p.id == pdfId);
       if (pdfIndex != -1) {
         cls.pdfs[pdfIndex].highlights.add(highlight);
+        
+        // ─── RECORD ACTION IN HISTORY ───────────────────────────────────
+        _actionHistory.add('$pdfId:highlight:${highlight.id}');
+        debugPrint('📝 Action recorded: highlight ${highlight.id}');
+        
         _saveState(); // Save on highlight
         notifyListeners();
         return;
@@ -414,6 +425,11 @@ class AppProvider extends ChangeNotifier {
       if (pdf.id.isEmpty) continue;
 
       pdf.comments.add(comment);
+      
+      // ─── RECORD ACTION IN HISTORY ───────────────────────────────────
+      _actionHistory.add('$pdfId:comment:${comment.id}');
+      debugPrint('📝 Action recorded: comment ${comment.id}');
+      
       notifyListeners();
       _saveTimer?.cancel();
       _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
@@ -458,6 +474,64 @@ class AppProvider extends ChangeNotifier {
       }
       return;
     }
+  }
+
+  // ─── UNDO SYSTEM: Global Action Reversal ───────────────────────────────────
+  /// Undo the most recent action (highlight or comment creation).
+  /// This method:
+  /// 1. Pops the most recent action ID from history
+  /// 2. Finds the corresponding item in highlights or comments
+  /// 3. Removes it from the state
+  /// 4. Calls notifyListeners() to update UI
+  void undoLastAction() {
+    if (_actionHistory.isEmpty) {
+      debugPrint('⚠️  Undo: No actions to undo');
+      return;
+    }
+
+    // Pop the last action from history
+    final actionRecord = _actionHistory.removeLast();
+    final parts = actionRecord.split(':');
+    
+    if (parts.length != 3) {
+      debugPrint('⚠️  Undo: Invalid action record format');
+      return;
+    }
+
+    final pdfId = parts[0];
+    final actionType = parts[1];
+    final actionId = parts[2];
+
+    // Find the PDF and remove the action
+    for (var cls in _classes) {
+      final pdf = cls.pdfs.firstWhere(
+        (p) => p.id == pdfId,
+        orElse: () => PdfItem(id: '', name: '', path: ''),
+      );
+
+      if (pdf.id.isEmpty) continue;
+
+      if (actionType == 'highlight') {
+        // Remove the highlight with matching ID
+        pdf.highlights.removeWhere((h) => h.id == actionId);
+        debugPrint('🔙 Undo: Removed highlight $actionId');
+      } else if (actionType == 'comment') {
+        // Remove the comment with matching ID
+        pdf.comments.removeWhere((c) => c.id == actionId);
+        debugPrint('🔙 Undo: Removed comment $actionId');
+      }
+
+      // Save state and notify UI
+      _saveTimer?.cancel();
+      _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
+      notifyListeners();
+      return;
+    }
+  }
+
+  void clearActionHistory() {
+    _actionHistory.clear();
+    debugPrint('🧹 Action history cleared');
   }
 
   // Active editing state
