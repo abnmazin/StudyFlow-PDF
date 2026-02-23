@@ -29,6 +29,9 @@ class AppProvider extends ChangeNotifier {
   /// Format: "{pdfId}:{actionType}:{actionId}"
   /// actionType can be 'highlight' or 'comment'
   final List<String> _actionHistory = [];
+  final List<String> _redoHistory = [];
+  final Map<String, Highlight> _redoHighlightCache = {};
+  final Map<String, PdfComment> _redoCommentCache = {};
 
   // --- Statistics Getters ---
   int get totalPdfs => _classes.fold(0, (sum, cls) => sum + cls.pdfs.length);
@@ -374,6 +377,9 @@ class AppProvider extends ChangeNotifier {
         // ─── RECORD ACTION IN HISTORY ───────────────────────────────────
         _actionHistory.add('$pdfId:highlight:${highlight.id}');
         debugPrint('📝 Action recorded: highlight ${highlight.id}');
+        _redoHistory.clear();
+        _redoHighlightCache.clear();
+        _redoCommentCache.clear();
         
         _saveState(); // Save on highlight
         notifyListeners();
@@ -429,6 +435,9 @@ class AppProvider extends ChangeNotifier {
       // ─── RECORD ACTION IN HISTORY ───────────────────────────────────
       _actionHistory.add('$pdfId:comment:${comment.id}');
       debugPrint('📝 Action recorded: comment ${comment.id}');
+      _redoHistory.clear();
+      _redoHighlightCache.clear();
+      _redoCommentCache.clear();
       
       notifyListeners();
       _saveTimer?.cancel();
@@ -512,12 +521,24 @@ class AppProvider extends ChangeNotifier {
       if (pdf.id.isEmpty) continue;
 
       if (actionType == 'highlight') {
-        // Remove the highlight with matching ID
-        pdf.highlights.removeWhere((h) => h.id == actionId);
+        final idx = pdf.highlights.indexWhere((h) => h.id == actionId);
+        if (idx == -1) {
+          debugPrint('⚠️  Undo: Highlight not found $actionId');
+          return;
+        }
+        final removed = pdf.highlights.removeAt(idx);
+        _redoHighlightCache[actionId] = removed;
+        _redoHistory.add(actionRecord);
         debugPrint('🔙 Undo: Removed highlight $actionId');
       } else if (actionType == 'comment') {
-        // Remove the comment with matching ID
-        pdf.comments.removeWhere((c) => c.id == actionId);
+        final idx = pdf.comments.indexWhere((c) => c.id == actionId);
+        if (idx == -1) {
+          debugPrint('⚠️  Undo: Comment not found $actionId');
+          return;
+        }
+        final removed = pdf.comments.removeAt(idx);
+        _redoCommentCache[actionId] = removed;
+        _redoHistory.add(actionRecord);
         debugPrint('🔙 Undo: Removed comment $actionId');
       }
 
@@ -529,14 +550,122 @@ class AppProvider extends ChangeNotifier {
     }
   }
 
+  void redoLastAction() {
+    if (_redoHistory.isEmpty) {
+      debugPrint('⚠️  Redo: No actions to redo');
+      return;
+    }
+
+    final actionRecord = _redoHistory.removeLast();
+    final parts = actionRecord.split(':');
+    if (parts.length != 3) {
+      debugPrint('⚠️  Redo: Invalid action record format');
+      return;
+    }
+
+    final pdfId = parts[0];
+    final actionType = parts[1];
+    final actionId = parts[2];
+
+    for (var cls in _classes) {
+      final pdf = cls.pdfs.firstWhere(
+        (p) => p.id == pdfId,
+        orElse: () => PdfItem(id: '', name: '', path: ''),
+      );
+      if (pdf.id.isEmpty) continue;
+
+      if (actionType == 'highlight') {
+        final item = _redoHighlightCache.remove(actionId);
+        if (item == null) {
+          debugPrint('⚠️  Redo: Highlight cache missing $actionId');
+          return;
+        }
+        pdf.highlights.add(item);
+        _actionHistory.add(actionRecord);
+        debugPrint('↪️ Redo: Restored highlight $actionId');
+      } else if (actionType == 'comment') {
+        final item = _redoCommentCache.remove(actionId);
+        if (item == null) {
+          debugPrint('⚠️  Redo: Comment cache missing $actionId');
+          return;
+        }
+        pdf.comments.add(item);
+        _actionHistory.add(actionRecord);
+        debugPrint('↪️ Redo: Restored comment $actionId');
+      }
+
+      _saveTimer?.cancel();
+      _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
+      notifyListeners();
+      return;
+    }
+  }
+
   void clearActionHistory() {
     _actionHistory.clear();
+    _redoHistory.clear();
+    _redoHighlightCache.clear();
+    _redoCommentCache.clear();
     debugPrint('🧹 Action history cleared');
   }
 
   // Active editing state
   String? _activeEditingCommentId;
   String? get activeEditingCommentId => _activeEditingCommentId;
+
+  // ── Color-picker ID cache (survives focus-loss during dialog) ─────────────
+  String? _cachedTargetIdForColor;
+  String? get cachedTargetIdForColor => _cachedTargetIdForColor;
+
+  /// Call this BEFORE the color-picker dialog opens so the target id is safe.
+  void cacheTargetIdForColor(String? id) {
+    _cachedTargetIdForColor = id;
+  }
+
+  /// Apply color fields to the cached comment.
+  /// Works even if activeEditingCommentId was cleared by focus loss.
+  void applyColorToCachedComment({
+    Color? color,
+    Color? bgColor,
+    Color? borderColor,
+  }) {
+    final id = _cachedTargetIdForColor;
+    if (id == null) return;
+
+    // Case 1: still in temp-editing mode ─ update live styles
+    if (_tempStyles.containsKey(id)) {
+      updateEditingStyle(
+        commentId: id,
+        color: color,
+        bgColor: bgColor,
+        borderColor: borderColor,
+      );
+      return;
+    }
+
+    // Case 2: not editing any more ─ patch the stored comment directly
+    for (final cls in _classes) {
+      for (final pdf in cls.pdfs) {
+        final idx = pdf.comments.indexWhere((c) => c.id == id);
+        if (idx == -1) continue;
+        final old = pdf.comments[idx];
+        pdf.comments[idx] = old.copyWith(
+          color: color ?? old.color,
+          bgColor: bgColor ?? old.bgColor,
+          borderColor: borderColor ?? old.borderColor,
+        );
+        notifyListeners();
+        _saveTimer?.cancel();
+        _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
+        return;
+      }
+    }
+  }
+
+  /// Call this AFTER the color-picker dialog is fully dismissed.
+  void clearCachedTargetId() {
+    _cachedTargetIdForColor = null;
+  }
 
   // Temporary style states (NO text content stored here!)
   final Map<String, Map<String, dynamic>> _tempStyles = {};

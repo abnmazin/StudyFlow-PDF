@@ -47,8 +47,21 @@ class HighlightPainter extends CustomPainter {
         final highlightPaint = Paint()
           ..style = PaintingStyle.fill
           ..color = h.color.withOpacity(0.3);
-        if (h.rects != null) {
+        if (h.rects != null && h.rects!.isNotEmpty) {
           for (final rect in h.rects!) canvas.drawRect(rect, highlightPaint);
+        } else if (h.path.length >= 2) {
+          final strokePaint = Paint()
+            ..color = h.color.withOpacity(0.4)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = h.strokeWidth * 1.4
+            ..strokeCap = StrokeCap.round
+            ..strokeJoin = StrokeJoin.round;
+          final path = Path();
+          path.moveTo(h.path.first.dx, h.path.first.dy);
+          for (int i = 1; i < h.path.length; i++) {
+            path.lineTo(h.path[i].dx, h.path[i].dy);
+          }
+          canvas.drawPath(path, strokePaint);
         }
       } else if (h.path.length >= 2) {
         // For geometric shapes, use miter joins for sharp, clean corners

@@ -40,28 +40,6 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
 
   bool _isRightPanelOpen = false;
   int _rightPanelTabIndex = 0; // 0: Tools, 1: AI, 2: Translate
-  static const ColorFilter _invertFilter = ColorFilter.matrix(<double>[
-    -1,
-    0,
-    0,
-    0,
-    255,
-    0,
-    -1,
-    0,
-    0,
-    255,
-    0,
-    0,
-    -1,
-    0,
-    255,
-    0,
-    0,
-    0,
-    1,
-    0,
-  ]);
 
   // ─── Smart Dynamic Threshold Constants ────────────────────────────────────
   static const double _kSpeedThreshold = 0.1; // pages per millisecond
@@ -70,14 +48,35 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
 
   ToolType _tool =
       ToolType.cursor; // 'cursor', 'highlight', 'eraser', 'pen', 'comment'
-  Color _color = const Color(0xFF000000); // Black - default color
+
+  // ── Per-tool colors: changing one never affects another ──────────────────
+  Color _penColor = const Color(0xFF000000);
+  Color _highlightColor = const Color(0xFFFFFF00);
+  Color _shapeStrokeColor = const Color(0xFF000000); // arrow/rect/circle
+  Color _textColor = const Color(0xFF000000);
+
+  /// Current stroke/main color for whatever tool is active.
+  Color get _currentColor {
+    switch (_tool) {
+      case ToolType.pen:
+        return _penColor;
+      case ToolType.highlight:
+        return _highlightColor;
+      case ToolType.text:
+        return _textColor;
+      default: // arrow, rectangle, circle, cursor
+        return _shapeStrokeColor;
+    }
+  }
+
   double _strokeWidth = 5.0;
   double _fontSize = 14.0;
   bool _isBold = false;
   bool _isLatex = false; // NEW: LaTeX annotation mode
   bool _showBorder = true;
-  Color _borderColor = const Color(0xFF000000);  // Black border by default
-  Color _bgColor = Colors.transparent;  // Transparent background by default
+  Color _borderColor = const Color(0xFF000000); // Black border by default
+  Color _textBgColor = Colors.transparent;
+  Color _shapeFillColor = Colors.transparent;
   // _activePointerCount removed - using native onScale gesture
 
   // Current drawing state
@@ -146,6 +145,16 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     // Execute global undo
     debugPrint('🔙 Undo: Reverting last annotation...');
     app.undoLastAction();
+  }
+
+  void _handleRedo(AppProvider app, String? editingCommentId) {
+    if (editingCommentId != null) {
+      debugPrint('⌨️  Redo: Text editor active, skipping global redo');
+      return;
+    }
+
+    debugPrint('↪️ Redo: Reapplying last annotation...');
+    app.redoLastAction();
   }
 
   @override
@@ -243,12 +252,31 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
               const SingleActivator(
                 LogicalKeyboardKey.keyZ,
                 control: true,
-              ): () => _handleUndo(app, _editingCommentId),
+              ): () =>
+                  _handleUndo(app, _editingCommentId),
               // Cmd+Z → Undo (macOS)
+              const SingleActivator(LogicalKeyboardKey.keyZ, meta: true): () =>
+                  _handleUndo(app, _editingCommentId),
+              // Ctrl+Y → Redo (Windows/Linux)
+              const SingleActivator(
+                LogicalKeyboardKey.keyY,
+                control: true,
+              ): () =>
+                  _handleRedo(app, _editingCommentId),
+              // Ctrl+Shift+Z → Redo (Windows/Linux)
+              const SingleActivator(
+                LogicalKeyboardKey.keyZ,
+                control: true,
+                shift: true,
+              ): () =>
+                  _handleRedo(app, _editingCommentId),
+              // Cmd+Shift+Z → Redo (macOS)
               const SingleActivator(
                 LogicalKeyboardKey.keyZ,
                 meta: true,
-              ): () => _handleUndo(app, _editingCommentId),
+                shift: true,
+              ): () =>
+                  _handleRedo(app, _editingCommentId),
             },
       child: Focus(
         autofocus: true,
@@ -305,9 +333,8 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                       children: [
                         // Background & PDF View
                         Container(
-                          color: isDarkMode
-                              ? const Color(0xFF0F172A)
-                              : const Color(0xFFE2E8F0),
+                          // Always keep the PDF paper/background light
+                          color: const Color(0xFFE2E8F0),
                           child: pdf == null
                               ? _buildNoFilePlaceholder()
                               : Stack(
@@ -315,25 +342,16 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                     // 1. Keep the PDF in the tree but pause rendering during printing
                                     Offstage(
                                       offstage: _isPreparingPrint,
-                                      child: isDarkMode
-                                          ? ColorFiltered(
-                                              colorFilter: _invertFilter,
-                                              child: _buildPdfViewerCore(pdf),
-                                            )
-                                          : _buildPdfViewerCore(pdf),
+                                      child: _buildPdfViewerCore(pdf),
                                     ),
 
                                     // 2. Show the loading overlay on top when printing
                                     if (_isPreparingPrint)
                                       Positioned.fill(
                                         child: Container(
-                                          color: isDarkMode
-                                              ? const Color(
-                                                  0xFF0F172A,
-                                                ).withValues(alpha: 0.9)
-                                              : const Color(
-                                                  0xFFE2E8F0,
-                                                ).withValues(alpha: 0.9),
+                                          color: const Color(
+                                            0xFFE2E8F0,
+                                          ).withValues(alpha: 0.9),
                                           child: _buildPrintLoadingScreen(),
                                         ),
                                       ),
@@ -541,7 +559,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                   if (_isRightPanelOpen)
                     StudyFlowRightPanel(
                       activeTool: _tool,
-                      activeColor: _color,
+                      activeColor: _currentColor,
                       strokeWidth: _strokeWidth,
                       fontSize: _fontSize,
                       isBold: _isBold,
@@ -549,6 +567,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                       isDarkMode: isDarkMode,
                       activePdf: pdf,
                       pdfController: _pdfController,
+                      selectedHighlightId: _selectedHighlightId,
                       onToolChanged: (t) => setState(() => _tool = t),
                       onColorChanged: _onColorChanged,
                       onStrokeWidthChanged: _onStrokeWidthChanged,
@@ -567,7 +586,9 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                       },
                       showBorder: _showBorder,
                       borderColor: _borderColor,
-                      bgColor: _bgColor,
+                      bgColor: _tool == ToolType.text
+                          ? _textBgColor
+                          : _shapeFillColor,
                       onShowBorderChanged: (v) {
                         setState(() => _showBorder = v);
                         if (_tool == ToolType.text) _updateCurrentEditingText();
@@ -577,8 +598,15 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                         if (_tool == ToolType.text) _updateCurrentEditingText();
                       },
                       onBgColorChanged: (c) {
-                        setState(() => _bgColor = c);
-                        if (_tool == ToolType.text) _updateCurrentEditingText();
+                        setState(() {
+                          if (_tool == ToolType.text) {
+                            _textBgColor = c;
+                            _updateCurrentEditingText();
+                          } else if (_tool == ToolType.rectangle ||
+                              _tool == ToolType.circle) {
+                            _shapeFillColor = c;
+                          }
+                        });
                       },
                       onTabChanged: (i) =>
                           setState(() => _rightPanelTabIndex = i),
@@ -593,96 +621,101 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   }
 
   Widget _buildPdfViewerCore(PdfItem pdf) {
-    return PdfViewer.file(
-      pdf.path,
-      key: ValueKey(
-        '${pdf.path}_${_needsReload ? DateTime.now().millisecondsSinceEpoch : 'stable'}',
-      ),
-      controller: _pdfController,
-      params: PdfViewerParams(
-        maxImageBytesCachedOnMemory: 10 * 1024 * 1024,
-        maxScale: 4.0,
-        minScale: 0.5,
-        scrollPhysics: const BouncingScrollPhysics(
-          parent: AlwaysScrollableScrollPhysics(),
+    return Listener(
+      onPointerSignal: (pointerSignal) {
+        if (pointerSignal is PointerScrollEvent && _tool != ToolType.cursor) {
+          setState(() => _tool = ToolType.cursor);
+        }
+      },
+      child: PdfViewer.file(
+        pdf.path,
+        key: ValueKey(
+          '${pdf.path}_${_needsReload ? DateTime.now().millisecondsSinceEpoch : 'stable'}',
         ),
-        pageOverlaysBuilder: (context, pageRect, page) {
-          return [
-            RepaintBoundary(
-              child: _buildPageOverlay(context, pageRect, page, pdf),
-            ),
-          ];
-        },
-        loadingBannerBuilder: (context, bytesDownloaded, totalBytes) =>
-            const SizedBox.shrink(),
-        enableKeyboardNavigation:
-            _editingCommentId == null && !_isSearchVisible,
-        onViewerReady: (document, controller) {
-          if (mounted) {
-            setState(() {
-              _isProcessing = false;
-              _textSearcher ??= PdfTextSearcher(_pdfController)
-                ..addListener(_onControllerChanged);
-            });
-          }
-        },
-        onPageChanged: (page) {
-          final now = DateTime.now().millisecondsSinceEpoch;
-          final timeDiff = now - _lastTimestamp;
-          final currentPage = page ?? _lastReportedPage;
-          final int pagesPassed = (currentPage - _lastReportedPage).abs();
-
-          if (pagesPassed > 0 && timeDiff > 0) {
-            _pagesSinceLastFlush += pagesPassed;
-
-            final scrollSpeed = pagesPassed / timeDiff;
-            final dynamicThreshold = scrollSpeed > _kSpeedThreshold
-                ? _kFastThreshold
-                : _kSlowThreshold;
-
-            if (_pagesSinceLastFlush >= dynamicThreshold) {
-              try {
-                // ignore: avoid_dynamic_calls
-                (_pdfController as dynamic).clearImageCache?.call();
-              } catch (_) {}
-
-              _trimWindowsMemory();
-              _pagesSinceLastFlush = 0;
-              debugPrint(
-                '🧠 Smart trim | speed: ${scrollSpeed.toStringAsFixed(4)} pages/ms'
-                ' | threshold: $dynamicThreshold',
-              );
-            }
-          }
-
-          _lastTimestamp = now;
-          _lastReportedPage = currentPage;
-
-          if (_scrollDebounce?.isActive ?? false) {
-            _scrollDebounce!.cancel();
-          }
-
-          _scrollDebounce = Timer(const Duration(milliseconds: 300), () {
+        controller: _pdfController,
+        params: PdfViewerParams(
+          maxImageBytesCachedOnMemory: 10 * 1024 * 1024,
+          maxScale: 4.0,
+          minScale: 0.5,
+          scrollByMouseWheel: 0.8,
+          pageOverlaysBuilder: (context, pageRect, page) {
+            return [
+              RepaintBoundary(
+                child: _buildPageOverlay(context, pageRect, page, pdf),
+              ),
+            ];
+          },
+          loadingBannerBuilder: (context, bytesDownloaded, totalBytes) =>
+              const SizedBox.shrink(),
+          enableKeyboardNavigation:
+              _editingCommentId == null && !_isSearchVisible,
+          onViewerReady: (document, controller) {
             if (mounted) {
-              context.read<AppProvider>().updatePdfScroll(
-                pdf.id,
-                pageNumber: page,
-              );
-              setState(() {});
+              setState(() {
+                _isProcessing = false;
+                _textSearcher ??= PdfTextSearcher(_pdfController)
+                  ..addListener(_onControllerChanged);
+              });
+            }
+          },
+          onPageChanged: (page) {
+            final now = DateTime.now().millisecondsSinceEpoch;
+            final timeDiff = now - _lastTimestamp;
+            final currentPage = page ?? _lastReportedPage;
+            final int pagesPassed = (currentPage - _lastReportedPage).abs();
 
-              Future.delayed(const Duration(milliseconds: 100), () {
+            if (pagesPassed > 0 && timeDiff > 0) {
+              _pagesSinceLastFlush += pagesPassed;
+
+              final scrollSpeed = pagesPassed / timeDiff;
+              final dynamicThreshold = scrollSpeed > _kSpeedThreshold
+                  ? _kFastThreshold
+                  : _kSlowThreshold;
+
+              if (_pagesSinceLastFlush >= dynamicThreshold) {
                 try {
                   // ignore: avoid_dynamic_calls
                   (_pdfController as dynamic).clearImageCache?.call();
                 } catch (_) {}
+
                 _trimWindowsMemory();
                 _pagesSinceLastFlush = 0;
-              });
+                debugPrint(
+                  '🧠 Smart trim | speed: ${scrollSpeed.toStringAsFixed(4)} pages/ms'
+                  ' | threshold: $dynamicThreshold',
+                );
+              }
             }
-          });
-        },
+
+            _lastTimestamp = now;
+            _lastReportedPage = currentPage;
+
+            if (_scrollDebounce?.isActive ?? false) {
+              _scrollDebounce!.cancel();
+            }
+
+            _scrollDebounce = Timer(const Duration(milliseconds: 300), () {
+              if (mounted) {
+                context.read<AppProvider>().updatePdfScroll(
+                  pdf.id,
+                  pageNumber: page,
+                );
+                setState(() {});
+
+                Future.delayed(const Duration(milliseconds: 100), () {
+                  try {
+                    // ignore: avoid_dynamic_calls
+                    (_pdfController as dynamic).clearImageCache?.call();
+                  } catch (_) {}
+                  _trimWindowsMemory();
+                  _pagesSinceLastFlush = 0;
+                });
+              }
+            });
+          },
+        ),
+        initialPageNumber: pdf.lastPage ?? 1,
       ),
-      initialPageNumber: pdf.lastPage ?? 1,
     );
   }
 
@@ -1389,18 +1422,18 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
       // Rectangles & Circles: use current background color
       int? bgColorValue;
       if (type == HighlightType.rectangle || type == HighlightType.circle) {
-        bgColorValue = _bgColor.value;
+        bgColorValue = _shapeFillColor.value;
       }
       // For arrows, pen, and highlight: bgColorValue remains null
 
       final highlight = Highlight(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         path: List.from(_currentPath!),
-        color: _color,
+        color: _currentColor,
         page: _currentPage,
         strokeWidth: _strokeWidth,
         type: type,
-        backgroundColor: bgColorValue,  // Set background color for shapes
+        backgroundColor: bgColorValue, // Set background color for shapes
       );
 
       context.read<AppProvider>().addHighlight(pdf.id, highlight);
@@ -1468,23 +1501,23 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
       position: pt, // Assumed unscaled ID passed from caller
       content: '',
       date: DateTime.now(),
-      color: _color,
+      color: _textColor,
       fontSize: _fontSize,
       isBold: _isBold,
       isLatex: _isLatex, // NEW: carry current LaTeX mode
       showBorder: _showBorder,
       borderColor: _borderColor,
-      bgColor: _bgColor,
+      bgColor: _textBgColor,
     );
 
     final app = context.read<AppProvider>();
     if (app.activePdf == null) return;
 
     app.addComment(app.activePdf!.id, comment);
-    
+
     // CRITICAL: Initialize editing styles for the new comment
     app.startEditing(comment.id, comment);
-    
+
     setState(() => _editingCommentId = comment.id);
   }
 
@@ -1497,13 +1530,13 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     try {
       final comment = pdf.comments.firstWhere((c) => c.id == _editingCommentId);
       final updatedComment = comment.copyWith(
-        color: _color,
+        color: _textColor,
         fontSize: _fontSize,
         isBold: _isBold,
-        isLatex: _isLatex, // NEW: sync LaTeX mode
+        isLatex: _isLatex,
         showBorder: _showBorder,
         borderColor: _borderColor,
-        bgColor: _bgColor,
+        bgColor: _textBgColor,
       );
       app.updateComment(pdf.id, comment, updatedComment);
     } catch (e) {
@@ -1592,7 +1625,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                   Highlight(
                     id: 'temp_drawing_id',
                     path: _currentPath!,
-                    color: _color,
+                    color: _currentColor,
                     page: page.pageNumber,
                     strokeWidth: _strokeWidth,
                     type: _getActiveToolType(),
@@ -1612,7 +1645,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                   // Clicking outside should only close the active text (handled by onTapOutside).
                   final appProvider = context.read<AppProvider>();
                   if (appProvider.activeEditingCommentId != null) {
-                    return; 
+                    return;
                   }
 
                   // 2. Normal Tool Logic
@@ -1712,13 +1745,13 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                           .read<AppProvider>()
                           .getEditingStyles(c.id);
                       if (styles != null) {
-                        _color = Color(styles['color']);
+                        _textColor = Color(styles['color']);
                         _fontSize = styles['fontSize'];
                         _isBold = styles['isBold'];
                         _isLatex = styles['isLatex'];
                         _showBorder = styles['showBorder'];
                         _borderColor = Color(styles['borderColor']);
-                        _bgColor = Color(styles['bgColor']);
+                        _textBgColor = Color(styles['bgColor']);
                       }
                     });
                   } else if (_tool == ToolType.eraser) {
@@ -1742,12 +1775,6 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
         ],
       ),
     );
-
-    // Apply double-inversion to keep highlight colors original
-    final isDarkMode = context.read<AppProvider>().isDarkMode;
-    if (isDarkMode) {
-      overlay = ColorFiltered(colorFilter: _invertFilter, child: overlay);
-    }
 
     // PERFORMANCE SHIELD: Wrap entire overlay in RepaintBoundary to cache rendering
     return RepaintBoundary(child: overlay);
@@ -2022,7 +2049,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
       final shape = selectedShape;
       setState(() {
         _selectedHighlightId = shape.id;
-        _color = shape.color;
+        _shapeStrokeColor = shape.color;
         _strokeWidth = shape.strokeWidth;
       });
       if (!_isRightPanelOpen) setState(() => _isRightPanelOpen = true);
@@ -2064,9 +2091,20 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   }
 
   void _onColorChanged(Color color) {
-    setState(() => _color = color);
-    _updateSelectedShapeColor(color); // Sync with active shape
-    if (_tool == ToolType.text) _updateCurrentEditingText();
+    setState(() {
+      if (_tool == ToolType.pen) {
+        _penColor = color;
+      } else if (_tool == ToolType.highlight) {
+        _highlightColor = color;
+        _updateSelectedShapeColor(color);
+      } else if (_tool == ToolType.text) {
+        _textColor = color;
+        _updateCurrentEditingText();
+      } else {
+        _shapeStrokeColor = color;
+        _updateSelectedShapeColor(color);
+      }
+    });
   }
 
   void _onStrokeWidthChanged(double width) {

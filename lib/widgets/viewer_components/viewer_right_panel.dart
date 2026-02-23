@@ -6,13 +6,16 @@ import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import '../../models/models.dart';
 import '../../providers/app_state.dart';
 
+/// Which color slot the picker is editing.
+enum _ColorTarget { stroke, bg, border }
+
 class StudyFlowRightPanel extends StatelessWidget {
   final ToolType activeTool;
   final Color activeColor;
   final double strokeWidth;
   final double fontSize;
   final bool isBold;
-  final bool isLatex; // NEW: LaTeX mode flag
+  final bool isLatex;
   final bool showBorder;
   final Color borderColor;
   final Color bgColor;
@@ -20,12 +23,15 @@ class StudyFlowRightPanel extends StatelessWidget {
   final bool isDarkMode;
   final PdfItem? activePdf;
   final PdfViewerController pdfController;
+  final String? selectedHighlightId;          // NEW: know if a shape is selected
+  final VoidCallback? onColorPickerOpening;   // NEW: freeze selection before dialog
+  final VoidCallback? onColorPickerClosed;    // NEW: restore selection after dialog
   final ValueChanged<ToolType> onToolChanged;
   final ValueChanged<Color> onColorChanged;
   final ValueChanged<double> onStrokeWidthChanged;
   final ValueChanged<double> onFontSizeChanged;
   final ValueChanged<bool> onBoldChanged;
-  final ValueChanged<bool> onLatexChanged; // NEW
+  final ValueChanged<bool> onLatexChanged;
   final ValueChanged<bool> onShowBorderChanged;
   final ValueChanged<Color> onBorderColorChanged;
   final ValueChanged<Color> onBgColorChanged;
@@ -38,7 +44,7 @@ class StudyFlowRightPanel extends StatelessWidget {
     required this.strokeWidth,
     required this.fontSize,
     required this.isBold,
-    required this.isLatex, // NEW
+    required this.isLatex,
     required this.showBorder,
     required this.borderColor,
     required this.bgColor,
@@ -46,12 +52,15 @@ class StudyFlowRightPanel extends StatelessWidget {
     required this.isDarkMode,
     required this.activePdf,
     required this.pdfController,
+    this.selectedHighlightId,
+    this.onColorPickerOpening,
+    this.onColorPickerClosed,
     required this.onToolChanged,
     required this.onColorChanged,
     required this.onStrokeWidthChanged,
     required this.onFontSizeChanged,
     required this.onBoldChanged,
-    required this.onLatexChanged, // NEW
+    required this.onLatexChanged,
     required this.onShowBorderChanged,
     required this.onBorderColorChanged,
     required this.onBgColorChanged,
@@ -62,6 +71,7 @@ class StudyFlowRightPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final appProvider = context.watch<AppProvider>();
     final isGlobalEditing = appProvider.activeEditingCommentId != null;
+    final isTextEditing = isGlobalEditing && activeTool == ToolType.text;
     final editingStyles = isGlobalEditing
         ? appProvider.getEditingStyles(appProvider.activeEditingCommentId!)
         : null;
@@ -69,47 +79,61 @@ class StudyFlowRightPanel extends StatelessWidget {
     // Resolve Effective Styles (Editing > Default)
     // We use 'num' for fontSize to strictly handle int/double safety
     final effectiveFontSize =
-        (isGlobalEditing && editingStyles?['fontSize'] != null)
+        (isTextEditing && editingStyles?['fontSize'] != null)
         ? (editingStyles!['fontSize'] as num).toDouble()
         : fontSize;
 
     // Color is managed per tool below
-    final effectiveColor = (isGlobalEditing && editingStyles?['color'] != null)
+    final effectiveColor = (isTextEditing && editingStyles?['color'] != null)
         ? Color(editingStyles!['color'])
         : activeColor;
 
     final effectiveIsBold =
-        (isGlobalEditing && editingStyles?['isBold'] != null)
+        (isTextEditing && editingStyles?['isBold'] != null)
         ? (editingStyles!['isBold'] as bool)
         : isBold;
 
     final effectiveIsLatex =
-        (isGlobalEditing && editingStyles?['isLatex'] != null)
+        (isTextEditing && editingStyles?['isLatex'] != null)
         ? (editingStyles!['isLatex'] as bool)
         : isLatex;
 
     final effectiveShowBorder =
-        (isGlobalEditing && editingStyles?['showBorder'] != null)
+        (isTextEditing && editingStyles?['showBorder'] != null)
         ? (editingStyles!['showBorder'] as bool)
         : showBorder;
 
     final effectiveBorderColor =
-        (isGlobalEditing && editingStyles?['borderColor'] != null)
+        (isTextEditing && editingStyles?['borderColor'] != null)
         ? Color(editingStyles!['borderColor'])
         : borderColor;
 
     final effectiveBgColor =
-        (isGlobalEditing && editingStyles?['bgColor'] != null)
+        (isTextEditing && editingStyles?['bgColor'] != null)
         ? Color(editingStyles!['bgColor'])
         : bgColor;
 
+    final scheme = Theme.of(context).colorScheme;
+    final panelBg = isDarkMode ? const Color(0xFF0F172A) : scheme.surface;
+    final panelBorder =
+      isDarkMode ? const Color(0xFF334155) : scheme.outlineVariant;
+    final headerBg = isDarkMode ? const Color(0xFF1E293B) : scheme.surface;
+    final headerBorder =
+      isDarkMode ? const Color(0xFF334155) : scheme.outlineVariant;
+    final surfaceAlt = isDarkMode
+      ? const Color(0xFF1E293B)
+      : scheme.surfaceContainerHighest;
+    final textPrimary = isDarkMode ? Colors.white : scheme.onSurface;
+    final textMuted =
+      isDarkMode ? const Color(0xFF94A3B8) : scheme.onSurfaceVariant;
+
     return Container(
       width: 320, // Wider for Chat UI
-      decoration: const BoxDecoration(
-        color: Color(0xFF0F172A), // Fixed Dark: Slate 900
+      decoration: BoxDecoration(
+        color: panelBg,
         border: Border(
           left: BorderSide(
-            color: Color(0xFF334155), // Fixed Dark: Slate 700
+            color: panelBorder,
             width: 1.5,
           ),
         ),
@@ -118,17 +142,17 @@ class StudyFlowRightPanel extends StatelessWidget {
         children: [
           // --- TAB BAR ---
           Container(
-            decoration: const BoxDecoration(
-              color: Color(0xFF1E293B), // Fixed Dark: Slate 800
+            decoration: BoxDecoration(
+              color: headerBg,
               border: Border(
                 bottom: BorderSide(
-                  color: Color(0xFF334155), // Fixed Dark: Slate 700
+                  color: headerBorder,
                 ),
               ),
             ),
             child: Row(
               children: [
-                _buildPanelTab(0, LucideIcons.settings, 'Tools'),
+                _buildPanelTab(context, 0, LucideIcons.settings, 'Tools'),
               ],
             ),
           ),
@@ -163,9 +187,7 @@ class StudyFlowRightPanel extends StatelessWidget {
                                 ? LucideIcons.type
                                 : LucideIcons.settings,
                             size: 20,
-                            color: const Color(
-                              0xFF94A3B8,
-                            ), // Fixed Dark: Slate 400
+                            color: textMuted,
                           ),
                           const SizedBox(width: 8),
                           Text(
@@ -177,10 +199,10 @@ class StudyFlowRightPanel extends StatelessWidget {
                                 ].contains(activeTool)
                                 ? 'Read & Shapes'
                                 : '${activeTool.name[0].toUpperCase()}${activeTool.name.substring(1)} Properties',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
-                              color: Colors.white, // Fixed Dark: White
+                              color: textPrimary,
                             ),
                           ),
                         ],
@@ -196,10 +218,10 @@ class StudyFlowRightPanel extends StatelessWidget {
                       ].contains(activeTool)) ...[
                         Text(
                           'Tool Mode',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w500,
-                            color: Color(0xFF94A3B8), // Fixed Dark: Slate 400
+                            color: textMuted,
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -208,21 +230,25 @@ class StudyFlowRightPanel extends StatelessWidget {
                           runSpacing: 8,
                           children: [
                             _buildShapeSelectorBtn(
+                              context,
                               LucideIcons.mousePointer2,
                               ToolType.cursor,
                               'Pointer',
                             ),
                             _buildShapeSelectorBtn(
+                              context,
                               LucideIcons.arrowUpRight,
                               ToolType.arrow,
                               'Arrow',
                             ),
                             _buildShapeSelectorBtn(
+                              context,
                               LucideIcons.square,
                               ToolType.rectangle,
                               'Rectangle',
                             ),
                             _buildShapeSelectorBtn(
+                              context,
                               LucideIcons.circle,
                               ToolType.circle,
                               'Circle',
@@ -236,10 +262,10 @@ class StudyFlowRightPanel extends StatelessWidget {
                       if (activeTool == ToolType.text) ...[
                         Text(
                           'Font Size',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w500,
-                            color: Color(0xFF94A3B8), // Fixed Dark: Slate 400
+                            color: textMuted,
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -256,9 +282,7 @@ class StudyFlowRightPanel extends StatelessWidget {
                                   overlayRadius: 16,
                                 ),
                                 activeTrackColor: const Color(0xFF3B82F6),
-                                inactiveTrackColor: const Color(
-                                  0xFF334155,
-                                ), // Fixed Dark: Slate 700
+                                inactiveTrackColor: panelBorder,
                                 thumbColor: const Color(0xFF2563EB),
                               ),
                               child: Slider(
@@ -266,15 +290,17 @@ class StudyFlowRightPanel extends StatelessWidget {
                                 min: 10.0,
                                 max: 48.0,
                                 onChanged: (val) {
-                                  if (isGlobalEditing) {
-                                    appProvider.updateEditingStyle(
-                                      commentId:
-                                          appProvider.activeEditingCommentId!,
-                                      fontSize: val,
-                                    );
-                                  } else {
-                                    onFontSizeChanged(val);
+                                  if (isTextEditing) {
+                                    final id = appProvider.activeEditingCommentId;
+                                    if (id != null) {
+                                      appProvider.updateEditingStyle(
+                                        commentId: id,
+                                        fontSize: val,
+                                      );
+                                      return;
+                                    }
                                   }
+                                  onFontSizeChanged(val);
                                 },
                               ),
                             ),
@@ -286,27 +312,27 @@ class StudyFlowRightPanel extends StatelessWidget {
                           children: [
                             Text(
                               'Bold',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w500,
-                                color: Color(
-                                  0xFF94A3B8,
-                                ), // Fixed Dark: Slate 400
+                                color: textMuted,
                               ),
                             ),
                             ExcludeFocus(
                               child: Switch(
                                 value: effectiveIsBold,
                                 onChanged: (val) {
-                                  if (isGlobalEditing) {
-                                    appProvider.updateEditingStyle(
-                                      commentId:
-                                          appProvider.activeEditingCommentId!,
-                                      isBold: val,
-                                    );
-                                  } else {
-                                    onBoldChanged(val);
+                                  if (isTextEditing) {
+                                    final id = appProvider.activeEditingCommentId;
+                                    if (id != null) {
+                                      appProvider.updateEditingStyle(
+                                        commentId: id,
+                                        isBold: val,
+                                      );
+                                      return;
+                                    }
                                   }
+                                  onBoldChanged(val);
                                 },
                                 activeTrackColor: const Color(0xFF3B82F6),
                               ),
@@ -323,19 +349,15 @@ class StudyFlowRightPanel extends StatelessWidget {
                                 Icon(
                                   LucideIcons.sigma,
                                   size: 18,
-                                  color: const Color(
-                                    0xFF94A3B8,
-                                  ), // Fixed Dark: Slate 400
+                                  color: textMuted,
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
                                   'LaTeX Mode',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w500,
-                                    color: Color(
-                                      0xFF94A3B8,
-                                    ), // Fixed Dark: Slate 400
+                                    color: textMuted,
                                   ),
                                 ),
                               ],
@@ -344,15 +366,17 @@ class StudyFlowRightPanel extends StatelessWidget {
                               child: Switch(
                                 value: effectiveIsLatex,
                                 onChanged: (val) {
-                                  if (isGlobalEditing) {
-                                    appProvider.updateEditingStyle(
-                                      commentId:
-                                          appProvider.activeEditingCommentId!,
-                                      isLatex: val,
-                                    );
-                                  } else {
-                                    onLatexChanged(val);
+                                  if (isTextEditing) {
+                                    final id = appProvider.activeEditingCommentId;
+                                    if (id != null) {
+                                      appProvider.updateEditingStyle(
+                                        commentId: id,
+                                        isLatex: val,
+                                      );
+                                      return;
+                                    }
                                   }
+                                  onLatexChanged(val);
                                 },
                                 activeTrackColor: const Color(0xFF3B82F6),
                               ),
@@ -370,19 +394,15 @@ class StudyFlowRightPanel extends StatelessWidget {
                                 Icon(
                                   LucideIcons.square,
                                   size: 18,
-                                  color: const Color(
-                                    0xFF94A3B8,
-                                  ), // Fixed Dark: Slate 400
+                                  color: textMuted,
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
                                   'Show Border',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w500,
-                                    color: Color(
-                                      0xFF94A3B8,
-                                    ), // Fixed Dark: Slate 400
+                                    color: textMuted,
                                   ),
                                 ),
                               ],
@@ -391,15 +411,17 @@ class StudyFlowRightPanel extends StatelessWidget {
                               child: Switch(
                                 value: effectiveShowBorder,
                                 onChanged: (val) {
-                                  if (isGlobalEditing) {
-                                    appProvider.updateEditingStyle(
-                                      commentId:
-                                          appProvider.activeEditingCommentId!,
-                                      showBorder: val,
-                                    );
-                                  } else {
-                                    onShowBorderChanged(val);
+                                  if (isTextEditing) {
+                                    final id = appProvider.activeEditingCommentId;
+                                    if (id != null) {
+                                      appProvider.updateEditingStyle(
+                                        commentId: id,
+                                        showBorder: val,
+                                      );
+                                      return;
+                                    }
                                   }
+                                  onShowBorderChanged(val);
                                 },
                                 activeTrackColor: const Color(0xFF3B82F6),
                               ),
@@ -408,15 +430,15 @@ class StudyFlowRightPanel extends StatelessWidget {
                         ),
                       ],
 
-                      // ─── Border Colour Picker (only if border is ON) ──
-                      if (effectiveShowBorder) ...[
+                      // ─── Border Colour Picker (text only, if border ON) ──
+                      if (activeTool == ToolType.text && effectiveShowBorder) ...[
                         const SizedBox(height: 16),
                         Text(
                           'Border Color',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w500,
-                            color: Color(0xFF94A3B8), // Fixed Dark: Slate 400
+                            color: textMuted,
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -424,45 +446,58 @@ class StudyFlowRightPanel extends StatelessWidget {
                           context,
                           effectiveBorderColor,
                           (color) {
-                            if (isGlobalEditing) {
-                              appProvider.updateEditingStyle(
-                                commentId: appProvider.activeEditingCommentId!,
-                                borderColor: color,
-                              );
-                            } else {
-                              onBorderColorChanged(color);
+                            if (isTextEditing) {
+                              final id = appProvider.activeEditingCommentId;
+                              if (id != null) {
+                                appProvider.updateEditingStyle(
+                                  commentId: id,
+                                  borderColor: color,
+                                );
+                                return;
+                              }
                             }
+                            onBorderColorChanged(color);
                           },
+                          colorTarget: _ColorTarget.border,
                         ),
                       ],
 
-                      // ─── Background Colour Picker ─────────────────────
-                      const SizedBox(height: 24),
-                      Text(
-                        'Background Color',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: Color(0xFF94A3B8), // Fixed Dark: Slate 400
+                      // ─── Background Colour (text + rect + circle only) ────
+                      if ([ToolType.text, ToolType.rectangle, ToolType.circle]
+                          .contains(activeTool)) ...[
+                        const SizedBox(height: 24),
+                        Text(
+                          activeTool == ToolType.text
+                              ? 'Background Color'
+                              : 'Fill Color',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: textMuted,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 12),
-                      _buildColorPickerButton(
-                        context,
-                        effectiveBgColor,
-                        (color) {
-                          if (isGlobalEditing) {
-                            appProvider.updateEditingStyle(
-                              commentId: appProvider.activeEditingCommentId!,
-                              bgColor: color,
-                            );
-                          } else {
+                        const SizedBox(height: 12),
+                        _buildColorPickerButton(
+                          context,
+                          effectiveBgColor,
+                          (color) {
+                            if (isTextEditing) {
+                              final id = appProvider.activeEditingCommentId;
+                              if (id != null) {
+                                appProvider.updateEditingStyle(
+                                  commentId: id,
+                                  bgColor: color,
+                                );
+                                return;
+                              }
+                            }
                             onBgColorChanged(color);
-                          }
-                        },
-                        allowTransparent: true,  // Allow transparent for backgrounds
-                      ),
-                      const SizedBox(height: 24),
+                          },
+                          allowTransparent: true,
+                          colorTarget: _ColorTarget.bg,
+                        ),
+                        const SizedBox(height: 24),
+                      ],
 
                       // Stroke Width & Color (Preserved)
                       if ([
@@ -476,10 +511,10 @@ class StudyFlowRightPanel extends StatelessWidget {
                         if (activeTool != ToolType.text) ...[
                           Text(
                             'Stroke Width',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w500,
-                              color: Color(0xFF94A3B8), // Fixed Dark: Slate 400
+                              color: textMuted,
                             ),
                           ),
                           const SizedBox(height: 12),
@@ -496,9 +531,7 @@ class StudyFlowRightPanel extends StatelessWidget {
                                     overlayRadius: 16,
                                   ),
                                   activeTrackColor: const Color(0xFF3B82F6),
-                                  inactiveTrackColor: const Color(
-                                    0xFF334155,
-                                  ), // Fixed Dark: Slate 700
+                                  inactiveTrackColor: panelBorder,
                                   thumbColor: const Color(0xFF2563EB),
                                 ),
                                 child: Slider(
@@ -514,11 +547,15 @@ class StudyFlowRightPanel extends StatelessWidget {
                         ],
 
                         Text(
-                          'Color',
-                          style: const TextStyle(
+                          activeTool == ToolType.text
+                              ? 'Text Color'
+                              : activeTool == ToolType.highlight
+                              ? 'Highlight Color'
+                              : 'Stroke Color',
+                          style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w500,
-                            color: Color(0xFF94A3B8), // Fixed Dark: Slate 400
+                            color: textMuted,
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -526,15 +563,19 @@ class StudyFlowRightPanel extends StatelessWidget {
                           context,
                           effectiveColor,
                           (color) {
-                            if (isGlobalEditing) {
-                              appProvider.updateEditingStyle(
-                                commentId: appProvider.activeEditingCommentId!,
-                                color: color,
-                              );
-                            } else {
-                              onColorChanged(color);
+                            if (isTextEditing) {
+                              final id = appProvider.activeEditingCommentId;
+                              if (id != null) {
+                                appProvider.updateEditingStyle(
+                                  commentId: id,
+                                  color: color,
+                                );
+                                return;
+                              }
                             }
+                            onColorChanged(color);
                           },
+                          colorTarget: _ColorTarget.stroke,
                         ),
                       ] else if (!activeTool.toString().contains('cursor') &&
                           !activeTool.toString().contains('arrow') &&
@@ -546,10 +587,8 @@ class StudyFlowRightPanel extends StatelessWidget {
                             child: Text(
                               'No properties available\nfor this tool',
                               textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: Color(
-                                  0xFF94A3B8,
-                                ), // Fixed Dark: Slate 400
+                              style: TextStyle(
+                                color: textMuted,
                               ),
                             ),
                           ),
@@ -557,14 +596,14 @@ class StudyFlowRightPanel extends StatelessWidget {
 
                       // Bookmarks Section (Preserved)
                       const SizedBox(height: 32),
-                      const Divider(color: Color(0xFFE2E8F0)),
+                      Divider(color: panelBorder),
                       const SizedBox(height: 16),
                       Text(
                         'Bookmarks',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
-                          color: Colors.white, // Fixed Dark: White
+                          color: textPrimary,
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -575,15 +614,11 @@ class StudyFlowRightPanel extends StatelessWidget {
                             elevation: 1,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
-                              side: const BorderSide(
-                                color: Color(
-                                  0xFF334155,
-                                ), // Fixed Dark: Slate 700
+                              side: BorderSide(
+                                color: panelBorder,
                               ),
                             ),
-                            color: const Color(
-                              0xFF1E293B,
-                            ), // Fixed Dark: Slate 800
+                            color: surfaceAlt,
                             child: InkWell(
                               onTap: () {
                                 if (pdfController.isReady) {
@@ -610,20 +645,17 @@ class StudyFlowRightPanel extends StatelessWidget {
                                         children: [
                                           Text(
                                             bookmark.name,
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                               fontSize: 14,
                                               fontWeight: FontWeight.w500,
-                                              color: Colors
-                                                  .white, // Fixed Dark: White
+                                              color: textPrimary,
                                             ),
                                           ),
                                           Text(
                                             'Page ${bookmark.page}',
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                               fontSize: 12,
-                                              color: Color(
-                                                0xFF94A3B8,
-                                              ), // Fixed Dark: Slate 400
+                                              color: textMuted,
                                             ),
                                           ),
                                         ],
@@ -658,10 +690,8 @@ class StudyFlowRightPanel extends StatelessWidget {
                             child: Text(
                               'No bookmarks yet',
                               textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: Color(
-                                  0xFF94A3B8,
-                                ), // Fixed Dark: Slate 400
+                              style: TextStyle(
+                                color: textMuted,
                               ),
                             ),
                           ),
@@ -681,8 +711,13 @@ class StudyFlowRightPanel extends StatelessWidget {
     );
   }
 
-  Widget _buildPanelTab(int index, IconData icon, String label) {
+  Widget _buildPanelTab(BuildContext context, int index, IconData icon, String label) {
     final isActive = activeTabIndex == index;
+    final scheme = Theme.of(context).colorScheme;
+    final inactiveIcon =
+        isDarkMode ? const Color(0xFF94A3B8) : scheme.onSurfaceVariant;
+    final inactiveText =
+        isDarkMode ? const Color(0xFF64748B) : scheme.onSurfaceVariant;
     return Expanded(
       child: GestureDetector(
         onTap: () => onTabChanged(index),
@@ -690,7 +725,9 @@ class StudyFlowRightPanel extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
             color: isActive
-                ? const Color(0xFF334155) // Fixed Dark: Slate 700
+                ? (isDarkMode
+                    ? const Color(0xFF334155)
+                    : scheme.surfaceContainerHigh)
                 : Colors.transparent,
             border: Border(
               bottom: BorderSide(
@@ -707,7 +744,7 @@ class StudyFlowRightPanel extends StatelessWidget {
                 size: 18,
                 color: isActive
                     ? const Color(0xFF6366F1)
-                    : const Color(0xFF94A3B8), // Fixed Dark: Slate 400
+                    : inactiveIcon,
               ),
               const SizedBox(height: 4),
               Text(
@@ -717,7 +754,7 @@ class StudyFlowRightPanel extends StatelessWidget {
                   fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
                   color: isActive
                       ? const Color(0xFF6366F1)
-                      : const Color(0xFF64748B), // Fixed Dark: Slate 500
+                      : inactiveText,
                 ),
               ),
             ],
@@ -729,11 +766,13 @@ class StudyFlowRightPanel extends StatelessWidget {
 
   // Helper method for shape selector buttons in right panel
   Widget _buildShapeSelectorBtn(
+    BuildContext context,
     IconData icon,
     ToolType toolValue,
     String tooltip,
   ) {
     final isSelected = activeTool == toolValue;
+    final scheme = Theme.of(context).colorScheme;
     return Tooltip(
       message: tooltip,
       child: InkWell(
@@ -743,12 +782,18 @@ class StudyFlowRightPanel extends StatelessWidget {
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             color: isSelected
-                ? const Color(0xFF312E81) // Fixed Dark: Indigo 900
-                : const Color(0xFF1E293B), // Fixed Dark: Slate 800
+                ? (isDarkMode
+                    ? const Color(0xFF312E81)
+                    : scheme.primaryContainer)
+                : (isDarkMode
+                    ? const Color(0xFF1E293B)
+                    : scheme.surfaceContainerHigh),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
               color: isSelected
-                  ? const Color(0xFF818CF8) // Indigo 400
+                  ? (isDarkMode
+                      ? const Color(0xFF818CF8)
+                      : scheme.primary)
                   : Colors.transparent,
               width: 1.5,
             ),
@@ -757,8 +802,12 @@ class StudyFlowRightPanel extends StatelessWidget {
             icon,
             size: 20,
             color: isSelected
-                ? const Color(0xFF818CF8) // Fixed Dark: Indigo 400
-                : const Color(0xFF94A3B8), // Fixed Dark: Slate 400
+                ? (isDarkMode
+                    ? const Color(0xFF818CF8)
+                    : scheme.primary)
+                : (isDarkMode
+                    ? const Color(0xFF94A3B8)
+                    : scheme.onSurfaceVariant),
           ),
         ),
       ),
@@ -772,33 +821,49 @@ class StudyFlowRightPanel extends StatelessWidget {
     BuildContext context,
     Color currentColor,
     ValueChanged<Color> onColorChanged,
-    {bool allowTransparent = false}  // Allow transparent option for backgrounds
+    {bool allowTransparent = false,
+    _ColorTarget colorTarget = _ColorTarget.stroke}
   ) async {
     Color pickerColor = currentColor;
-    
+    final scheme = Theme.of(context).colorScheme;
+    final dialogBg = isDarkMode ? const Color(0xFF1E293B) : scheme.surface;
+    final dialogText = isDarkMode ? Colors.white : scheme.onSurface;
+    final neutralBtnBg = isDarkMode
+        ? const Color(0xFF64748B)
+        : scheme.surfaceContainerHigh;
+
+    // Cache the comment ID BEFORE dialog steals focus
+    final appProvider = context.read<AppProvider>();
+    appProvider.cacheTargetIdForColor(
+      appProvider.activeEditingCommentId ?? selectedHighlightId,
+    );
+
+    // Freeze selection before dialog
+    onColorPickerOpening?.call();
+
     await showDialog(
       context: context,
-      builder: (BuildContext context) {
+      builder: (BuildContext dialogContext) {
         return AlertDialog(
-          backgroundColor: const Color(0xFF1E293B), // Slate 800
-          title: const Text(
+          backgroundColor: dialogBg,
+          title: Text(
             'Pick a Color',
-            style: TextStyle(color: Colors.white),
+            style: TextStyle(color: dialogText),
           ),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 ColorPicker(
-                  pickerColor: pickerColor == Colors.transparent 
-                      ? Colors.white 
+                  pickerColor: pickerColor == Colors.transparent
+                      ? Colors.white
                       : pickerColor,
                   onColorChanged: (Color color) {
                     pickerColor = color;
                   },
                   pickerAreaHeightPercent: 0.8,
                   displayThumbColor: true,
-                  enableAlpha: false,
+                  enableAlpha: allowTransparent,
                   labelTypes: const [],
                   pickerAreaBorderRadius: const BorderRadius.all(Radius.circular(8)),
                 ),
@@ -806,13 +871,21 @@ class StudyFlowRightPanel extends StatelessWidget {
                   const SizedBox(height: 16),
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF64748B),
+                      backgroundColor: neutralBtnBg,
                     ),
                     icon: const Icon(LucideIcons.eyeOff, size: 18),
                     label: const Text('No Background (Transparent)'),
                     onPressed: () {
                       onColorChanged(Colors.transparent);
-                      Navigator.of(context).pop();
+                      switch (colorTarget) {
+                        case _ColorTarget.bg:
+                          appProvider.applyColorToCachedComment(bgColor: Colors.transparent);
+                        case _ColorTarget.border:
+                          appProvider.applyColorToCachedComment(borderColor: Colors.transparent);
+                        case _ColorTarget.stroke:
+                          appProvider.applyColorToCachedComment(color: Colors.transparent);
+                      }
+                      Navigator.of(dialogContext).pop();
                     },
                   ),
                 ],
@@ -822,22 +895,38 @@ class StudyFlowRightPanel extends StatelessWidget {
           actions: <Widget>[
             TextButton(
               child: const Text('Cancel'),
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () => Navigator.of(dialogContext).pop(),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF3B82F6),
               ),
-              child: const Text('Select'),
+              child: Text(
+                'Select',
+                style: TextStyle(color: Colors.white),
+              ),
               onPressed: () {
                 onColorChanged(pickerColor);
-                Navigator.of(context).pop();
+                // Apply to cached comment (works even after focus loss)
+                switch (colorTarget) {
+                  case _ColorTarget.stroke:
+                    appProvider.applyColorToCachedComment(color: pickerColor);
+                  case _ColorTarget.bg:
+                    appProvider.applyColorToCachedComment(bgColor: pickerColor);
+                  case _ColorTarget.border:
+                    appProvider.applyColorToCachedComment(borderColor: pickerColor);
+                }
+                Navigator.of(dialogContext).pop();
               },
             ),
           ],
         );
       },
     );
+
+    // Restore selection + clear cached id
+    onColorPickerClosed?.call();
+    appProvider.clearCachedTargetId();
   }
 
   // Helper widget to build color picker button
@@ -845,23 +934,33 @@ class StudyFlowRightPanel extends StatelessWidget {
     BuildContext context,
     Color currentColor,
     ValueChanged<Color> onColorChanged,
-    {bool allowTransparent = false}
+    {bool allowTransparent = false,
+    _ColorTarget colorTarget = _ColorTarget.stroke}
   ) {
+    final scheme = Theme.of(context).colorScheme;
+    final buttonBg = isDarkMode
+        ? const Color(0xFF1E293B)
+        : scheme.surfaceContainerHigh;
+    final buttonBorder =
+        isDarkMode ? const Color(0xFF334155) : scheme.outlineVariant;
+    final iconMuted =
+        isDarkMode ? const Color(0xFF94A3B8) : scheme.onSurfaceVariant;
     return InkWell(
       onTap: () => _showColorPicker(
-        context, 
-        currentColor, 
+        context,
+        currentColor,
         onColorChanged,
         allowTransparent: allowTransparent,
+        colorTarget: colorTarget,
       ),
       borderRadius: BorderRadius.circular(8),
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: const Color(0xFF1E293B), // Slate 800
+          color: buttonBg,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: const Color(0xFF334155), // Slate 700
+            color: buttonBorder,
             width: 1,
           ),
         ),
@@ -876,15 +975,15 @@ class StudyFlowRightPanel extends StatelessWidget {
                     : currentColor,
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: const Color(0xFF94A3B8),
+                  color: iconMuted,
                   width: 2,
                 ),
               ),
               child: currentColor == Colors.transparent
-                  ? const Icon(
+                  ? Icon(
                       LucideIcons.eyeOff,
                       size: 16,
-                      color: Color(0xFF94A3B8),
+                      color: iconMuted,
                     )
                   : null,
             ),
@@ -894,15 +993,15 @@ class StudyFlowRightPanel extends StatelessWidget {
                 currentColor == Colors.transparent 
                     ? 'No background'
                     : 'Tap to pick color',
-                style: const TextStyle(
-                  color: Color(0xFF94A3B8),
+                style: TextStyle(
+                  color: iconMuted,
                   fontSize: 14,
                 ),
               ),
             ),
-            const Icon(
+            Icon(
               LucideIcons.palette,
-              color: Color(0xFF94A3B8),
+              color: iconMuted,
               size: 20,
             ),
           ],

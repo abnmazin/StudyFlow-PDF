@@ -60,14 +60,29 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
     final isMobile = MediaQuery.of(context).size.width < 768;
     final pdf = widget.activePdf;
 
+    final scheme = Theme.of(context).colorScheme;
+    final barBg = widget.isDarkMode ? const Color(0xFF0F172A) : scheme.surface;
+    final barBorder = widget.isDarkMode
+        ? const Color(0xFF334155)
+        : scheme.outlineVariant;
+    final chipBg = widget.isDarkMode
+        ? const Color(0xFF1E293B)
+        : scheme.surfaceContainerHigh;
+    final textPrimary = widget.isDarkMode ? Colors.white : scheme.onSurface;
+    final iconMuted = widget.isDarkMode
+        ? const Color(0xFF94A3B8)
+        : scheme.onSurfaceVariant;
+    final inputBorder = widget.isDarkMode
+        ? const Color(0xFF334155)
+        : scheme.outlineVariant;
     return Container(
       height: 64,
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: const BoxDecoration(
-        color: Color(0xFF0F172A), // Fixed Dark: Slate 900
+      decoration: BoxDecoration(
+        color: barBg,
         border: Border(
           bottom: BorderSide(
-            color: Color(0xFF334155), // Fixed Dark: Slate 700
+            color: barBorder,
           ),
         ),
       ),
@@ -78,9 +93,9 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
             children: [
               if (isMobile)
                 IconButton(
-                  icon: const Icon(
+                  icon: Icon(
                     LucideIcons.menu,
-                    color: Color(0xFF94A3B8), // Fixed Dark: Slate 400
+                    color: iconMuted,
                   ),
                   onPressed: () => app.toggleMobile(),
                 )
@@ -88,7 +103,7 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                 IconButton(
                   icon: Icon(
                     LucideIcons.panelLeftOpen,
-                    color: const Color(0xFF94A3B8), // Fixed Dark: Slate 400
+                    color: iconMuted,
                   ),
                   onPressed: () {
                     app.toggleSidebar();
@@ -108,28 +123,24 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                           autofocus: true,
                           keyboardType: TextInputType.number,
                           textAlign: TextAlign.center,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w500,
-                            color: Colors.white, // Fixed Dark: White
+                            color: textPrimary,
                           ),
                           decoration: InputDecoration(
                             contentPadding: EdgeInsets.zero,
                             isDense: true,
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(
-                                color: Color(
-                                  0xFF334155,
-                                ), // Fixed Dark: Slate 700
+                              borderSide: BorderSide(
+                                color: inputBorder,
                               ),
                             ),
                             enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(
-                                color: Color(
-                                  0xFF334155,
-                                ), // Fixed Dark: Slate 700
+                              borderSide: BorderSide(
+                                color: inputBorder,
                               ),
                             ),
                             focusedBorder: OutlineInputBorder(
@@ -176,11 +187,11 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                           child: Text(
                             widget.pdfController.isReady
                                 ? '${widget.pdfController.pageNumber} / ${widget.pdfController.pages.length}'
-                                : '${pdf.lastPage ?? 1} / ...',
-                            style: const TextStyle(
+                                : 'Loading...',
+                            style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w500,
-                              color: Colors.white, // Fixed Dark: White
+                              color: textPrimary,
                             ),
                           ),
                         ),
@@ -191,7 +202,7 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
               // Zoom Controls
               Container(
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1E293B), // Fixed Dark: Slate 800
+                  color: chipBg,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 padding: const EdgeInsets.all(4),
@@ -201,7 +212,7 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                       icon: Icon(
                         LucideIcons.zoomOut,
                         size: 18,
-                        color: const Color(0xFF94A3B8), // Fixed Dark: Slate 400
+                        color: iconMuted,
                       ),
                       onPressed: () => widget.pdfController.zoomDown(),
                       padding: EdgeInsets.zero,
@@ -214,7 +225,7 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                       icon: Icon(
                         LucideIcons.zoomIn,
                         size: 18,
-                        color: const Color(0xFF94A3B8), // Fixed Dark: Slate 400
+                        color: iconMuted,
                       ),
                       onPressed: () => widget.pdfController.zoomUp(),
                       padding: EdgeInsets.zero,
@@ -238,7 +249,7 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                   // Search Button
                   Container(
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1E293B), // Fixed Dark: Slate 800
+                      color: chipBg,
                       borderRadius: BorderRadius.circular(8),
                     ),
                     padding: const EdgeInsets.all(4),
@@ -248,14 +259,14 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                       tooltip: 'Search (Ctrl+F)',
                       color: widget.isSearchVisible
                           ? const Color(0xFF3B82F6)
-                          : const Color(0xFF94A3B8), // Fixed Dark: Slate 400
+                          : iconMuted,
                     ),
                   ),
                   const SizedBox(width: 12),
                   // Bookmark Button
                   Container(
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1E293B), // Fixed Dark: Slate 800
+                      color: chipBg,
                       borderRadius: BorderRadius.circular(8),
                     ),
                     padding: const EdgeInsets.all(4),
@@ -267,7 +278,7 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                         }
                       },
                       tooltip: 'Add Bookmark',
-                      color: const Color(0xFF94A3B8), // Fixed Dark: Slate 400
+                      color: iconMuted,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -275,7 +286,7 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                   // Tools
                   Container(
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1E293B), // Fixed Dark: Slate 800
+                      color: chipBg,
                       borderRadius: BorderRadius.circular(8),
                     ),
                     padding: const EdgeInsets.all(4),
@@ -336,7 +347,7 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                   // Printer & Dark Mode
                   Container(
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1E293B), // Fixed Dark: Slate 800
+                      color: chipBg,
                       borderRadius: BorderRadius.circular(8),
                     ),
                     padding: const EdgeInsets.all(4),
@@ -348,9 +359,7 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                               ? () => widget.onPrint(pdf)
                               : null,
                           tooltip: 'Print (Ctrl+P)',
-                          color: const Color(
-                            0xFF94A3B8,
-                          ), // Fixed Dark: Slate 400
+                          color: iconMuted,
                         ),
                         IconButton(
                           icon: Icon(
@@ -363,9 +372,7 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                           tooltip: 'Toggle Dark Mode',
                           color: widget.isDarkMode
                               ? const Color(0xFFEAB308)
-                              : const Color(
-                                  0xFF94A3B8,
-                                ), // Fixed Dark: Slate 400
+                              : iconMuted,
                         ),
                       ],
                     ),
@@ -375,7 +382,7 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                   // Edit Pages
                   Container(
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1E293B), // Fixed Dark: Slate 800
+                      color: chipBg,
                       borderRadius: BorderRadius.circular(8),
                     ),
                     padding: const EdgeInsets.all(4),
@@ -387,9 +394,7 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                               ? null
                               : () => widget.onAddPage(pdf),
                           tooltip: 'Add Page',
-                          color: const Color(
-                            0xFF94A3B8,
-                          ), // Fixed Dark: Slate 400
+                          color: iconMuted,
                         ),
                         IconButton(
                           icon: const Icon(LucideIcons.fileMinus, size: 20),
@@ -407,7 +412,7 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                   // Close File
                   Container(
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1E293B), // Fixed Dark: Slate 800
+                      color: chipBg,
                       borderRadius: BorderRadius.circular(8),
                     ),
                     padding: const EdgeInsets.all(4),
@@ -415,7 +420,7 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                       icon: const Icon(LucideIcons.x, size: 20),
                       onPressed: () => app.closeActivePdf(),
                       tooltip: 'Close File',
-                      color: const Color(0xFF94A3B8), // Fixed Dark: Slate 400
+                      color: iconMuted,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -423,7 +428,7 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                   // Right Panel Toggle
                   Container(
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1E293B), // Fixed Dark: Slate 800
+                      color: chipBg,
                       borderRadius: BorderRadius.circular(8),
                     ),
                     padding: const EdgeInsets.all(4),
@@ -438,7 +443,7 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                       tooltip: 'Toggle Properties Panel (Ctrl+R)',
                       color: widget.isRightPanelOpen
                           ? const Color(0xFF3B82F6)
-                          : const Color(0xFF94A3B8), // Fixed Dark: Slate 400
+                          : iconMuted,
                     ),
                   ),
                 ],
@@ -468,6 +473,7 @@ class _ToolBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final iconMuted = Theme.of(context).colorScheme.onSurfaceVariant;
     Color activeColor = const Color(0xFF3B82F6); // Fixed Blue 500
     if (label == 'Highlight')
       activeColor = const Color(0xFFEAB308); // Fixed Yellow 500
@@ -497,7 +503,7 @@ class _ToolBtn extends StatelessWidget {
               size: 16,
               color: isActive
                   ? activeColor
-                  : const Color(0xFF94A3B8), // Fixed Dark: Slate 400
+                  : iconMuted,
             ),
             const SizedBox(width: 8),
             Text(
@@ -507,7 +513,7 @@ class _ToolBtn extends StatelessWidget {
                 fontWeight: FontWeight.w500,
                 color: isActive
                     ? activeColor
-                    : const Color(0xFF94A3B8), // Fixed Dark: Slate 400
+                    : iconMuted,
               ),
             ),
             if (shortcut != null) ...[
@@ -522,11 +528,9 @@ class _ToolBtn extends StatelessWidget {
                 ),
                 child: Text(
                   shortcut!,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 10,
-                    color: Color(
-                      0xFF64748B,
-                    ), // Slightly darker Slate for less emphasis
+                    color: iconMuted,
                   ),
                 ),
               ),

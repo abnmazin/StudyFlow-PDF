@@ -86,37 +86,44 @@ class _SidebarState extends State<Sidebar> {
   Widget build(BuildContext context) {
     final app = context.watch<AppProvider>();
     final isMobile = MediaQuery.of(context).size.width < 768;
+    final scheme = Theme.of(context).colorScheme;
+    final sidebarBg = app.isDarkMode ? const Color(0xFF0F172A) : scheme.surface;
+    final sidebarBorder =
+        app.isDarkMode ? const Color(0xFF1E293B) : scheme.outlineVariant;
+    final textPrimary = app.isDarkMode ? const Color(0xFFF1F5F9) : scheme.onSurface;
+    final textMuted =
+        app.isDarkMode ? const Color(0xFF94A3B8) : scheme.onSurfaceVariant;
 
     return Container(
       width: 288, // w-72
-      color: const Color(0xFF0F172A), // slate-900
+      color: sidebarBg,
       child: Column(
         children: [
           // Header
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               border: Border(
-                bottom: BorderSide(color: Color(0xFF1E293B)),
-              ), // slate-800
+                bottom: BorderSide(color: sidebarBorder),
+              ),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Row(
-                  children: const [
+                  children: [
                     Icon(
                       LucideIcons.book,
                       color: Color(0xFF60A5FA),
                       size: 24,
-                    ), // blue-400
+                    ),
                     SizedBox(width: 8),
                     Text(
                       'StudyFlow',
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFFF1F5F9), // slate-100
+                        color: textPrimary,
                       ),
                     ),
                   ],
@@ -126,18 +133,18 @@ class _SidebarState extends State<Sidebar> {
                     if (!isMobile)
                       IconButton(
                         onPressed: () => app.toggleSidebar(),
-                        icon: const Icon(
+                        icon: Icon(
                           LucideIcons.chevronLeft,
-                          color: Color(0xFF94A3B8),
-                        ), // slate-400
+                          color: textMuted,
+                        ),
                         tooltip: 'Collapse',
                       ),
                     if (isMobile)
                       IconButton(
                         onPressed: () => app.toggleMobile(),
-                        icon: const Icon(
+                        icon: Icon(
                           LucideIcons.x,
-                          color: Color(0xFF94A3B8),
+                          color: textMuted,
                         ),
                       ),
                   ],
@@ -260,31 +267,44 @@ class _SidebarState extends State<Sidebar> {
                     child: Row(
                       children: [
                         Expanded(
-                          child: TextField(
-                            controller: _classController,
-                            autofocus: true,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                            ),
-                            decoration: InputDecoration(
-                              hintText: 'Name...',
-                              hintStyle: TextStyle(
-                                color: Colors.white.withOpacity(0.5),
-                              ),
-                              filled: true,
-                              fillColor: const Color(0xFF1E293B), // slate-800
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(4),
-                                borderSide: BorderSide.none,
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 8,
-                              ),
-                              isDense: true,
-                            ),
-                            onSubmitted: (_) => _handleAddClass(context),
+                          child: Builder(
+                            builder: (ctx) {
+                              final scheme = Theme.of(ctx).colorScheme;
+                              final isDark = context.watch<AppProvider>().isDarkMode;
+                              final inputBg = isDark
+                                  ? const Color(0xFF1E293B)
+                                  : scheme.surfaceContainerHigh;
+                              final inputText =
+                                  isDark ? Colors.white : scheme.onSurface;
+                              return TextField(
+                                controller: _classController,
+                                autofocus: true,
+                                style: TextStyle(
+                                  color: inputText,
+                                  fontSize: 14,
+                                ),
+                                decoration: InputDecoration(
+                                  hintText: 'Name...',
+                                  hintStyle: TextStyle(
+                                    color: isDark
+                                        ? Colors.white.withOpacity(0.5)
+                                        : scheme.onSurfaceVariant.withOpacity(0.6),
+                                  ),
+                                  filled: true,
+                                  fillColor: inputBg,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(4),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 8,
+                                  ),
+                                  isDense: true,
+                                ),
+                                onSubmitted: (_) => _handleAddClass(context),
+                              );
+                            },
                           ),
                         ),
                         IconButton(
@@ -358,6 +378,11 @@ class _SidebarState extends State<Sidebar> {
 
   Widget _buildClassItem(BuildContext context, ClassItem cls, AppProvider app) {
     final isActive = app.activeClassId == cls.id;
+    final scheme = Theme.of(context).colorScheme;
+    final textMuted =
+        app.isDarkMode ? const Color(0xFF94A3B8) : scheme.onSurfaceVariant;
+    final textPrimary = app.isDarkMode ? const Color(0xFFF1F5F9) : scheme.onSurface;
+    final hoverBg = app.isDarkMode ? const Color(0xFF1E3A8A) : scheme.surfaceContainerHighest;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -380,9 +405,9 @@ class _SidebarState extends State<Sidebar> {
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                 decoration: BoxDecoration(
                   color: isHovering
-                      ? const Color(0xFF1E3A8A) // لون تلميح عند الإفلات
+                      ? hoverBg
                       : (isActive
-                            ? const Color(0xFF1E293B)
+                            ? (app.isDarkMode ? const Color(0xFF1E293B) : scheme.surfaceContainerHigh)
                             : Colors.transparent),
                   borderRadius: BorderRadius.circular(4),
                 ),
@@ -395,7 +420,7 @@ class _SidebarState extends State<Sidebar> {
                         style: TextStyle(
                           color: isActive
                               ? const Color(0xFF60A5FA)
-                              : const Color(0xFFF1F5F9),
+                              : textPrimary,
                           fontWeight: FontWeight.w500,
                         ),
                         overflow: TextOverflow.ellipsis,
@@ -406,10 +431,10 @@ class _SidebarState extends State<Sidebar> {
                       width: 24,
                       child: IconButton(
                         padding: EdgeInsets.zero,
-                        icon: const Icon(
+                        icon: Icon(
                           LucideIcons.upload,
                           size: 14,
-                          color: Color(0xFF64748B),
+                          color: textMuted,
                         ),
                         tooltip: 'Upload PDF',
                         onPressed: () => app.uploadPdf(cls.id),
@@ -421,7 +446,7 @@ class _SidebarState extends State<Sidebar> {
                       width: 24,
                       child: IconButton(
                         padding: EdgeInsets.zero,
-                        icon: const Icon(
+                        icon: Icon(
                           LucideIcons.trash2,
                           size: 16,
                           color: Color(0xFFF87171),
@@ -443,9 +468,14 @@ class _SidebarState extends State<Sidebar> {
           Padding(
             padding: const EdgeInsets.only(left: 16, top: 4),
             child: Container(
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 border: Border(
-                  left: BorderSide(color: Color(0xFF1E293B), width: 2),
+                  left: BorderSide(
+                    color: app.isDarkMode
+                        ? const Color(0xFF1E293B)
+                        : scheme.outlineVariant,
+                    width: 2,
+                  ),
                 ),
               ),
               padding: const EdgeInsets.only(left: 8),
