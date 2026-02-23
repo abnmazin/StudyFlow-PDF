@@ -39,6 +39,8 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
       false; // CRITICAL: Controls unmount during native print
 
   bool _isRightPanelOpen = false;
+  bool _isShapesPaletteVisible = false;
+  bool _isSettingsMode = false;
   int _rightPanelTabIndex = 0; // 0: Tools, 1: AI, 2: Translate
 
   // ─── Smart Dynamic Threshold Constants ────────────────────────────────────
@@ -194,17 +196,35 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
           ? <ShortcutActivator, VoidCallback>{}
           : {
               const SingleActivator(LogicalKeyboardKey.keyH): () =>
-                  setState(() => _tool = ToolType.highlight),
+                  setState(() {
+                    _tool = ToolType.highlight;
+                    _isSettingsMode = false;
+                  }),
               const SingleActivator(LogicalKeyboardKey.keyE): () =>
-                  setState(() => _tool = ToolType.eraser),
+                  setState(() {
+                    _tool = ToolType.eraser;
+                    _isSettingsMode = false;
+                  }),
               const SingleActivator(LogicalKeyboardKey.keyP): () =>
-                  setState(() => _tool = ToolType.pen),
+                  setState(() {
+                    _tool = ToolType.pen;
+                    _isSettingsMode = false;
+                  }),
               const SingleActivator(LogicalKeyboardKey.keyT): () =>
-                  setState(() => _tool = ToolType.text),
+                  setState(() {
+                    _tool = ToolType.text;
+                    _isSettingsMode = false;
+                  }),
               const SingleActivator(LogicalKeyboardKey.escape): () =>
-                  setState(() => _tool = ToolType.cursor),
+                  setState(() {
+                    _tool = ToolType.cursor;
+                    _isSettingsMode = false;
+                  }),
               const SingleActivator(LogicalKeyboardKey.keyV): () =>
-                  setState(() => _tool = ToolType.cursor),
+                  setState(() {
+                    _tool = ToolType.cursor;
+                    _isSettingsMode = false;
+                  }),
               const SingleActivator(
                 LogicalKeyboardKey.keyP,
                 control: true,
@@ -286,27 +306,35 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
             StudyFlowToolbar(
               activeTool: _tool,
               isRightPanelOpen: _isRightPanelOpen,
+              isShapesPaletteVisible: _isShapesPaletteVisible,
               isDarkMode: isDarkMode,
               isSearchVisible: _isSearchVisible,
               activePdf: pdf,
               pdfController: _pdfController,
+              onToggleShapesPalette: () {
+                setState(() {
+                  _isShapesPaletteVisible = !_isShapesPaletteVisible;
+                });
+              },
               onToolChanged: (t) {
-                setState(() => _tool = t);
-                // Also open panel if needed for certain tools
-                if (!_isRightPanelOpen &&
-                    (t == ToolType.cursor ||
-                        t == ToolType.arrow ||
-                        t == ToolType.rectangle ||
-                        t == ToolType.circle)) {
-                  setState(() => _isRightPanelOpen = true);
-                  _forcePdfRelayout();
-                }
+                setState(() {
+                  _tool = t;
+                  _isSettingsMode = false;
+                });
               },
               onToggleRightPanel: () {
                 setState(() => _isRightPanelOpen = !_isRightPanelOpen);
                 _forcePdfRelayout();
               },
-              onToggleDarkMode: () => app.toggleDarkMode(),
+              onToggleSettings: () {
+                setState(() {
+                  _isSettingsMode = !_isSettingsMode;
+                  if (_isSettingsMode) {
+                    _isRightPanelOpen = true;
+                  }
+                });
+                _forcePdfRelayout();
+              },
               onToggleSearch: () {
                 setState(() {
                   _isSearchVisible = !_isSearchVisible;
@@ -317,9 +345,6 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                   }
                 });
               },
-              onPrint: _showPrintDialog,
-              onAddPage: _addPage,
-              onDeletePage: _deleteCurrentPage,
               onAddBookmark: _showAddBookmarkDialog,
             ),
 
@@ -408,6 +433,92 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                       tooltip: 'Close',
                                     ),
                                   ],
+                                ),
+                              ),
+                            ),
+                          ),
+
+                        if (_isShapesPaletteVisible)
+                          Positioned(
+                            left: 20,
+                            bottom: 50,
+                            child: TapRegion(
+                              onTapOutside: (_) {
+                                if (mounted) {
+                                  setState(() {
+                                    _isShapesPaletteVisible = false;
+                                  });
+                                }
+                              },
+                              child: Material(
+                                elevation: 4,
+                                color: Colors.transparent,
+                                borderRadius: BorderRadius.circular(14),
+                                child: Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: isDarkMode
+                                        ? const Color(0xFF1E293B)
+                                        : Colors.white,
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color: isDarkMode
+                                          ? const Color(0xFF334155)
+                                          : const Color(0xFFE2E8F0),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        tooltip: 'Rectangle',
+                                        icon: const Icon(LucideIcons.square),
+                                        color: _tool == ToolType.rectangle
+                                            ? const Color(0xFF3B82F6)
+                                            : (isDarkMode
+                                                  ? const Color(0xFF94A3B8)
+                                                  : const Color(0xFF64748B)),
+                                        onPressed: () {
+                                          setState(() {
+                                            _tool = ToolType.rectangle;
+                                            _isShapesPaletteVisible = false;
+                                          });
+                                        },
+                                      ),
+                                      IconButton(
+                                        tooltip: 'Circle',
+                                        icon: const Icon(LucideIcons.circle),
+                                        color: _tool == ToolType.circle
+                                            ? const Color(0xFF3B82F6)
+                                            : (isDarkMode
+                                                  ? const Color(0xFF94A3B8)
+                                                  : const Color(0xFF64748B)),
+                                        onPressed: () {
+                                          setState(() {
+                                            _tool = ToolType.circle;
+                                            _isShapesPaletteVisible = false;
+                                          });
+                                        },
+                                      ),
+                                      IconButton(
+                                        tooltip: 'Arrow',
+                                        icon: const Icon(
+                                          LucideIcons.arrowUpRight,
+                                        ),
+                                        color: _tool == ToolType.arrow
+                                            ? const Color(0xFF3B82F6)
+                                            : (isDarkMode
+                                                  ? const Color(0xFF94A3B8)
+                                                  : const Color(0xFF64748B)),
+                                        onPressed: () {
+                                          setState(() {
+                                            _tool = ToolType.arrow;
+                                            _isShapesPaletteVisible = false;
+                                          });
+                                        },
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
@@ -558,6 +669,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                   // 3. Right Panel (Side-by-Side)
                   if (_isRightPanelOpen)
                     StudyFlowRightPanel(
+                      isSettingsMode: _isSettingsMode,
                       activeTool: _tool,
                       activeColor: _currentColor,
                       strokeWidth: _strokeWidth,
@@ -568,7 +680,10 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                       activePdf: pdf,
                       pdfController: _pdfController,
                       selectedHighlightId: _selectedHighlightId,
-                      onToolChanged: (t) => setState(() => _tool = t),
+                      onToolChanged: (t) => setState(() {
+                        _tool = t;
+                        _isSettingsMode = false;
+                      }),
                       onColorChanged: _onColorChanged,
                       onStrokeWidthChanged: _onStrokeWidthChanged,
                       onFontSizeChanged: (v) {
@@ -610,6 +725,10 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                       },
                       onTabChanged: (i) =>
                           setState(() => _rightPanelTabIndex = i),
+                      onAddPage: _addPage,
+                      onDeletePage: _deleteCurrentPage,
+                      onPrint: _showPrintDialog,
+                      onToggleDarkMode: () => app.toggleDarkMode(),
                     ),
                 ],
               ),
@@ -649,6 +768,14 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
               const SizedBox.shrink(),
           enableKeyboardNavigation:
               _editingCommentId == null && !_isSearchVisible,
+          textSelectionParams: PdfTextSelectionParams(
+            onTextSelectionChange: (selection) {
+              if (!mounted) return;
+              setState(() {
+                _textSelection = selection;
+              });
+            },
+          ),
           onViewerReady: (document, controller) {
             if (mounted) {
               setState(() {
@@ -1545,14 +1672,15 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   }
 
   void _addTextHighlight(Color color) async {
-    if (_textSelection == null) return;
+    final selection = _textSelection;
+    if (selection == null) return;
 
     final app = context.read<AppProvider>();
     final pdf = app.activePdf;
     if (pdf == null) return;
 
     try {
-      final ranges = await _textSelection!.getSelectedTextRanges();
+      final ranges = await selection.getSelectedTextRanges();
       final selectionsByPage = <int, List<Rect>>{};
 
       for (final range in ranges) {
@@ -1583,8 +1711,8 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
         app.addHighlight(pdf.id, highlight);
       }
 
-      if (_textSelection is PdfTextSelectionDelegate) {
-        await (_textSelection as PdfTextSelectionDelegate).clearTextSelection();
+      if (selection is PdfTextSelectionDelegate) {
+        await selection.clearTextSelection();
       }
       if (mounted) setState(() => _textSelection = null);
     } catch (e) {

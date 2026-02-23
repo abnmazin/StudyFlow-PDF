@@ -9,34 +9,32 @@ import '../../providers/app_state.dart';
 class StudyFlowToolbar extends StatefulWidget {
   final ToolType activeTool;
   final bool isRightPanelOpen;
+  final bool isShapesPaletteVisible;
   final bool isDarkMode;
   final bool isSearchVisible;
   final PdfItem? activePdf;
   final PdfViewerController pdfController;
   final ValueChanged<ToolType> onToolChanged;
+  final VoidCallback onToggleShapesPalette;
   final VoidCallback onToggleRightPanel;
-  final VoidCallback onToggleDarkMode;
+  final VoidCallback onToggleSettings;
   final VoidCallback onToggleSearch;
-  final Function(PdfItem) onPrint;
-  final Function(PdfItem) onAddPage;
-  final Function(PdfItem) onDeletePage;
   final Function(PdfItem) onAddBookmark;
 
   const StudyFlowToolbar({
     super.key,
     required this.activeTool,
     required this.isRightPanelOpen,
+    required this.isShapesPaletteVisible,
     required this.isDarkMode,
     required this.isSearchVisible,
     required this.activePdf,
     required this.pdfController,
     required this.onToolChanged,
+    required this.onToggleShapesPalette,
     required this.onToggleRightPanel,
-    required this.onToggleDarkMode,
+    required this.onToggleSettings,
     required this.onToggleSearch,
-    required this.onPrint,
-    required this.onAddPage,
-    required this.onDeletePage,
     required this.onAddBookmark,
   });
 
@@ -80,11 +78,7 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
         color: barBg,
-        border: Border(
-          bottom: BorderSide(
-            color: barBorder,
-          ),
-        ),
+        border: Border(bottom: BorderSide(color: barBorder)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -93,18 +87,12 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
             children: [
               if (isMobile)
                 IconButton(
-                  icon: Icon(
-                    LucideIcons.menu,
-                    color: iconMuted,
-                  ),
+                  icon: Icon(LucideIcons.menu, color: iconMuted),
                   onPressed: () => app.toggleMobile(),
                 )
               else if (app.isSidebarCollapsed)
                 IconButton(
-                  icon: Icon(
-                    LucideIcons.panelLeftOpen,
-                    color: iconMuted,
-                  ),
+                  icon: Icon(LucideIcons.panelLeftOpen, color: iconMuted),
                   onPressed: () {
                     app.toggleSidebar();
                   },
@@ -133,15 +121,11 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                             isDense: true,
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide(
-                                color: inputBorder,
-                              ),
+                              borderSide: BorderSide(color: inputBorder),
                             ),
                             enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide(
-                                color: inputBorder,
-                              ),
+                              borderSide: BorderSide(color: inputBorder),
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8),
@@ -311,6 +295,18 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                           shortcut: 'Esc',
                         ),
                         _ToolBtn(
+                          icon: LucideIcons.shapes,
+                          label: 'Shapes',
+                          isActive:
+                              widget.isShapesPaletteVisible ||
+                              [
+                                ToolType.arrow,
+                                ToolType.rectangle,
+                                ToolType.circle,
+                              ].contains(widget.activeTool),
+                          onPressed: widget.onToggleShapesPalette,
+                        ),
+                        _ToolBtn(
                           icon: LucideIcons.highlighter,
                           label: 'Highlight',
                           isActive: widget.activeTool == ToolType.highlight,
@@ -343,72 +339,6 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                       ],
                     ),
                   ),
-                  if (pdf != null) const SizedBox(width: 12),
-                  // Printer & Dark Mode
-                  Container(
-                    decoration: BoxDecoration(
-                      color: chipBg,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    padding: const EdgeInsets.all(4),
-                    child: Row(
-                      children: [
-                        IconButton(
-                          icon: const Icon(LucideIcons.printer, size: 20),
-                          onPressed: pdf != null
-                              ? () => widget.onPrint(pdf)
-                              : null,
-                          tooltip: 'Print (Ctrl+P)',
-                          color: iconMuted,
-                        ),
-                        IconButton(
-                          icon: Icon(
-                            widget.isDarkMode
-                                ? LucideIcons.sun
-                                : LucideIcons.moon,
-                            size: 20,
-                          ),
-                          onPressed: widget.onToggleDarkMode,
-                          tooltip: 'Toggle Dark Mode',
-                          color: widget.isDarkMode
-                              ? const Color(0xFFEAB308)
-                              : iconMuted,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-
-                  // Edit Pages
-                  Container(
-                    decoration: BoxDecoration(
-                      color: chipBg,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    padding: const EdgeInsets.all(4),
-                    child: Row(
-                      children: [
-                        IconButton(
-                          icon: const Icon(LucideIcons.filePlus, size: 20),
-                          onPressed: pdf == null
-                              ? null
-                              : () => widget.onAddPage(pdf),
-                          tooltip: 'Add Page',
-                          color: iconMuted,
-                        ),
-                        IconButton(
-                          icon: const Icon(LucideIcons.fileMinus, size: 20),
-                          onPressed: pdf == null
-                              ? null
-                              : () => widget.onDeletePage(pdf),
-                          tooltip: 'Delete Current Page',
-                          color: const Color(0xFFDC2626),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-
                   // Close File
                   Container(
                     decoration: BoxDecoration(
@@ -420,6 +350,22 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                       icon: const Icon(LucideIcons.x, size: 20),
                       onPressed: () => app.closeActivePdf(),
                       tooltip: 'Close File',
+                      color: iconMuted,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+
+                  // Settings Toggle
+                  Container(
+                    decoration: BoxDecoration(
+                      color: chipBg,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    padding: const EdgeInsets.all(4),
+                    child: IconButton(
+                      icon: const Icon(LucideIcons.settings, size: 20),
+                      onPressed: widget.onToggleSettings,
+                      tooltip: 'Document Settings',
                       color: iconMuted,
                     ),
                   ),
@@ -498,22 +444,14 @@ class _ToolBtn extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(
-              icon,
-              size: 16,
-              color: isActive
-                  ? activeColor
-                  : iconMuted,
-            ),
+            Icon(icon, size: 16, color: isActive ? activeColor : iconMuted),
             const SizedBox(width: 8),
             Text(
               label,
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
-                color: isActive
-                    ? activeColor
-                    : iconMuted,
+                color: isActive ? activeColor : iconMuted,
               ),
             ),
             if (shortcut != null) ...[
@@ -528,10 +466,7 @@ class _ToolBtn extends StatelessWidget {
                 ),
                 child: Text(
                   shortcut!,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: iconMuted,
-                  ),
+                  style: TextStyle(fontSize: 10, color: iconMuted),
                 ),
               ),
             ],

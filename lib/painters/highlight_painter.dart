@@ -20,7 +20,7 @@ class HighlightPainter extends CustomPainter {
     canvas.scale(scale, scale);
 
     for (var h in highlights) {
-      if (h.path.isEmpty) continue;
+      if (h.path.isEmpty && (h.rects == null || h.rects!.isEmpty)) continue;
 
       // Base paint configuration - will be customized per shape type
       final paint = Paint()
@@ -32,7 +32,7 @@ class HighlightPainter extends CustomPainter {
       if (h.type == HighlightType.pen) {
         // For freehand drawing, use round joins for smooth curves
         paint.strokeJoin = StrokeJoin.round;
-        
+
         if (h.path.length < 2) {
           canvas.drawPoints(ui.PointMode.points, h.path, paint);
         } else {
@@ -43,7 +43,8 @@ class HighlightPainter extends CustomPainter {
           }
           canvas.drawPath(path, paint);
         }
-      } else if (h.type == HighlightType.highlight) {
+      } else if (h.type == HighlightType.highlight ||
+          h.type == HighlightType.text) {
         final highlightPaint = Paint()
           ..style = PaintingStyle.fill
           ..color = h.color.withOpacity(0.3);
@@ -67,7 +68,7 @@ class HighlightPainter extends CustomPainter {
         // For geometric shapes, use miter joins for sharp, clean corners
         paint.strokeJoin = StrokeJoin.miter;
         paint.strokeMiterLimit = 10.0; // Prevent extremely long miters
-        
+
         final p1 = h.path.first;
         final p2 = h.path.last;
 
@@ -115,14 +116,14 @@ class HighlightPainter extends CustomPainter {
     // Calculate arrowhead triangle vertices from the base
     // Use perpendicular angles to get left and right wing points
     final perpAngle = angle + math.pi / 2;
-    
+
     // Right wing point (perpendicular offset from base)
     final rightWing = Offset(
       arrowBase.dx + arrowWidth * math.cos(perpAngle),
       arrowBase.dy + arrowWidth * math.sin(perpAngle),
     );
-    
-    // Left wing point (perpendicular offset from base, opposite direction)  
+
+    // Left wing point (perpendicular offset from base, opposite direction)
     final leftWing = Offset(
       arrowBase.dx - arrowWidth * math.cos(perpAngle),
       arrowBase.dy - arrowWidth * math.sin(perpAngle),
@@ -130,9 +131,9 @@ class HighlightPainter extends CustomPainter {
 
     // Create closed triangular path for arrowhead
     final arrowPath = Path()
-      ..moveTo(p2.dx, p2.dy)           // Tip of arrow
-      ..lineTo(rightWing.dx, rightWing.dy)  // Right wing
-      ..lineTo(leftWing.dx, leftWing.dy)    // Left wing
+      ..moveTo(p2.dx, p2.dy) // Tip of arrow
+      ..lineTo(rightWing.dx, rightWing.dy) // Right wing
+      ..lineTo(leftWing.dx, leftWing.dy) // Left wing
       ..close(); // CRITICAL: Close the path for perfect triangle
 
     // Fill arrowhead with solid color and miter joins for sharp edges
@@ -140,25 +141,31 @@ class HighlightPainter extends CustomPainter {
       ..color = paint.color
       ..style = PaintingStyle.fill
       ..strokeJoin = StrokeJoin.miter;
-    
+
     canvas.drawPath(arrowPath, headPaint);
   }
 
-  void _drawModernRectangle(Canvas canvas, Offset p1, Offset p2, Paint paint, Highlight h) {
+  void _drawModernRectangle(
+    Canvas canvas,
+    Offset p1,
+    Offset p2,
+    Paint paint,
+    Highlight h,
+  ) {
     final rect = Rect.fromPoints(p1, p2);
     final radius = math.max(4.0, paint.strokeWidth);
     final rrect = RRect.fromRectAndRadius(rect, Radius.circular(radius));
 
     // 1. Draw Fill (Background)
     // Use specific background color if set, otherwise use default semi-transparent
-    final fillColor = h.backgroundColor != null 
-        ? Color(h.backgroundColor!) 
+    final fillColor = h.backgroundColor != null
+        ? Color(h.backgroundColor!)
         : h.color.withValues(alpha: 0.1);
-    
+
     final fillPaint = Paint()
       ..color = fillColor
       ..style = PaintingStyle.fill;
-    
+
     canvas.drawRRect(rrect, fillPaint);
 
     // 2. Draw Border (Stroke) - uses the main color with miter joins
@@ -173,21 +180,27 @@ class HighlightPainter extends CustomPainter {
     canvas.drawRRect(rrect, strokePaint);
   }
 
-  void _drawPerfectEllipse(Canvas canvas, Offset p1, Offset p2, Paint paint, Highlight h) {
+  void _drawPerfectEllipse(
+    Canvas canvas,
+    Offset p1,
+    Offset p2,
+    Paint paint,
+    Highlight h,
+  ) {
     final rect = Rect.fromPoints(p1, p2);
-    
+
     // 1. Draw Fill (Background)
     // Use specific background color if set, otherwise use default semi-transparent
-    final fillColor = h.backgroundColor != null 
-        ? Color(h.backgroundColor!) 
+    final fillColor = h.backgroundColor != null
+        ? Color(h.backgroundColor!)
         : h.color.withValues(alpha: 0.1);
-    
+
     final fillPaint = Paint()
       ..color = fillColor
       ..style = PaintingStyle.fill;
 
     canvas.drawOval(rect, fillPaint);
-    
+
     // 2. Draw Border (Stroke) - uses the main color
     canvas.drawOval(rect, paint);
   }
