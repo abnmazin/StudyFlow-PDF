@@ -87,16 +87,30 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
             children: [
               if (isMobile)
                 IconButton(
-                  icon: Icon(LucideIcons.menu, color: iconMuted),
+                  icon: Icon(LucideIcons.menu, size: 20, color: iconMuted),
                   onPressed: () => app.toggleMobile(),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 36,
+                    minHeight: 36,
+                  ),
                 )
               else if (app.isSidebarCollapsed)
                 IconButton(
-                  icon: Icon(LucideIcons.panelLeftOpen, color: iconMuted),
+                  icon: Icon(
+                    LucideIcons.panelLeftOpen,
+                    size: 20,
+                    color: iconMuted,
+                  ),
                   onPressed: () {
                     app.toggleSidebar();
                   },
                   tooltip: 'Toggle Sidebar (Ctrl+L)',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 36,
+                    minHeight: 36,
+                  ),
                 ),
               if (isMobile || app.isSidebarCollapsed) const SizedBox(width: 8),
 
@@ -163,9 +177,7 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                             vertical: 6,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(
-                              0xFF1E293B,
-                            ), // Fixed Dark: Slate 800
+                            color: chipBg,
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
@@ -195,27 +207,27 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                     IconButton(
                       icon: Icon(
                         LucideIcons.zoomOut,
-                        size: 18,
+                        size: 20,
                         color: iconMuted,
                       ),
                       onPressed: () => widget.pdfController.zoomDown(),
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(
-                        minWidth: 32,
-                        minHeight: 32,
+                        minWidth: 36,
+                        minHeight: 36,
                       ),
                     ),
                     IconButton(
                       icon: Icon(
                         LucideIcons.zoomIn,
-                        size: 18,
+                        size: 20,
                         color: iconMuted,
                       ),
                       onPressed: () => widget.pdfController.zoomUp(),
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(
-                        minWidth: 32,
-                        minHeight: 32,
+                        minWidth: 36,
+                        minHeight: 36,
                       ),
                     ),
                   ],
@@ -244,6 +256,11 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                       color: widget.isSearchVisible
                           ? const Color(0xFF3B82F6)
                           : iconMuted,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 36,
+                        minHeight: 36,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -263,6 +280,11 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                       },
                       tooltip: 'Add Bookmark',
                       color: iconMuted,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 36,
+                        minHeight: 36,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -351,6 +373,11 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                       onPressed: () => app.closeActivePdf(),
                       tooltip: 'Close File',
                       color: iconMuted,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 36,
+                        minHeight: 36,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -367,6 +394,11 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                       onPressed: widget.onToggleSettings,
                       tooltip: 'Document Settings',
                       color: iconMuted,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 36,
+                        minHeight: 36,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -390,6 +422,11 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                       color: widget.isRightPanelOpen
                           ? const Color(0xFF3B82F6)
                           : iconMuted,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 36,
+                        minHeight: 36,
+                      ),
                     ),
                   ),
                 ],
@@ -444,7 +481,7 @@ class _ToolBtn extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(icon, size: 16, color: isActive ? activeColor : iconMuted),
+            Icon(icon, size: 20, color: isActive ? activeColor : iconMuted),
             const SizedBox(width: 8),
             Text(
               label,

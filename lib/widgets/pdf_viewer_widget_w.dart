@@ -444,7 +444,15 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                             bottom: 50,
                             child: TapRegion(
                               onTapOutside: (_) {
-                                if (mounted) {
+                                // Only auto-dismiss when in cursor mode.
+                                // When a shape tool is active the user is
+                                // likely drawing, so keep the palette visible.
+                                if (mounted &&
+                                    _tool != ToolType.arrow &&
+                                    _tool != ToolType.rectangle &&
+                                    _tool != ToolType.circle &&
+                                    _tool != ToolType.pen &&
+                                    _tool != ToolType.highlight) {
                                   setState(() {
                                     _isShapesPaletteVisible = false;
                                   });
