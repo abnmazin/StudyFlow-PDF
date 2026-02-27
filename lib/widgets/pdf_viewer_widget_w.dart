@@ -1,4 +1,4 @@
-import 'package:pdfrx/pdfrx.dart' hide PdfDocument;
+﻿import 'package:pdfrx/pdfrx.dart' hide PdfDocument;
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 
@@ -23,6 +23,13 @@ import '../services/file_manager_service.dart'; // NEW: for getRecentDocuments
 import 'dialogs/merge_pdf_dialog.dart'; // NEW
 import 'dialogs/images_to_pdf_dialog.dart'; // NEW
 
+part 'pdf_viewer_widget_dashboard.dart';
+part 'pdf_viewer_widget_actions.dart';
+part 'pdf_viewer_widget_print.dart';
+part 'pdf_viewer_widget_gestures.dart';
+part 'pdf_viewer_widget_style.dart';
+part 'pdf_viewer_widget_overlay.dart';
+
 class PDFViewerWidget extends StatefulWidget {
   const PDFViewerWidget({super.key});
 
@@ -43,7 +50,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   bool _isSettingsMode = false;
   int _rightPanelTabIndex = 0; // 0: Tools, 1: AI, 2: Translate
 
-  // ─── Smart Dynamic Threshold Constants ────────────────────────────────────
+  // â”€â”€â”€ Smart Dynamic Threshold Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   static const double _kSpeedThreshold = 0.1; // pages per millisecond
   static const int _kSlowThreshold = 25; // trim every 25 pages when slow
   static const int _kFastThreshold = 15; // trim every 15 pages when fast
@@ -51,7 +58,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   ToolType _tool =
       ToolType.cursor; // 'cursor', 'highlight', 'eraser', 'pen', 'comment'
 
-  // ── Per-tool colors: changing one never affects another ──────────────────
+  // â”€â”€ Per-tool colors: changing one never affects another â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Color _penColor = const Color(0xFF000000);
   Color _highlightColor = const Color(0xFFFFFF00);
   Color _shapeStrokeColor = const Color(0xFF000000); // arrow/rect/circle
@@ -71,7 +78,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     }
   }
 
-  // ── Per-tool stroke widths: changing one never affects another ────────
+  // â”€â”€ Per-tool stroke widths: changing one never affects another â”€â”€â”€â”€â”€â”€â”€â”€
   final Map<ToolType, double> _toolStrokeWidths = {
     ToolType.pen: 2.0,
     ToolType.highlight: 15.0,
@@ -136,7 +143,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     super.dispose();
   }
 
-  // ─── UNDO HANDLER: Global Ctrl+Z / Cmd+Z ──────────────────────────────────
+  // â”€â”€â”€ UNDO HANDLER: Global Ctrl+Z / Cmd+Z â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   /// Handles undo action with smart detection of text field focus.
   /// If a text field is currently focused (like DraggableTextWidget),
   /// we don't override the native text undo. Otherwise, we undo the last
@@ -145,27 +152,27 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     // Check if actively editing a comment (in text field)
     // If so, let the text field handle undo natively
     if (editingCommentId != null) {
-      debugPrint('⌨️  Undo: Text editor active, skipping global undo');
+      debugPrint('âŒ¨ï¸  Undo: Text editor active, skipping global undo');
       return;
     }
 
     // Check if search box is visible and might have focus
     if (_isSearchVisible) {
-      debugPrint('⌨️  Undo: Search box active, proceeding with global undo');
+      debugPrint('âŒ¨ï¸  Undo: Search box active, proceeding with global undo');
     }
 
     // Execute global undo
-    debugPrint('🔙 Undo: Reverting last annotation...');
+    debugPrint('ðŸ”™ Undo: Reverting last annotation...');
     app.undoLastAction();
   }
 
   void _handleRedo(AppProvider app, String? editingCommentId) {
     if (editingCommentId != null) {
-      debugPrint('⌨️  Redo: Text editor active, skipping global redo');
+      debugPrint('âŒ¨ï¸  Redo: Text editor active, skipping global redo');
       return;
     }
 
-    debugPrint('↪️ Redo: Reapplying last annotation...');
+    debugPrint('â†ªï¸ Redo: Reapplying last annotation...');
     app.redoLastAction();
   }
 
@@ -260,47 +267,47 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                 setState(() => _isRightPanelOpen = !_isRightPanelOpen);
                 _forcePdfRelayout();
               },
-              // Ctrl+S → Bookmark current page
+              // Ctrl+S â†’ Bookmark current page
               const SingleActivator(
                 LogicalKeyboardKey.keyS,
                 control: true,
               ): () =>
                   _showAddBookmarkDialog(pdf),
-              // Ctrl+= → Zoom in
+              // Ctrl+= â†’ Zoom in
               const SingleActivator(
                 LogicalKeyboardKey.equal,
                 control: true,
               ): () =>
                   _pdfController.zoomUp(),
-              // Ctrl+- → Zoom out
+              // Ctrl+- â†’ Zoom out
               const SingleActivator(
                 LogicalKeyboardKey.minus,
                 control: true,
               ): () =>
                   _pdfController.zoomDown(),
-              // Ctrl+Z → Undo (Windows/Linux)
+              // Ctrl+Z â†’ Undo (Windows/Linux)
               const SingleActivator(
                 LogicalKeyboardKey.keyZ,
                 control: true,
               ): () =>
                   _handleUndo(app, _editingCommentId),
-              // Cmd+Z → Undo (macOS)
+              // Cmd+Z â†’ Undo (macOS)
               const SingleActivator(LogicalKeyboardKey.keyZ, meta: true): () =>
                   _handleUndo(app, _editingCommentId),
-              // Ctrl+Y → Redo (Windows/Linux)
+              // Ctrl+Y â†’ Redo (Windows/Linux)
               const SingleActivator(
                 LogicalKeyboardKey.keyY,
                 control: true,
               ): () =>
                   _handleRedo(app, _editingCommentId),
-              // Ctrl+Shift+Z → Redo (Windows/Linux)
+              // Ctrl+Shift+Z â†’ Redo (Windows/Linux)
               const SingleActivator(
                 LogicalKeyboardKey.keyZ,
                 control: true,
                 shift: true,
               ): () =>
                   _handleRedo(app, _editingCommentId),
-              // Cmd+Shift+Z → Redo (macOS)
+              // Cmd+Shift+Z â†’ Redo (macOS)
               const SingleActivator(
                 LogicalKeyboardKey.keyZ,
                 meta: true,
@@ -355,7 +362,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                   }
                 });
               },
-              onAddBookmark: _showAddBookmarkDialog,
+              onAddBookmark: (pdf) => _showAddBookmarkDialog(pdf),
             ),
 
             // 2. Main Content Area (Viewer + Right Panel)
@@ -743,9 +750,9 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                       },
                       onTabChanged: (i) =>
                           setState(() => _rightPanelTabIndex = i),
-                      onAddPage: _addPage,
-                      onDeletePage: _deleteCurrentPage,
-                      onPrint: _showPrintDialog,
+                      onAddPage: (pdf) => _addPage(pdf),
+                      onDeletePage: (pdf) => _deleteCurrentPage(pdf),
+                      onPrint: (pdf) => _showPrintDialog(pdf),
                       onToggleDarkMode: () => app.toggleDarkMode(),
                     ),
                 ],
@@ -826,7 +833,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                 _trimWindowsMemory();
                 _pagesSinceLastFlush = 0;
                 debugPrint(
-                  '🧠 Smart trim | speed: ${scrollSpeed.toStringAsFixed(4)} pages/ms'
+                  'ðŸ§  Smart trim | speed: ${scrollSpeed.toStringAsFixed(4)} pages/ms'
                   ' | threshold: $dynamicThreshold',
                 );
               }
@@ -865,1422 +872,8 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   }
 
   Widget _buildNoFilePlaceholder() {
-    return _buildDashboard();
+    return _buildDashboard(context);
   }
 
-  // ─── DASHBOARD ─────────────────────────────────────────────────────────────
 
-  Widget _buildDashboard() {
-    final app = context.watch<AppProvider>();
-    final isDarkMode = context.select<AppProvider, bool>(
-      (app) => app.isDarkMode,
-    );
-
-    // Use FutureBuilder for async recent docs
-    return Container(
-      color: isDarkMode ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
-      child: FutureBuilder<List<PdfDocument>>(
-        future: context.read<FileManagerService>().getRecentDocuments(limit: 6),
-        builder: (context, snapshot) {
-          final recentDocs = snapshot.data ?? [];
-
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildWelcomeHeader(app),
-                const SizedBox(height: 32),
-                _buildQuickActionsGrid(context, isDarkMode),
-                const SizedBox(height: 48),
-                _buildRecentDocumentsSection(recentDocs, isDarkMode),
-                const SizedBox(height: 48),
-                _buildStatisticsSection(app),
-                const SizedBox(height: 48),
-                _buildTipsSection(isDarkMode),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildWelcomeHeader(AppProvider app) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Welcome to StudyFlow',
-              style: TextStyle(
-                fontSize: 32,
-                fontWeight: FontWeight.bold,
-                color: app.isDarkMode ? Colors.white : const Color(0xFF0F172A),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Start your smart learning journey with advanced PDF tools',
-              style: TextStyle(
-                fontSize: 16,
-                color: app.isDarkMode ? Colors.grey[400] : Colors.grey[600],
-              ),
-            ),
-          ],
-        ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          decoration: BoxDecoration(
-            color: app.isDarkMode ? const Color(0xFF1E293B) : Colors.white,
-            borderRadius: BorderRadius.circular(30),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              const Icon(
-                LucideIcons.bookOpen,
-                size: 20,
-                color: Color(0xFF3B82F6),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '${app.totalPdfs} Books • ${app.totalHighlights} Highlights',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: app.isDarkMode
-                      ? Colors.white
-                      : const Color(0xFF334155),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildQuickActionsGrid(BuildContext context, bool isDarkMode) {
-    final actions = [
-      {
-        'icon': LucideIcons.upload,
-        'label': 'Upload PDF',
-        'color': 0xFF3B82F6,
-        'action': () {
-          // Upload to current active class or default
-          final app = context.read<AppProvider>();
-          final targetClassId =
-              app.activeClassId ??
-              (app.classes.isNotEmpty ? app.classes.first.id : '');
-          if (targetClassId.isNotEmpty) {
-            app.uploadPdf(targetClassId);
-          }
-        },
-      },
-      {
-        'icon': LucideIcons.combine,
-        'label': 'Merge PDFs',
-        'color': 0xFF8B5CF6, // Purple
-        'action': () => showDialog(
-          context: context,
-          builder: (context) => const MergePdfDialog(),
-        ),
-      },
-      {
-        'icon': LucideIcons.image,
-        'label': 'Images to PDF',
-        'color': 0xFF10B981, // Green
-        'action': () => showDialog(
-          context: context,
-          builder: (context) => const ImagesToPdfDialog(),
-        ),
-      },
-      {
-        'icon': LucideIcons.folderPlus,
-        'label': 'New Folder',
-        'color': 0xFFF59E0B, // Amber (shifted color)
-        'action': () => _showCreateFolderDialog(context),
-      },
-      {
-        'icon': LucideIcons.scanLine,
-        'label': 'Scan',
-        'color': 0xFFEC4899, // Pink
-        'action': () => _showTopSnack('Scanning coming soon!'),
-      },
-    ];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Quick Actions',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: isDarkMode ? Colors.white : const Color(0xFF1E293B),
-          ),
-        ),
-        const SizedBox(height: 16),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 4,
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
-            childAspectRatio: 1.5,
-          ),
-          itemCount: actions.length,
-          itemBuilder: (context, index) {
-            final action = actions[index];
-            final colorVal = action['color'] as int;
-            final icon = action['icon'] as IconData;
-            final label = action['label'] as String;
-            final cb = action['action'] as VoidCallback;
-
-            return InkWell(
-              onTap: cb,
-              borderRadius: BorderRadius.circular(16),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: isDarkMode ? const Color(0xFF1E293B) : Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Color(colorVal).withValues(alpha: 0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(icon, color: Color(colorVal), size: 24),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      label,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: isDarkMode
-                            ? Colors.grey[300]
-                            : const Color(0xFF334155),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildRecentDocumentsSection(
-    List<PdfDocument> recentDocs,
-    bool isDarkMode,
-  ) {
-    if (recentDocs.isEmpty) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(32),
-        decoration: BoxDecoration(
-          color: isDarkMode ? const Color(0xFF1E293B) : Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isDarkMode
-                ? const Color(0xFF334155)
-                : const Color(0xFFE2E8F0),
-          ),
-        ),
-        child: Column(
-          children: [
-            Icon(
-              LucideIcons.fileText,
-              size: 48,
-              color: isDarkMode ? Colors.grey[600] : Colors.grey[300],
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'No recently opened books',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-                color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Start by uploading a new book to study',
-              style: TextStyle(
-                fontSize: 14,
-                color: isDarkMode ? Colors.grey[500] : Colors.grey[500],
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Recent Books',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: isDarkMode ? Colors.white : const Color(0xFF1E293B),
-          ),
-        ),
-        const SizedBox(height: 16),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
-            childAspectRatio: 2.5, // Wider cards
-          ),
-          itemCount: recentDocs.length,
-          itemBuilder: (context, index) {
-            final doc = recentDocs[index];
-            return _buildDocumentCard(doc, isDarkMode);
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDocumentCard(PdfDocument doc, bool isDarkMode) {
-    return InkWell(
-      onTap: () {
-        // Open PDF via AppProvider
-        context.read<AppProvider>().setActivePdf(doc.uuid);
-        // Also set active class if tracked
-        if (doc.classId != null) {
-          context.read<AppProvider>().setActiveClass(doc.classId!);
-        }
-      },
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        decoration: BoxDecoration(
-          color: isDarkMode ? const Color(0xFF1E293B) : Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isDarkMode
-                ? const Color(0xFF334155)
-                : const Color(0xFFE2E8F0),
-          ),
-        ),
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: isDarkMode
-                    ? const Color(0xFF334155)
-                    : const Color(0xFFF1F5F9),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Center(
-                child: doc.thumbnailPath != null
-                    ? Image.file(File(doc.thumbnailPath!), fit: BoxFit.cover)
-                    : Icon(
-                        LucideIcons.fileText,
-                        size: 24,
-                        color: Colors.grey[400],
-                      ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    doc.originalPath
-                        .split(Platform.pathSeparator)
-                        .last, // Name fallback
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: isDarkMode
-                          ? Colors.white
-                          : const Color(0xFF1E293B),
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Icon(
-                        LucideIcons.bookmark,
-                        size: 12,
-                        color: Colors.grey[500],
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Page ${doc.lastPage}',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                      ),
-                      const SizedBox(width: 8),
-                      Icon(
-                        LucideIcons.highlighter,
-                        size: 12,
-                        color: Colors.grey[500],
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${doc.annotationCount}',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatisticsSection(AppProvider app) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
-        ),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _buildStatItem(
-            LucideIcons.bookOpen,
-            app.totalPdfs.toString(),
-            'Total Books',
-          ),
-          _buildStatItem(
-            LucideIcons.highlighter,
-            app.totalHighlights.toString(),
-            'Highlights',
-          ),
-          _buildStatItem(
-            LucideIcons.messageSquare,
-            app.totalComments.toString(),
-            'Comments',
-          ),
-          _buildStatItem(
-            LucideIcons.clock,
-            'N/A',
-            'Reading Time',
-          ), // Placeholder
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatItem(IconData icon, String value, String label) {
-    return Column(
-      children: [
-        Icon(icon, color: Colors.white.withValues(alpha: 0.8), size: 24),
-        const SizedBox(height: 8),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.white.withValues(alpha: 0.6),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTipsSection(bool isDarkMode) {
-    final tips = [
-      'Use Ctrl+F for Search',
-      'Try LaTeX mode for Math',
-      'Double tap text to highlight',
-      'Right click to annotate',
-    ];
-
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFEFF6FF),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isDarkMode ? const Color(0xFF334155) : const Color(0xFFBFDBFE),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                LucideIcons.lightbulb,
-                color: isDarkMode
-                    ? Colors.yellow[700]
-                    : const Color(0xFF3B82F6),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Quick Tips',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: isDarkMode ? Colors.white : const Color(0xFF1E4ED8),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 16,
-            runSpacing: 12,
-            children: tips.map((tip) {
-              return Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: isDarkMode ? const Color(0xFF0F172A) : Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  tip,
-                  style: TextStyle(
-                    color: isDarkMode
-                        ? Colors.grey[300]
-                        : const Color(0xFF1E293B),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showCreateFolderDialog(BuildContext context) {
-    final controller = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('New Folder'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(hintText: 'Folder Name'),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              if (controller.text.isNotEmpty) {
-                context.read<FileManagerService>().createFolder(
-                  name: controller.text,
-                );
-                Navigator.pop(ctx);
-              }
-            },
-            child: const Text('Create'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showTopSnack(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        behavior: SnackBarBehavior.floating,
-        margin: EdgeInsets.only(
-          bottom: MediaQuery.of(context).size.height - 100,
-          left: 20,
-          right: 20,
-        ),
-      ),
-    );
-  }
-
-  void _addPage(PdfItem pdf) {
-    if (_isProcessing) return;
-    setState(() => _isProcessing = true);
-
-    // Add after current page
-    int targetPage = 1;
-    if (_pdfController.isReady && _pdfController.pageNumber != null) {
-      targetPage = _pdfController.pageNumber!;
-    } else {
-      targetPage = pdf.lastPage ?? 1;
-    }
-    context.read<AppProvider>().addPage(pdf.id, insertAtIndex: targetPage);
-  }
-
-  void _deleteCurrentPage(PdfItem pdf) {
-    if (_isProcessing) return;
-
-    // Secure controller access with strict checks
-    int pageToDelete = 1;
-    if (_pdfController.isReady && _pdfController.pageNumber != null) {
-      pageToDelete = _pdfController.pageNumber!;
-    } else {
-      pageToDelete = pdf.lastPage ?? 1;
-    }
-
-    // Show confirmation
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Page?'),
-        content: Text(
-          'Are you sure you want to delete page $pageToDelete? This cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              setState(() => _isProcessing = true);
-              // Page numbers in controller are 1-based, our API expects 0-based index
-              context.read<AppProvider>().deletePage(pdf.id, pageToDelete - 1);
-            },
-            child: const Text('Delete', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _handlePanStart(Offset position, PdfPage page, double scale) {
-    if (_tool == ToolType.cursor || _tool == ToolType.text) {
-      return; // Text handled by onTapUp
-    }
-    if (_tool == ToolType.eraser) {
-      _eraseAt(position / scale, page.pageNumber);
-      return;
-    }
-
-    // VECTOR SHAPES: Initialize with start point
-    setState(() {
-      _currentPath = [position / scale];
-      _currentPage = page.pageNumber;
-    });
-  }
-
-  void _handlePanUpdate(Offset position, PdfPage page, double scale) {
-    if (_tool == ToolType.cursor || _tool == ToolType.text) return;
-    if (_tool == ToolType.eraser) {
-      _eraseAt(position / scale, page.pageNumber);
-    } else {
-      if (_currentPath != null) {
-        setState(() {
-          // VECTOR SHAPES: Use 2-point paths (start + current end)
-          if (_tool == ToolType.arrow ||
-              _tool == ToolType.rectangle ||
-              _tool == ToolType.circle) {
-            // Replace the end point for shapes
-            if (_currentPath!.length == 1) {
-              _currentPath!.add(position / scale);
-            } else {
-              _currentPath![1] = position / scale;
-            }
-          } else {
-            // Freehand drawing: add all points
-            _currentPath!.add(position / scale);
-          }
-        });
-      }
-    }
-  }
-
-  void _handlePanEnd(PdfItem pdf) {
-    if ((_tool == ToolType.highlight ||
-            _tool == ToolType.pen ||
-            _tool == ToolType.arrow ||
-            _tool == ToolType.rectangle ||
-            _tool == ToolType.circle) &&
-        _currentPath != null) {
-      // Determine highlight type
-      HighlightType type;
-      if (_tool == ToolType.pen) {
-        type = HighlightType.pen;
-      } else if (_tool == ToolType.arrow) {
-        type = HighlightType.arrow;
-      } else if (_tool == ToolType.rectangle) {
-        type = HighlightType.rectangle;
-      } else if (_tool == ToolType.circle) {
-        type = HighlightType.circle;
-      } else {
-        type = HighlightType.highlight;
-      }
-
-      // Determine background color based on shape type
-      // Arrows: no background color (null)
-      // Rectangles & Circles: use current background color
-      int? bgColorValue;
-      if (type == HighlightType.rectangle || type == HighlightType.circle) {
-        bgColorValue = _shapeFillColor.value;
-      }
-      // For arrows, pen, and highlight: bgColorValue remains null
-
-      final highlight = Highlight(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        path: List.from(_currentPath!),
-        color: _currentColor,
-        page: _currentPage,
-        strokeWidth: _currentStrokeWidth,
-        type: type,
-        backgroundColor: bgColorValue, // Set background color for shapes
-      );
-
-      context.read<AppProvider>().addHighlight(pdf.id, highlight);
-
-      setState(() {
-        _currentPath = null;
-        _currentPage = -1;
-      });
-    }
-  }
-
-  void _eraseAt(Offset pt, int pageNumber) {
-    final app = context.read<AppProvider>();
-    final pdf = app.activePdf;
-    if (pdf == null) return;
-    const double hitRadius = 20.0;
-    List<Highlight> toRemove = [];
-
-    for (var h in pdf.highlights) {
-      if (h.page != pageNumber) continue;
-      bool hit = false;
-
-      // إذا كان تظليلاً ذكياً للنصوص
-      if (h.type == HighlightType.text && h.rects != null) {
-        for (var r in h.rects!) {
-          // توسيع منطقة اللمس قليلاً لتسهيل المسح
-          if (r.inflate(hitRadius).contains(pt)) {
-            hit = true;
-            break;
-          }
-        }
-      }
-      // إذا كان تظليلاً حراً أو قلماً
-      else {
-        for (var p in h.path) {
-          if ((p - pt).distance < hitRadius) {
-            hit = true;
-            break;
-          }
-        }
-      }
-
-      if (hit) toRemove.add(h);
-    }
-
-    bool removedSomething = false;
-    for (var h in toRemove) {
-      app.removeHighlight(pdf.id, h);
-      removedSomething = true;
-    }
-
-    // UI FIX: Force the screen to repaint immediately after erasing
-    if (removedSomething && mounted) {
-      setState(() {});
-    }
-  }
-
-  void _addTextAt(Offset pt, int pageNumber) {
-    if (_isProcessing) return;
-
-    final id = DateTime.now().millisecondsSinceEpoch.toString();
-    final comment = PdfComment(
-      id: id,
-      page: pageNumber,
-      position: pt, // Assumed unscaled ID passed from caller
-      content: '',
-      date: DateTime.now(),
-      color: _textColor,
-      fontSize: _fontSize,
-      isBold: _isBold,
-      isLatex: _isLatex, // NEW: carry current LaTeX mode
-      showBorder: _showBorder,
-      borderColor: _borderColor,
-      bgColor: _textBgColor,
-    );
-
-    final app = context.read<AppProvider>();
-    if (app.activePdf == null) return;
-
-    app.addComment(app.activePdf!.id, comment);
-
-    // CRITICAL: Initialize editing styles for the new comment
-    app.startEditing(comment.id, comment);
-
-    setState(() => _editingCommentId = comment.id);
-  }
-
-  void _updateCurrentEditingText() {
-    if (_editingCommentId == null) return;
-    final app = context.read<AppProvider>();
-    final pdf = app.activePdf;
-    if (pdf == null) return;
-
-    try {
-      final comment = pdf.comments.firstWhere((c) => c.id == _editingCommentId);
-      final updatedComment = comment.copyWith(
-        color: _textColor,
-        fontSize: _fontSize,
-        isBold: _isBold,
-        isLatex: _isLatex,
-        showBorder: _showBorder,
-        borderColor: _borderColor,
-        bgColor: _textBgColor,
-      );
-      app.updateComment(pdf.id, comment, updatedComment);
-    } catch (e) {
-      debugPrint('Error updating comment style: $e');
-    }
-  }
-
-  void _addTextHighlight(Color color) async {
-    final selection = _textSelection;
-    if (selection == null) return;
-
-    final app = context.read<AppProvider>();
-    final pdf = app.activePdf;
-    if (pdf == null) return;
-
-    try {
-      final ranges = await selection.getSelectedTextRanges();
-      final selectionsByPage = <int, List<Rect>>{};
-
-      for (final range in ranges) {
-        final pageNumber = range.pageNumber;
-        final page = _pdfController
-            .document
-            .pages[pageNumber - 1]; // Ensure document is loaded
-
-        if (!selectionsByPage.containsKey(pageNumber)) {
-          selectionsByPage[pageNumber] = [];
-        }
-
-        for (final fragment in range.enumerateFragmentBoundingRects()) {
-          final rect = fragment.bounds.toRect(page: page);
-          selectionsByPage[pageNumber]!.add(rect);
-        }
-      }
-
-      for (final entry in selectionsByPage.entries) {
-        final highlight = Highlight(
-          id: 'hl_${DateTime.now().microsecondsSinceEpoch}',
-          path: [], // Empty path for text highlights
-          color: color,
-          page: entry.key,
-          type: HighlightType.text,
-          rects: entry.value,
-        );
-        app.addHighlight(pdf.id, highlight);
-      }
-
-      if (selection is PdfTextSelectionDelegate) {
-        await selection.clearTextSelection();
-      }
-      if (mounted) setState(() => _textSelection = null);
-    } catch (e) {
-      debugPrint('Error adding text highlight: $e');
-    }
-  }
-
-  Widget _buildPageOverlay(
-    BuildContext context,
-    Rect pageRect,
-    PdfPage page,
-    PdfItem pdf,
-  ) {
-    final scale = pageRect.width / page.width;
-    final ignoring = _tool == ToolType.cursor;
-
-    Widget overlay = IgnorePointer(
-      ignoring: ignoring,
-      child: Stack(
-        children: [
-          // Highlights & Pen
-          CustomPaint(
-            size: Size(pageRect.width, pageRect.height),
-            painter: HighlightPainter(
-              highlights: pdf.highlights
-                  .where((h) => h.page == page.pageNumber)
-                  .toList(),
-              scale: scale,
-              isCurrent: false,
-              selectedHighlightId: _selectedHighlightId,
-            ),
-          ),
-
-          // Current Drawing
-          if (_currentPage == page.pageNumber && _currentPath != null)
-            CustomPaint(
-              size: Size(pageRect.width, pageRect.height),
-              painter: HighlightPainter(
-                highlights: [
-                  Highlight(
-                    id: 'temp_drawing_id',
-                    path: _currentPath!,
-                    color: _currentColor,
-                    page: page.pageNumber,
-                    strokeWidth: _currentStrokeWidth,
-                    type: _getActiveToolType(),
-                  ),
-                ],
-                scale: scale,
-                isCurrent: true,
-                selectedHighlightId: null,
-              ),
-            ),
-
-          if (!ignoring)
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTapUp: (details) {
-                  // 1. Guard Clause: Prevent spawning new text if we are currently editing one.
-                  // Clicking outside should only close the active text (handled by onTapOutside).
-                  final appProvider = context.read<AppProvider>();
-                  if (appProvider.activeEditingCommentId != null) {
-                    return;
-                  }
-
-                  // 2. Normal Tool Logic
-                  if (_tool == ToolType.cursor) {
-                    _handleSelectionTap(
-                      details.localPosition,
-                      page,
-                      pdf,
-                      scale,
-                    );
-                  } else if (_tool == ToolType.text) {
-                    // Only create new text if we are NOT currently editing another one
-                    _addTextAt(details.localPosition / scale, page.pageNumber);
-                  } else {
-                    // Clear selection if tapping with a drawing tool
-                    if (_selectedHighlightId != null) {
-                      setState(() => _selectedHighlightId = null);
-                    }
-                  }
-                },
-                onPanStart: (details) {
-                  if (_tool == ToolType.cursor &&
-                      _selectedHighlightId != null) {
-                    // Allow dragging the selected shape
-                    return;
-                  }
-                  if (_tool != ToolType.cursor && _tool != ToolType.text) {
-                    _handlePanStart(details.localPosition, page, scale);
-                  }
-                },
-                onPanUpdate: (details) {
-                  if (_tool == ToolType.cursor &&
-                      _selectedHighlightId != null) {
-                    // Execute the drag logic for the selected shape
-                    final app = context.read<AppProvider>();
-                    final shape = pdf.highlights
-                        .where((h) => h.id == _selectedHighlightId)
-                        .firstOrNull;
-                    if (shape != null) {
-                      final delta = details.delta / scale;
-                      final newPath = shape.path.map((p) => p + delta).toList();
-                      final updated = shape.copyWith(path: newPath);
-                      app.removeHighlight(pdf.id, shape);
-                      app.addHighlight(pdf.id, updated);
-                    }
-                    return;
-                  }
-                  if (_tool != ToolType.cursor && _tool != ToolType.text) {
-                    _handlePanUpdate(details.localPosition, page, scale);
-                  }
-                },
-                onPanEnd: (details) {
-                  if (_tool != ToolType.cursor && _tool != ToolType.text) {
-                    _handlePanEnd(pdf);
-                  }
-                },
-              ),
-            ),
-
-          // Text (Comments) - Must be on TOP to receive hits!
-          // Text (Comments) - Must be on TOP to receive hits!
-          ...pdf.comments.where((c) => c.page == page.pageNumber).map((c) {
-            return Positioned(
-              // ✅ FIXED: Use unscaled position - DraggableTextWidget handles scaling
-              left: c.position.dx, // REMOVED * scale
-              top: c.position.dy, // REMOVED * scale
-              child: DraggableTextWidget(
-                commentId: c.id,
-                content: c.content,
-                color: c.color,
-                fontSize: c.fontSize,
-                isBold: c.isBold,
-                isLatex: c.isLatex,
-                showBorder: c.showBorder,
-                borderColor: c.borderColor,
-                bgColor: c.bgColor,
-                scale:
-                    scale, // ✅ Keep scale for internal font sizing and visual offset
-                isEditing: c.id == _editingCommentId,
-                enableDrag:
-                    !(_tool == ToolType.eraser) && (c.id != _editingCommentId),
-                onEditComplete: (newText, event) {
-                  if (newText.trim().isEmpty) {
-                    context.read<AppProvider>().removeComment(pdf.id, c);
-                  } else {
-                    context.read<AppProvider>().endEditing(c.id, newText);
-                  }
-                  setState(() => _editingCommentId = null);
-                },
-                onTap: () {
-                  if (_tool == ToolType.text) {
-                    context.read<AppProvider>().startEditing(c.id, c);
-                    setState(() {
-                      _editingCommentId = c.id;
-                      final styles = context
-                          .read<AppProvider>()
-                          .getEditingStyles(c.id);
-                      if (styles != null) {
-                        _textColor = Color(styles['color']);
-                        _fontSize = styles['fontSize'];
-                        _isBold = styles['isBold'];
-                        _isLatex = styles['isLatex'];
-                        _showBorder = styles['showBorder'];
-                        _borderColor = Color(styles['borderColor']);
-                        _textBgColor = Color(styles['bgColor']);
-                      }
-                    });
-                  } else if (_tool == ToolType.eraser) {
-                    context.read<AppProvider>().removeComment(pdf.id, c);
-                  }
-                  if (mounted) setState(() {});
-                },
-                onDragEnd: (offset) {
-                  if (_tool == ToolType.text || _tool == ToolType.cursor) {
-                    // ✅ CORRECT: offset is in screen pixels, position is in page coordinates
-                    // DraggableTextWidget already applied the offset visually
-                    // Now we update the permanent position in the database
-                    final newPos = c.position + offset; // REMOVED / scale
-
-                    context.read<AppProvider>().updateComment(
-                      pdf.id,
-                      c,
-                      c.copyWith(position: newPos),
-                    );
-                  }
-                },
-              ),
-            );
-          }),
-        ],
-      ),
-    );
-
-    // PERFORMANCE SHIELD: Wrap entire overlay in RepaintBoundary to cache rendering
-    return RepaintBoundary(child: overlay);
-  }
-
-  // ─── Win32 Memory Trim ─────────────────────────────────────────────────────
-  // Calls EmptyWorkingSet via FFI to force Windows to release native heap pages
-  // back to the OS. Safe to call from the main thread — it does NOT freeze the UI.
-  void _trimWindowsMemory() {
-    if (!Platform.isWindows) return;
-    try {
-      final kernel32 = DynamicLibrary.open('kernel32.dll');
-      final getCurrentProcess = kernel32
-          .lookupFunction<IntPtr Function(), int Function()>(
-            'GetCurrentProcess',
-          );
-      final emptyWorkingSet = kernel32
-          .lookupFunction<Bool Function(IntPtr), bool Function(int)>(
-            'K32EmptyWorkingSet',
-          );
-      final handle = getCurrentProcess();
-      emptyWorkingSet(handle);
-    } catch (e) {
-      // Silently ignore — non-critical trim
-      debugPrint('Memory trim skipped: $e');
-    }
-  }
-
-  void _forcePdfRelayout() {
-    if (!_pdfController.isReady) return;
-    final currentPage = _pdfController.pageNumber ?? 1;
-    // VIEWPORT ADAPTER: Wait 300ms for sidebar animation to complete
-    Future.delayed(const Duration(milliseconds: 300), () {
-      if (mounted && _pdfController.isReady) {
-        _pdfController.goToPage(pageNumber: currentPage);
-      }
-    });
-  }
-
-  Widget _buildPrintLoadingScreen() {
-    return Center(
-      child: Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const CircularProgressIndicator(),
-            const SizedBox(height: 16),
-            Text(
-              'جاري تجهيز الصفحات للطباعة...',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey[800],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'سيتم استئناف العرض تلقائياً بعد الطباعة',
-              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _executeSafePrint(PdfItem pdf, PrintSettings settings) async {
-    // Save current state
-    final currentPage = _pdfController.pageNumber ?? 1;
-    // final currentZoom = _pdfController.zoomLevel ?? 1.0; // unavailable in this version
-
-    // Pause rendering to avoid Thread Collision
-    if (mounted) setState(() => _isPreparingPrint = true);
-    await Future.delayed(const Duration(milliseconds: 100));
-
-    try {
-      await PrintService.executePrint(
-        pdf.path,
-        settings,
-        currentPage: currentPage,
-        printJobName: pdf.name,
-      );
-    } catch (e) {
-      debugPrint("Print Error: $e");
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Print error: $e')));
-      }
-    } finally {
-      if (mounted) {
-        // Store state for resurrection
-        _targetPageAfterReload = currentPage;
-        // _targetZoomAfterReload = currentZoom;
-        _needsReload = true;
-
-        // Remove loading screen but DO NOT render old pointers yet
-        setState(() => _isPreparingPrint = false);
-
-        // Wait for UI to flush
-        await Future.delayed(const Duration(milliseconds: 50));
-
-        // Resurrect the viewer
-        if (mounted && _needsReload) {
-          _performHardReload(pdf);
-        }
-      }
-    }
-  }
-
-  void _performHardReload(PdfItem pdf) {
-    // 1. Safely kill old controller to prevent Memory Leaks! (CRITICAL)
-    _pdfController.removeListener(_onControllerChanged);
-    // _pdfController.dispose(); // Not available in this version of pdfrx
-
-    // 2. Create fresh controller (forces new PDFium initialization)
-    _pdfController = PdfViewerController();
-    _pdfController.addListener(_onControllerChanged);
-
-    // 3. Reset flag
-    _needsReload = false;
-
-    // 4. Trigger rebuild with new Key
-    setState(() {});
-
-    // 5. Restore position after the new native view is mounted
-    Future.delayed(const Duration(milliseconds: 300), () {
-      if (mounted && _pdfController.isReady) {
-        _pdfController.goToPage(pageNumber: _targetPageAfterReload);
-        // _pdfController.zoomLevel = _targetZoomAfterReload;
-      }
-    });
-  }
-
-  void _showPrintDialog(PdfItem pdf) {
-    // Resolve total pages: prefer the controller's known count, fall back to 0.
-    final totalPages = _pdfController.isReady
-        ? _pdfController.pageCount
-        : (pdf.lastPage ?? 1);
-    final currentPage = _pdfController.pageNumber ?? pdf.lastPage ?? 1;
-
-    showDialog(
-      context: context,
-      builder: (_) => PrintDialog(
-        pdfPath: pdf.path,
-        pdfName: pdf.name,
-        totalPages: totalPages,
-        currentPage: currentPage,
-        onPrint: (settings) async {
-          await _executeSafePrint(pdf, settings);
-        },
-      ),
-    );
-  }
-
-  void _showAddBookmarkDialog(PdfItem pdf) {
-    final controller = TextEditingController();
-    final currentPage = _pdfController.pageNumber ?? 1;
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add Bookmark'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Page $currentPage',
-              style: const TextStyle(fontSize: 14, color: Color(0xFF64748B)),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              decoration: const InputDecoration(
-                hintText: 'Bookmark name',
-                border: OutlineInputBorder(),
-              ),
-              onSubmitted: (_) {
-                if (controller.text.trim().isNotEmpty) {
-                  context.read<AppProvider>().addBookmark(
-                    pdf.id,
-                    controller.text.trim(),
-                    currentPage,
-                  );
-                  Navigator.of(context).pop();
-                }
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              if (controller.text.trim().isNotEmpty) {
-                context.read<AppProvider>().addBookmark(
-                  pdf.id,
-                  controller.text.trim(),
-                  currentPage,
-                );
-                Navigator.of(context).pop();
-              }
-            },
-            child: const Text('Add'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // --- ADVANCED HIT-TESTING & SELECTION ---
-
-  HighlightType _getActiveToolType() {
-    switch (_tool) {
-      case ToolType.pen:
-        return HighlightType.pen;
-      case ToolType.arrow:
-        return HighlightType.arrow;
-      case ToolType.rectangle:
-        return HighlightType.rectangle;
-      case ToolType.circle:
-        return HighlightType.circle;
-      case ToolType.highlight:
-        return HighlightType.highlight;
-      default:
-        return HighlightType.pen;
-    }
-  }
-
-  void _handleSelectionTap(
-    Offset tapPos,
-    PdfPage page,
-    PdfItem pdf,
-    double scale,
-  ) {
-    final scaledTap = tapPos / scale;
-    final shapes = pdf.highlights
-        .where((h) => h.page == page.pageNumber)
-        .toList();
-
-    Highlight? selectedShape;
-    // Iterate in reverse to pick the top-most shape
-    for (final shape in shapes.reversed) {
-      if (shape.path.length < 2) continue;
-      final rect = Rect.fromPoints(
-        shape.path.first,
-        shape.path.last,
-      ).inflate(15.0);
-      if (rect.contains(scaledTap)) {
-        selectedShape = shape;
-        break;
-      }
-    }
-
-    if (selectedShape != null) {
-      final shape = selectedShape;
-      setState(() {
-        _selectedHighlightId = shape.id;
-        _shapeStrokeColor = shape.color;
-        // Load the selected shape's stroke width into the corresponding tool slot
-        final shapeToolType = _highlightTypeToToolType(shape.type);
-        _toolStrokeWidths[shapeToolType] = shape.strokeWidth;
-      });
-      if (!_isRightPanelOpen) setState(() => _isRightPanelOpen = true);
-    } else {
-      setState(() => _selectedHighlightId = null);
-    }
-  }
-
-  void _updateSelectedShapeColor(Color color) {
-    if (_selectedHighlightId == null) return;
-    final app = context.read<AppProvider>();
-    final pdf = app.activePdf;
-    if (pdf == null) return;
-
-    final shape = pdf.highlights
-        .where((h) => h.id == _selectedHighlightId)
-        .firstOrNull;
-    if (shape != null) {
-      final updated = shape.copyWith(color: color);
-      app.removeHighlight(pdf.id, shape);
-      app.addHighlight(pdf.id, updated);
-    }
-  }
-
-  void _updateSelectedShapeStrokeWidth(double width) {
-    if (_selectedHighlightId == null) return;
-    final app = context.read<AppProvider>();
-    final pdf = app.activePdf;
-    if (pdf == null) return;
-
-    final shape = pdf.highlights
-        .where((h) => h.id == _selectedHighlightId)
-        .firstOrNull;
-    if (shape != null) {
-      final updated = shape.copyWith(strokeWidth: width);
-      app.removeHighlight(pdf.id, shape);
-      app.addHighlight(pdf.id, updated);
-    }
-  }
-
-  /// Maps a persisted HighlightType back to the ToolType that created it.
-  ToolType _highlightTypeToToolType(HighlightType type) {
-    switch (type) {
-      case HighlightType.pen:
-        return ToolType.pen;
-      case HighlightType.highlight:
-        return ToolType.highlight;
-      case HighlightType.arrow:
-        return ToolType.arrow;
-      case HighlightType.rectangle:
-        return ToolType.rectangle;
-      case HighlightType.circle:
-        return ToolType.circle;
-      default:
-        return _tool; // fallback to current tool
-    }
-  }
-
-  void _onColorChanged(Color color) {
-    setState(() {
-      if (_tool == ToolType.pen) {
-        _penColor = color;
-      } else if (_tool == ToolType.highlight) {
-        _highlightColor = color;
-        _updateSelectedShapeColor(color);
-      } else if (_tool == ToolType.text) {
-        _textColor = color;
-        _updateCurrentEditingText();
-      } else {
-        _shapeStrokeColor = color;
-        _updateSelectedShapeColor(color);
-      }
-    });
-  }
-
-  void _onStrokeWidthChanged(double width) {
-    setState(() => _toolStrokeWidths[_tool] = width);
-    _updateSelectedShapeStrokeWidth(width); // Sync with active shape
-  }
 }

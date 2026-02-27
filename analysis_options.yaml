@@ -28,6 +28,10 @@ analyzer:
   errors:
     deprecated_member_use_from_same_package: ignore
     deprecated_member_use: ignore
+    # setState is @protected but extension methods on _PDFViewerWidgetState are
+    # effectively subclass scope via `part of`. Dart's analyzer does not model
+    # this correctly, so we suppress the spurious warning globally.
+    invalid_use_of_protected_member: ignore
   exclude:
     - "lib/models/isar_models.g.dart"
 

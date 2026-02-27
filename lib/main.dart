@@ -5,6 +5,7 @@ import 'services/file_manager_service.dart';
 import 'widgets/sidebar_w.dart';
 import 'widgets/pdf_viewer_widget_w.dart';
 import 'widgets/developer_modal_w.dart';
+
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -92,7 +93,7 @@ class _MainLayoutState extends State<MainLayout> {
               if (!isMobile && !app.isSidebarCollapsed) const Sidebar(),
 
               // Main Content
-              Expanded(child: const PDFViewerWidget()),
+              Expanded(child:  PDFViewerWidget()),
             ],
           ),
 
