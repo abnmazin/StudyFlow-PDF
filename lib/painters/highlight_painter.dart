@@ -7,12 +7,23 @@ class HighlightPainter extends CustomPainter {
   final List<Highlight> highlights;
   final double scale;
   final bool isCurrent;
+  // OPTIMIZATION: Cache quick-change signals for repaint decisions
+  final int _highlightsHash;
+  final String? _selectedHighlightId;
 
   HighlightPainter({
     required this.highlights,
     required this.scale,
     this.isCurrent = false,
-  });
+    String? selectedHighlightId,
+  })  : _highlightsHash = _calculateHighlightsHash(highlights),
+        _selectedHighlightId = selectedHighlightId;
+
+  static int _calculateHighlightsHash(List<Highlight> highlights) {
+    // Simple hash to catch structural changes without deep comparison
+    return highlights.length * 31 +
+        (highlights.isEmpty ? 0 : highlights.last.hashCode);
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -230,6 +241,48 @@ class HighlightPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant HighlightPainter oldDelegate) {
-    return true; // إجبار التحديث دائماً لضمان السلاسة
+    // Always repaint while drawing to keep live feedback smooth
+    if (isCurrent || oldDelegate.isCurrent) return true;
+
+    // Scale changes affect all geometry
+    if (scale != oldDelegate.scale) return true;
+
+    // Quick hash comparison for fast bail-out
+    if (_highlightsHash != oldDelegate._highlightsHash) return true;
+
+    // Selection state can change overlay handles
+    if (_selectedHighlightId != oldDelegate._selectedHighlightId) return true;
+
+    // Cheap length check
+    if (highlights.length != oldDelegate.highlights.length) return true;
+
+    // Shallow per-item checks to catch property edits without heavy work
+    for (int i = 0; i < highlights.length; i++) {
+      final current = highlights[i];
+      final previous = oldDelegate.highlights[i];
+
+      if (current.id != previous.id) return true;
+      if (current.color != previous.color) return true;
+      if (current.strokeWidth != previous.strokeWidth) return true;
+      if (current.backgroundColor != previous.backgroundColor) return true;
+      if (current.type != previous.type) return true;
+
+      // Path/rect changes — approximate check to avoid expensive deep diff
+      if (current.path.length != previous.path.length) return true;
+      if (!_pathsAreEqual(current.path, previous.path)) return true;
+      if ((current.rects?.length ?? 0) != (previous.rects?.length ?? 0)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  bool _pathsAreEqual(List<Offset> path1, List<Offset> path2) {
+    if (path1.length != path2.length) return false;
+    for (int i = 0; i < path1.length; i++) {
+      if ((path1[i] - path2[i]).distance > 0.01) return false;
+    }
+    return true;
   }
 }

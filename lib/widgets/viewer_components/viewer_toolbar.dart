@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:provider/provider.dart';
@@ -52,9 +51,44 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
     super.dispose();
   }
 
+  // ─── UNIFIED BUTTON BUILDER ───────────────────────────────────────
+  Widget _buildToolButton({
+    required IconData icon,
+    required bool isActive,
+    required VoidCallback onTap,
+    String? tooltip,
+    Color? activeColor,
+    required Color iconMuted,
+  }) {
+    final effectiveActiveColor = activeColor ?? const Color(0xFF3B82F6);
+    final bgColor = isActive
+        ? effectiveActiveColor.withOpacity(0.15)
+        : Colors.transparent;
+    final fgColor = isActive ? effectiveActiveColor : iconMuted;
+
+    final button = InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(icon, size: 22, color: fgColor),
+      ),
+    );
+
+    if (tooltip != null) {
+      return Tooltip(message: tooltip, child: button);
+    }
+    return button;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppProvider>(); // Access AppProvider for sidebar
+    final app = context.watch<AppProvider>();
     final isMobile = MediaQuery.of(context).size.width < 768;
     final pdf = widget.activePdf;
 
@@ -73,6 +107,7 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
     final inputBorder = widget.isDarkMode
         ? const Color(0xFF334155)
         : scheme.outlineVariant;
+
     return Container(
       height: 64,
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -83,34 +118,23 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
+          // ─── LEFT: Sidebar + Page Counter + Zoom ───────────────
           Row(
             children: [
               if (isMobile)
-                IconButton(
-                  icon: Icon(LucideIcons.menu, size: 20, color: iconMuted),
-                  onPressed: () => app.toggleMobile(),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(
-                    minWidth: 36,
-                    minHeight: 36,
-                  ),
+                _buildToolButton(
+                  icon: LucideIcons.menu,
+                  isActive: false,
+                  onTap: () => app.toggleMobile(),
+                  iconMuted: iconMuted,
                 )
               else if (app.isSidebarCollapsed)
-                IconButton(
-                  icon: Icon(
-                    LucideIcons.panelLeftOpen,
-                    size: 20,
-                    color: iconMuted,
-                  ),
-                  onPressed: () {
-                    app.toggleSidebar();
-                  },
+                _buildToolButton(
+                  icon: LucideIcons.panelLeftOpen,
+                  isActive: false,
+                  onTap: () => app.toggleSidebar(),
                   tooltip: 'Toggle Sidebar (Ctrl+L)',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(
-                    minWidth: 36,
-                    minHeight: 36,
-                  ),
+                  iconMuted: iconMuted,
                 ),
               if (isMobile || app.isSidebarCollapsed) const SizedBox(width: 8),
 
@@ -193,7 +217,7 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                         ),
                       ),
 
-              const SizedBox(width: 12),
+              const SizedBox(width: 8),
 
               // Zoom Controls
               Container(
@@ -201,34 +225,22 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                   color: chipBg,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                padding: const EdgeInsets.all(4),
+                padding: const EdgeInsets.all(2),
                 child: Row(
                   children: [
-                    IconButton(
-                      icon: Icon(
-                        LucideIcons.zoomOut,
-                        size: 20,
-                        color: iconMuted,
-                      ),
-                      onPressed: () => widget.pdfController.zoomDown(),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(
-                        minWidth: 36,
-                        minHeight: 36,
-                      ),
+                    _buildToolButton(
+                      icon: LucideIcons.zoomOut,
+                      isActive: false,
+                      onTap: () => widget.pdfController.zoomDown(),
+                      tooltip: 'Zoom Out',
+                      iconMuted: iconMuted,
                     ),
-                    IconButton(
-                      icon: Icon(
-                        LucideIcons.zoomIn,
-                        size: 20,
-                        color: iconMuted,
-                      ),
-                      onPressed: () => widget.pdfController.zoomUp(),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(
-                        minWidth: 36,
-                        minHeight: 36,
-                      ),
+                    _buildToolButton(
+                      icon: LucideIcons.zoomIn,
+                      isActive: false,
+                      onTap: () => widget.pdfController.zoomUp(),
+                      tooltip: 'Zoom In',
+                      iconMuted: iconMuted,
                     ),
                   ],
                 ),
@@ -236,89 +248,71 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
             ],
           ),
 
+          // ─── RIGHT: Tools + Utility Buttons ────────────────────
           Expanded(
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               reverse: true,
               child: Row(
                 children: [
-                  // Search Button
-                  Container(
-                    decoration: BoxDecoration(
-                      color: chipBg,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    padding: const EdgeInsets.all(4),
-                    child: IconButton(
-                      icon: const Icon(LucideIcons.search, size: 20),
-                      onPressed: widget.onToggleSearch,
-                      tooltip: 'Search (Ctrl+F)',
-                      color: widget.isSearchVisible
-                          ? const Color(0xFF3B82F6)
-                          : iconMuted,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(
-                        minWidth: 36,
-                        minHeight: 36,
-                      ),
-                    ),
+                  // Search
+                  _buildToolButton(
+                    icon: LucideIcons.search,
+                    isActive: widget.isSearchVisible,
+                    onTap: widget.onToggleSearch,
+                    tooltip: 'Search (Ctrl+F)',
+                    iconMuted: iconMuted,
                   ),
-                  const SizedBox(width: 12),
-                  // Bookmark Button
-                  Container(
-                    decoration: BoxDecoration(
-                      color: chipBg,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    padding: const EdgeInsets.all(4),
-                    child: IconButton(
-                      icon: const Icon(LucideIcons.bookmark, size: 20),
-                      onPressed: () {
-                        if (pdf != null && widget.pdfController.isReady) {
-                          widget.onAddBookmark(pdf);
-                        }
-                      },
-                      tooltip: 'Add Bookmark',
-                      color: iconMuted,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(
-                        minWidth: 36,
-                        minHeight: 36,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 4),
 
-                  // Tools
+                  // Bookmark
+                  _buildToolButton(
+                    icon: LucideIcons.bookmark,
+                    isActive: false,
+                    onTap: () {
+                      if (pdf != null && widget.pdfController.isReady) {
+                        widget.onAddBookmark(pdf);
+                      }
+                    },
+                    tooltip: 'Add Bookmark',
+                    iconMuted: iconMuted,
+                  ),
+                  const SizedBox(width: 8),
+
+                  // ─── Divider ──
+                  Container(width: 1, height: 28, color: barBorder),
+                  const SizedBox(width: 8),
+
+                  // ─── Drawing Tools Group ──
                   Container(
                     decoration: BoxDecoration(
                       color: chipBg,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(10),
                     ),
                     padding: const EdgeInsets.all(4),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        _ToolBtn(
+                        _buildToolButton(
                           icon: LucideIcons.mousePointer2,
-                          label: 'Read',
                           isActive: [
                             ToolType.cursor,
                             ToolType.arrow,
                             ToolType.rectangle,
                             ToolType.circle,
                           ].contains(widget.activeTool),
-                          onPressed: () {
+                          onTap: () {
                             widget.onToolChanged(ToolType.cursor);
                             if (!widget.isRightPanelOpen) {
                               widget.onToggleRightPanel();
                             }
                           },
-                          shortcut: 'Esc',
+                          tooltip: 'Read (Esc)',
+                          iconMuted: iconMuted,
                         ),
-                        _ToolBtn(
+                        const SizedBox(width: 2),
+                        _buildToolButton(
                           icon: LucideIcons.shapes,
-                          label: 'Shapes',
                           isActive:
                               widget.isShapesPaletteVisible ||
                               [
@@ -326,189 +320,88 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                                 ToolType.rectangle,
                                 ToolType.circle,
                               ].contains(widget.activeTool),
-                          onPressed: widget.onToggleShapesPalette,
+                          onTap: widget.onToggleShapesPalette,
+                          tooltip: 'Shapes',
+                          iconMuted: iconMuted,
                         ),
-                        _ToolBtn(
+                        const SizedBox(width: 2),
+                        _buildToolButton(
                           icon: LucideIcons.highlighter,
-                          label: 'Highlight',
                           isActive: widget.activeTool == ToolType.highlight,
-                          onPressed: () =>
-                              widget.onToolChanged(ToolType.highlight),
-                          shortcut: 'H',
+                          onTap: () => widget.onToolChanged(ToolType.highlight),
+                          tooltip: 'Highlight (H)',
+                          activeColor: const Color(0xFFEAB308),
+                          iconMuted: iconMuted,
                         ),
-                        _ToolBtn(
+                        const SizedBox(width: 2),
+                        _buildToolButton(
                           icon: LucideIcons.penTool,
-                          label: 'Pen',
                           isActive: widget.activeTool == ToolType.pen,
-                          onPressed: () => widget.onToolChanged(ToolType.pen),
-                          shortcut: 'P',
+                          onTap: () => widget.onToolChanged(ToolType.pen),
+                          tooltip: 'Pen (P)',
+                          iconMuted: iconMuted,
                         ),
-                        _ToolBtn(
+                        const SizedBox(width: 2),
+                        _buildToolButton(
                           icon: LucideIcons.type,
-                          label: 'Text',
                           isActive: widget.activeTool == ToolType.text,
-                          onPressed: () => widget.onToolChanged(ToolType.text),
-                          shortcut: 'T',
+                          onTap: () => widget.onToolChanged(ToolType.text),
+                          tooltip: 'Text (T)',
+                          iconMuted: iconMuted,
                         ),
-                        _ToolBtn(
+                        const SizedBox(width: 2),
+                        _buildToolButton(
                           icon: LucideIcons.eraser,
-                          label: 'Eraser',
                           isActive: widget.activeTool == ToolType.eraser,
-                          onPressed: () =>
-                              widget.onToolChanged(ToolType.eraser),
-                          shortcut: 'E',
+                          onTap: () => widget.onToolChanged(ToolType.eraser),
+                          tooltip: 'Eraser (E)',
+                          activeColor: const Color(0xFFEF4444),
+                          iconMuted: iconMuted,
                         ),
                       ],
                     ),
                   ),
-                  // Close File
-                  Container(
-                    decoration: BoxDecoration(
-                      color: chipBg,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    padding: const EdgeInsets.all(4),
-                    child: IconButton(
-                      icon: const Icon(LucideIcons.x, size: 20),
-                      onPressed: () => app.closeActivePdf(),
-                      tooltip: 'Close File',
-                      color: iconMuted,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(
-                        minWidth: 36,
-                        minHeight: 36,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 8),
 
-                  // Settings Toggle
-                  Container(
-                    decoration: BoxDecoration(
-                      color: chipBg,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    padding: const EdgeInsets.all(4),
-                    child: IconButton(
-                      icon: const Icon(LucideIcons.settings, size: 20),
-                      onPressed: widget.onToggleSettings,
-                      tooltip: 'Document Settings',
-                      color: iconMuted,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(
-                        minWidth: 36,
-                        minHeight: 36,
-                      ),
-                    ),
+                  // ─── Divider ──
+                  Container(width: 1, height: 28, color: barBorder),
+                  const SizedBox(width: 8),
+
+                  // Close File
+                  _buildToolButton(
+                    icon: LucideIcons.x,
+                    isActive: false,
+                    onTap: () => app.closeActivePdf(),
+                    tooltip: 'Close File',
+                    iconMuted: iconMuted,
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 4),
+
+                  // Settings
+                  _buildToolButton(
+                    icon: LucideIcons.settings,
+                    isActive: false,
+                    onTap: widget.onToggleSettings,
+                    tooltip: 'Document Settings',
+                    iconMuted: iconMuted,
+                  ),
+                  const SizedBox(width: 4),
 
                   // Right Panel Toggle
-                  Container(
-                    decoration: BoxDecoration(
-                      color: chipBg,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    padding: const EdgeInsets.all(4),
-                    child: IconButton(
-                      icon: Icon(
-                        widget.isRightPanelOpen
-                            ? LucideIcons.panelRightClose
-                            : LucideIcons.panelRightOpen,
-                        size: 20,
-                      ),
-                      onPressed: widget.onToggleRightPanel,
-                      tooltip: 'Toggle Properties Panel (Ctrl+R)',
-                      color: widget.isRightPanelOpen
-                          ? const Color(0xFF3B82F6)
-                          : iconMuted,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(
-                        minWidth: 36,
-                        minHeight: 36,
-                      ),
-                    ),
+                  _buildToolButton(
+                    icon: widget.isRightPanelOpen
+                        ? LucideIcons.panelRightClose
+                        : LucideIcons.panelRightOpen,
+                    isActive: widget.isRightPanelOpen,
+                    onTap: widget.onToggleRightPanel,
+                    tooltip: 'Toggle Properties Panel (Ctrl+R)',
+                    iconMuted: iconMuted,
                   ),
                 ],
               ),
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _ToolBtn extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool isActive;
-  final VoidCallback onPressed;
-  final String? shortcut;
-
-  const _ToolBtn({
-    required this.icon,
-    required this.label,
-    required this.isActive,
-    required this.onPressed,
-    this.shortcut,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final iconMuted = Theme.of(context).colorScheme.onSurfaceVariant;
-    Color activeColor = const Color(0xFF3B82F6); // Fixed Blue 500
-    if (label == 'Highlight')
-      activeColor = const Color(0xFFEAB308); // Fixed Yellow 500
-    if (label == 'Eraser')
-      activeColor = const Color(0xFFEF4444); // Fixed Red 500
-    if (label == 'Pen')
-      activeColor = const Color(0xFFF8FAFC); // Fixed Pen White
-    if (label == 'Note')
-      activeColor = const Color(0xFF8B5CF6); // Fixed Purple 500
-
-    return InkWell(
-      onTap: onPressed,
-      borderRadius: BorderRadius.circular(6),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: isActive ? Colors.white.withOpacity(0.1) : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-          border: isActive
-              ? Border.all(color: Colors.white.withOpacity(0.1))
-              : null,
-        ),
-        child: Row(
-          children: [
-            Icon(icon, size: 20, color: isActive ? activeColor : iconMuted),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: isActive ? activeColor : iconMuted,
-              ),
-            ),
-            if (shortcut != null) ...[
-              const SizedBox(width: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(
-                    0.2,
-                  ), // Darker background for shortcut
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  shortcut!,
-                  style: TextStyle(fontSize: 10, color: iconMuted),
-                ),
-              ),
-            ],
-          ],
-        ),
       ),
     );
   }

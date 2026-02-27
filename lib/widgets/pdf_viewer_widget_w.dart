@@ -71,7 +71,17 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     }
   }
 
-  double _strokeWidth = 5.0;
+  // ── Per-tool stroke widths: changing one never affects another ────────
+  final Map<ToolType, double> _toolStrokeWidths = {
+    ToolType.pen: 2.0,
+    ToolType.highlight: 15.0,
+    ToolType.arrow: 4.0,
+    ToolType.rectangle: 2.0,
+    ToolType.circle: 2.0,
+  };
+
+  /// Current stroke width for whatever tool is active.
+  double get _currentStrokeWidth => _toolStrokeWidths[_tool] ?? 2.0;
   double _fontSize = 14.0;
   bool _isBold = false;
   bool _isLatex = false; // NEW: LaTeX annotation mode
@@ -680,7 +690,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                       isSettingsMode: _isSettingsMode,
                       activeTool: _tool,
                       activeColor: _currentColor,
-                      strokeWidth: _strokeWidth,
+                      strokeWidth: _currentStrokeWidth,
                       fontSize: _fontSize,
                       isBold: _isBold,
                       activeTabIndex: _rightPanelTabIndex,
@@ -1566,7 +1576,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
         path: List.from(_currentPath!),
         color: _currentColor,
         page: _currentPage,
-        strokeWidth: _strokeWidth,
+        strokeWidth: _currentStrokeWidth,
         type: type,
         backgroundColor: bgColorValue, // Set background color for shapes
       );
@@ -1749,6 +1759,8 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                   .where((h) => h.page == page.pageNumber)
                   .toList(),
               scale: scale,
+              isCurrent: false,
+              selectedHighlightId: _selectedHighlightId,
             ),
           ),
 
@@ -1763,12 +1775,13 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                     path: _currentPath!,
                     color: _currentColor,
                     page: page.pageNumber,
-                    strokeWidth: _strokeWidth,
+                    strokeWidth: _currentStrokeWidth,
                     type: _getActiveToolType(),
                   ),
                 ],
                 scale: scale,
                 isCurrent: true,
+                selectedHighlightId: null,
               ),
             ),
 
@@ -1842,12 +1855,14 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
             ),
 
           // Text (Comments) - Must be on TOP to receive hits!
+          // Text (Comments) - Must be on TOP to receive hits!
           ...pdf.comments.where((c) => c.page == page.pageNumber).map((c) {
             return Positioned(
-              left: c.position.dx * scale,
-              top: c.position.dy * scale,
+              // ✅ FIXED: Use unscaled position - DraggableTextWidget handles scaling
+              left: c.position.dx, // REMOVED * scale
+              top: c.position.dy, // REMOVED * scale
               child: DraggableTextWidget(
-                commentId: c.id, // NEW: Pass the ID
+                commentId: c.id,
                 content: c.content,
                 color: c.color,
                 fontSize: c.fontSize,
@@ -1856,27 +1871,24 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                 showBorder: c.showBorder,
                 borderColor: c.borderColor,
                 bgColor: c.bgColor,
-                scale: scale,
+                scale:
+                    scale, // ✅ Keep scale for internal font sizing and visual offset
                 isEditing: c.id == _editingCommentId,
                 enableDrag:
                     !(_tool == ToolType.eraser) && (c.id != _editingCommentId),
                 onEditComplete: (newText, event) {
-                  // This will now be called via the provider's endEditing
                   if (newText.trim().isEmpty) {
                     context.read<AppProvider>().removeComment(pdf.id, c);
                   } else {
-                    // The provider's endEditing handles the actual save
                     context.read<AppProvider>().endEditing(c.id, newText);
                   }
                   setState(() => _editingCommentId = null);
                 },
                 onTap: () {
                   if (_tool == ToolType.text) {
-                    // Start editing through provider
                     context.read<AppProvider>().startEditing(c.id, c);
                     setState(() {
                       _editingCommentId = c.id;
-                      // Sync local state with provider styles
                       final styles = context
                           .read<AppProvider>()
                           .getEditingStyles(c.id);
@@ -1897,7 +1909,11 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                 },
                 onDragEnd: (offset) {
                   if (_tool == ToolType.text || _tool == ToolType.cursor) {
-                    final newPos = c.position + offset / scale;
+                    // ✅ CORRECT: offset is in screen pixels, position is in page coordinates
+                    // DraggableTextWidget already applied the offset visually
+                    // Now we update the permanent position in the database
+                    final newPos = c.position + offset; // REMOVED / scale
+
                     context.read<AppProvider>().updateComment(
                       pdf.id,
                       c,
@@ -2186,7 +2202,9 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
       setState(() {
         _selectedHighlightId = shape.id;
         _shapeStrokeColor = shape.color;
-        _strokeWidth = shape.strokeWidth;
+        // Load the selected shape's stroke width into the corresponding tool slot
+        final shapeToolType = _highlightTypeToToolType(shape.type);
+        _toolStrokeWidths[shapeToolType] = shape.strokeWidth;
       });
       if (!_isRightPanelOpen) setState(() => _isRightPanelOpen = true);
     } else {
@@ -2226,6 +2244,24 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     }
   }
 
+  /// Maps a persisted HighlightType back to the ToolType that created it.
+  ToolType _highlightTypeToToolType(HighlightType type) {
+    switch (type) {
+      case HighlightType.pen:
+        return ToolType.pen;
+      case HighlightType.highlight:
+        return ToolType.highlight;
+      case HighlightType.arrow:
+        return ToolType.arrow;
+      case HighlightType.rectangle:
+        return ToolType.rectangle;
+      case HighlightType.circle:
+        return ToolType.circle;
+      default:
+        return _tool; // fallback to current tool
+    }
+  }
+
   void _onColorChanged(Color color) {
     setState(() {
       if (_tool == ToolType.pen) {
@@ -2244,7 +2280,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   }
 
   void _onStrokeWidthChanged(double width) {
-    setState(() => _strokeWidth = width);
+    setState(() => _toolStrokeWidths[_tool] = width);
     _updateSelectedShapeStrokeWidth(width); // Sync with active shape
   }
 }

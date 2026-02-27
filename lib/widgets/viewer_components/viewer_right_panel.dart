@@ -160,19 +160,6 @@ class StudyFlowRightPanel extends StatelessWidget {
             )
           : Column(
               children: [
-                // --- TAB BAR ---
-                Container(
-                  decoration: BoxDecoration(
-                    color: headerBg,
-                    border: Border(bottom: BorderSide(color: headerBorder)),
-                  ),
-                  child: Row(
-                    children: [
-                      _buildPanelTab(context, 0, LucideIcons.settings, 'Tools'),
-                    ],
-                  ),
-                ),
-
                 // --- TAB CONTENT ---
                 Expanded(
                   child: IndexedStack(
@@ -903,62 +890,6 @@ class StudyFlowRightPanel extends StatelessWidget {
 
   Widget _buildSettingsDivider(Color panelBorder) {
     return Divider(height: 1, thickness: 1, color: panelBorder, indent: 48);
-  }
-
-  Widget _buildPanelTab(
-    BuildContext context,
-    int index,
-    IconData icon,
-    String label,
-  ) {
-    final isActive = activeTabIndex == index;
-    final scheme = Theme.of(context).colorScheme;
-    final inactiveIcon = isDarkMode
-        ? const Color(0xFF94A3B8)
-        : scheme.onSurfaceVariant;
-    final inactiveText = isDarkMode
-        ? const Color(0xFF64748B)
-        : scheme.onSurfaceVariant;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => onTabChanged(index),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: isActive
-                ? (isDarkMode
-                      ? const Color(0xFF334155)
-                      : scheme.surfaceContainerHigh)
-                : Colors.transparent,
-            border: Border(
-              bottom: BorderSide(
-                color: isActive ? const Color(0xFF6366F1) : Colors.transparent,
-                width: 2,
-              ),
-            ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                size: 18,
-                color: isActive ? const Color(0xFF6366F1) : inactiveIcon,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
-                  color: isActive ? const Color(0xFF6366F1) : inactiveText,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   // Helper method for shape selector buttons in right panel
