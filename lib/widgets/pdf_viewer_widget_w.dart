@@ -96,7 +96,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   Color _borderColor = const Color(0xFF000000); // Black border by default
   Color _textBgColor = Colors.transparent;
   Color _shapeFillColor = Colors.transparent;
-  // _activePointerCount removed - using native onScale gesture
+  int _activePointerCount = 0; // Tracks simultaneous touches to block drawing on 2+ fingers
 
   // Current drawing state
   List<Offset>? _currentPath;
@@ -118,6 +118,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   PdfTextSearcher? _textSearcher;
   bool _isSearchVisible = false;
   PdfTextSelection? _textSelection;
+  bool _suppressTextSelection = false; // Suppress zombie refire after clearing selection
   String? _selectedHighlightId; // NEW: Track selected shape
 
   @override
@@ -331,6 +332,14 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
               onToggleShapesPalette: () {
                 setState(() {
                   _isShapesPaletteVisible = !_isShapesPaletteVisible;
+                  // When opening the palette, deselect any active shape tool so
+                  // the toolbar button doesn't remain falsely highlighted.
+                  if (_isShapesPaletteVisible &&
+                      (_tool == ToolType.arrow ||
+                          _tool == ToolType.rectangle ||
+                          _tool == ToolType.circle)) {
+                    _tool = ToolType.cursor;
+                  }
                 });
               },
               onToolChanged: (t) {
@@ -506,7 +515,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                         onPressed: () {
                                           setState(() {
                                             _tool = ToolType.rectangle;
-                                            _isShapesPaletteVisible = false;
+
                                           });
                                         },
                                       ),
@@ -521,7 +530,6 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                         onPressed: () {
                                           setState(() {
                                             _tool = ToolType.circle;
-                                            _isShapesPaletteVisible = false;
                                           });
                                         },
                                       ),
@@ -538,7 +546,6 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                         onPressed: () {
                                           setState(() {
                                             _tool = ToolType.arrow;
-                                            _isShapesPaletteVisible = false;
                                           });
                                         },
                                       ),
@@ -612,15 +619,15 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                     IconButton(
                                       icon: const Icon(LucideIcons.x, size: 20),
                                       onPressed: () async {
-                                        if (_textSelection
-                                            is PdfTextSelectionDelegate) {
-                                          await (_textSelection
-                                                  as PdfTextSelectionDelegate)
-                                              .clearTextSelection();
+                                        final sel = _textSelection;
+                                        if (mounted) setState(() {
+                                          _textSelection = null;
+                                          _suppressTextSelection = true;
+                                        });
+                                        if (sel is PdfTextSelectionDelegate) {
+                                          await sel.clearTextSelection();
                                         }
-                                        if (mounted) {
-                                          setState(() => _textSelection = null);
-                                        }
+                                        if (mounted) setState(() => _suppressTextSelection = false);
                                       },
                                       tooltip: 'Clear Selection',
                                       color: const Color(0xFF64748B),
@@ -796,6 +803,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
           textSelectionParams: PdfTextSelectionParams(
             onTextSelectionChange: (selection) {
               if (!mounted) return;
+              if (_suppressTextSelection && selection != null) return;
               setState(() {
                 _textSelection = selection;
               });
@@ -874,6 +882,4 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   Widget _buildNoFilePlaceholder() {
     return _buildDashboard(context);
   }
-
-
 }

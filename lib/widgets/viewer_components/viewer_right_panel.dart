@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:provider/provider.dart';
@@ -141,7 +141,8 @@ class StudyFlowRightPanel extends StatelessWidget {
         ? const Color(0xFF94A3B8)
         : scheme.onSurfaceVariant;
 
-    return Container(
+    return TextFieldTapRegion(
+      child: Container(
       width: 320, // Wider for Chat UI
       decoration: BoxDecoration(
         color: panelBg,
@@ -722,6 +723,7 @@ class StudyFlowRightPanel extends StatelessWidget {
                 ),
               ],
             ),
+    ),
     );
   }
 

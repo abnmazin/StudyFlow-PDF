@@ -108,7 +108,8 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
         ? const Color(0xFF334155)
         : scheme.outlineVariant;
 
-    return Container(
+    return TextFieldTapRegion(
+      child: Container(
       height: 64,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
@@ -313,13 +314,7 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                         const SizedBox(width: 2),
                         _buildToolButton(
                           icon: LucideIcons.shapes,
-                          isActive:
-                              widget.isShapesPaletteVisible ||
-                              [
-                                ToolType.arrow,
-                                ToolType.rectangle,
-                                ToolType.circle,
-                              ].contains(widget.activeTool),
+                          isActive: widget.isShapesPaletteVisible,
                           onTap: widget.onToggleShapesPalette,
                           tooltip: 'Shapes',
                           iconMuted: iconMuted,
@@ -402,7 +397,6 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
             ),
           ),
         ],
-      ),
-    );
+      ),    ),    );
   }
 }

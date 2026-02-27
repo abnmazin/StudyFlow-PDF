@@ -51,6 +51,13 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
     super.initState();
     _textController = TextEditingController(text: widget.content);
     _focusNode = FocusNode();
+    // When a brand-new widget is built already in editing mode (e.g. _addTextAt),
+    // didUpdateWidget never fires, so we must request focus here.
+    if (widget.isEditing) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _focusNode.requestFocus();
+      });
+    }
   }
 
   @override

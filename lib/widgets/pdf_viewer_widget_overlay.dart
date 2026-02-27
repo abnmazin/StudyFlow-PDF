@@ -8,9 +8,16 @@ extension _PDFViewerWidgetStateOverlay on _PDFViewerWidgetState {
     PdfItem pdf,
   ) {
     final scale = pageRect.width / page.width;
-    final ignoring = _tool == ToolType.cursor;
+    final ignoring = _tool == ToolType.cursor || _activePointerCount > 1;
 
-    Widget overlay = IgnorePointer(
+    Widget overlay = Listener(
+      // Outer Listener MUST be outside IgnorePointer so pointer-up/cancel
+      // always fire even when the overlay is fully ignored (2-finger pan).
+      // Without this the counter deadlocks at 2 and drawing never resumes.
+      onPointerDown: (_) => setState(() => _activePointerCount++),
+      onPointerUp: (_) => setState(() => _activePointerCount--),
+      onPointerCancel: (_) => setState(() => _activePointerCount--),
+      child: IgnorePointer(
       ignoring: ignoring,
       child: Stack(
         children: [
@@ -140,10 +147,15 @@ extension _PDFViewerWidgetStateOverlay on _PDFViewerWidgetState {
                 enableDrag:
                     !(_tool == ToolType.eraser) && (c.id != _editingCommentId),
                 onEditComplete: (newText, event) {
+                  // ALWAYS release the provider editing lock first.
+                  // Without this, an empty-text submit never calls endEditing,
+                  // leaving _activeEditingCommentId set and blocking all future taps.
+                  final appProvider = context.read<AppProvider>();
                   if (newText.trim().isEmpty) {
-                    context.read<AppProvider>().removeComment(pdf.id, c);
+                    appProvider.cancelEditing(c.id); // clears lock, then remove
+                    appProvider.removeComment(pdf.id, c);
                   } else {
-                    context.read<AppProvider>().endEditing(c.id, newText);
+                    appProvider.endEditing(c.id, newText); // clears lock internally
                   }
                   setState(() => _editingCommentId = null);
                 },
@@ -189,6 +201,7 @@ extension _PDFViewerWidgetStateOverlay on _PDFViewerWidgetState {
           }),
         ],
       ),
+    ),
     );
 
     // PERFORMANCE SHIELD: Wrap entire overlay in RepaintBoundary to cache rendering

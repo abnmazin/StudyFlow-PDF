@@ -166,6 +166,7 @@ class AppProvider extends ChangeNotifier {
   // Constants for SharedPreferences
   static const String _prefsKeyClasses = 'pdfreader_classes';
   static const String _prefsKeyActiveClass = 'pdfreader_active_class';
+  static const String _prefsKeyDarkMode = 'pdfreader_dark_mode';
 
   Future<void> _loadState() async {
     try {
@@ -201,6 +202,9 @@ class AppProvider extends ChangeNotifier {
         // Default to first class if no saved active class
         _activeClassId = _classes.first.id;
       }
+
+      // Load dark mode preference
+      _isDarkMode = prefs.getBool(_prefsKeyDarkMode) ?? false;
 
       // CRITICAL SYSTEM CLEANUP: Drop orphaned temp files
       await _cleanupTempFiles();
@@ -305,6 +309,9 @@ class AppProvider extends ChangeNotifier {
   void toggleDarkMode() {
     _isDarkMode = !_isDarkMode;
     notifyListeners();
+    SharedPreferences.getInstance().then(
+      (prefs) => prefs.setBool(_prefsKeyDarkMode, _isDarkMode),
+    );
   }
 
   void setActiveClass(String id) {
