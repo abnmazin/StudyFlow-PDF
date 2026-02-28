@@ -96,8 +96,12 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   Color _borderColor = const Color(0xFF000000); // Black border by default
   Color _textBgColor = Colors.transparent;
   Color _shapeFillColor = Colors.transparent;
-  int _activePointerCount = 0; // Tracks simultaneous touches to block drawing on 2+ fingers
-
+  // Raw pointer tracking (replaces old _activePointerCount)
+  final Set<int> _activePointerIds = {};
+  int?      _primaryPointerId;
+  Offset?   _primaryDownPos;
+  DateTime? _primaryDownTime;
+  bool      _isActivelyDrawing = false;
   // Current drawing state
   List<Offset>? _currentPath;
   int _currentPage = -1;
@@ -562,7 +566,10 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                             bottom: 32,
                             left: 0,
                             right: 0,
-                            child: Center(
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () {}, // Absorb taps — stop bleed-through to pdfrx
+                              child: Center(
                               child: Container(
                                 decoration: BoxDecoration(
                                   color: Colors.white,
@@ -618,16 +625,32 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                     ),
                                     IconButton(
                                       icon: const Icon(LucideIcons.x, size: 20),
-                                      onPressed: () async {
+                                      onPressed: () {
                                         final sel = _textSelection;
-                                        if (mounted) setState(() {
-                                          _textSelection = null;
-                                          _suppressTextSelection = true;
-                                        });
-                                        if (sel is PdfTextSelectionDelegate) {
-                                          await sel.clearTextSelection();
+                                        if (mounted) {
+                                          setState(() {
+                                            _textSelection = null;
+                                            _suppressTextSelection = true;
+                                          });
                                         }
-                                        if (mounted) setState(() => _suppressTextSelection = false);
+                                        if (sel is PdfTextSelectionDelegate) {
+                                          sel.clearTextSelection(); // fire-and-forget
+                                        }
+                                        // Lower flag after frame + brief delay so
+                                        // pdfrx state machine has fully settled
+                                        WidgetsBinding.instance
+                                            .addPostFrameCallback((_) {
+                                          Future.delayed(
+                                            const Duration(milliseconds: 50),
+                                            () {
+                                              if (mounted) {
+                                                setState(() =>
+                                                    _suppressTextSelection =
+                                                        false);
+                                              }
+                                            },
+                                          );
+                                        });
                                       },
                                       tooltip: 'Clear Selection',
                                       color: const Color(0xFF64748B),
@@ -639,6 +662,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                     ),
                                   ],
                                 ),
+                              ),
                               ),
                             ),
                           ),
@@ -773,8 +797,13 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
 
   Widget _buildPdfViewerCore(PdfItem pdf) {
     return Listener(
+      // onPointerSignal: auto-switch to Hand tool when the user scrolls with
+      // mouse wheel while a drawing tool is active, so pdfrx handles scroll.
+      // Pointer counting is handled in each page's overlay Listener instead.
       onPointerSignal: (pointerSignal) {
-        if (pointerSignal is PointerScrollEvent && _tool != ToolType.cursor) {
+        if (pointerSignal is PointerScrollEvent &&
+            _tool != ToolType.cursor &&
+            _tool != ToolType.select) {
           setState(() => _tool = ToolType.cursor);
         }
       },
@@ -789,6 +818,9 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
           maxScale: 4.0,
           minScale: 0.5,
           scrollByMouseWheel: 0.8,
+          // ── Disable pdfrx pan/scale while user is actively drawing ──
+          panEnabled: !_isActivelyDrawing,
+          scaleEnabled: !_isActivelyDrawing,
           pageOverlaysBuilder: (context, pageRect, page) {
             return [
               RepaintBoundary(
@@ -803,7 +835,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
           textSelectionParams: PdfTextSelectionParams(
             onTextSelectionChange: (selection) {
               if (!mounted) return;
-              if (_suppressTextSelection && selection != null) return;
+              if (_suppressTextSelection) return;
               setState(() {
                 _textSelection = selection;
               });

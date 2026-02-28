@@ -176,12 +176,14 @@ class StudyFlowRightPanel extends StatelessWidget {
                             Row(
                               children: [
                                 Icon(
-                                  [
-                                        ToolType.cursor,
-                                        ToolType.arrow,
-                                        ToolType.rectangle,
-                                        ToolType.circle,
-                                      ].contains(activeTool)
+                                  activeTool == ToolType.cursor
+                                      ? LucideIcons.hand
+                                      : [
+                                            ToolType.select,
+                                            ToolType.arrow,
+                                            ToolType.rectangle,
+                                            ToolType.circle,
+                                          ].contains(activeTool)
                                       ? LucideIcons.mousePointer2
                                       : activeTool == ToolType.pen
                                       ? LucideIcons.penTool
@@ -195,13 +197,15 @@ class StudyFlowRightPanel extends StatelessWidget {
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
-                                  [
-                                        ToolType.cursor,
-                                        ToolType.arrow,
-                                        ToolType.rectangle,
-                                        ToolType.circle,
-                                      ].contains(activeTool)
-                                      ? 'Read & Shapes'
+                                  activeTool == ToolType.cursor
+                                      ? 'Hand (Scroll)'
+                                      : [
+                                            ToolType.select,
+                                            ToolType.arrow,
+                                            ToolType.rectangle,
+                                            ToolType.circle,
+                                          ].contains(activeTool)
+                                      ? 'Select & Shapes'
                                       : '${activeTool.name[0].toUpperCase()}${activeTool.name.substring(1)} Properties',
                                   style: TextStyle(
                                     fontSize: 16,
@@ -213,9 +217,9 @@ class StudyFlowRightPanel extends StatelessWidget {
                             ),
                             const SizedBox(height: 24),
 
-                            // SHAPE SELECTOR (For Read/Cursor Mode)
+                            // SHAPE SELECTOR (For Select Mode)
                             if ([
-                              ToolType.cursor,
+                              ToolType.select,
                               ToolType.arrow,
                               ToolType.rectangle,
                               ToolType.circle,
@@ -236,8 +240,8 @@ class StudyFlowRightPanel extends StatelessWidget {
                                   _buildShapeSelectorBtn(
                                     context,
                                     LucideIcons.mousePointer2,
-                                    ToolType.cursor,
-                                    'Pointer',
+                                    ToolType.select,
+                                    'Select',
                                   ),
                                   _buildShapeSelectorBtn(
                                     context,
@@ -1014,6 +1018,12 @@ class StudyFlowRightPanel extends StatelessWidget {
                             color: Colors.transparent,
                           );
                       }
+                      // Directly update the cached comment/highlight via AppProvider
+                      appProvider.applyColorToCachedComment(
+                        color: colorTarget == _ColorTarget.stroke ? Colors.transparent : null,
+                        bgColor: colorTarget == _ColorTarget.bg ? Colors.transparent : null,
+                        borderColor: colorTarget == _ColorTarget.border ? Colors.transparent : null,
+                      );
                       Navigator.of(dialogContext).pop();
                     },
                   ),
@@ -1044,6 +1054,12 @@ class StudyFlowRightPanel extends StatelessWidget {
                       borderColor: pickerColor,
                     );
                 }
+                onColorChanged(pickerColor); // Update local state
+                appProvider.applyColorToCachedComment( // Update cached comment/highlight
+                  color: colorTarget == _ColorTarget.stroke ? pickerColor : null,
+                  bgColor: colorTarget == _ColorTarget.bg ? pickerColor : null,
+                  borderColor: colorTarget == _ColorTarget.border ? pickerColor : null,
+                );
                 Navigator.of(dialogContext).pop();
               },
             ),

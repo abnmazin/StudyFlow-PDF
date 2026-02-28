@@ -32,7 +32,7 @@ extension _PDFViewerWidgetStateStyle on _PDFViewerWidgetState {
         .toList();
 
     Highlight? selectedShape;
-    // Iterate in reverse to pick the top-most shape
+    // Iterate in reverse to pick the top-most shape.
     for (final shape in shapes.reversed) {
       if (shape.path.length < 2) continue;
       final rect = Rect.fromPoints(
@@ -50,13 +50,31 @@ extension _PDFViewerWidgetStateStyle on _PDFViewerWidgetState {
       setState(() {
         _selectedHighlightId = shape.id;
         _shapeStrokeColor = shape.color;
-        // Load the selected shape's stroke width into the corresponding tool slot
+        // Load selected shape's stroke width into the tool slot.
         final shapeToolType = _highlightTypeToToolType(shape.type);
         _toolStrokeWidths[shapeToolType] = shape.strokeWidth;
       });
       if (!_isRightPanelOpen) setState(() => _isRightPanelOpen = true);
     } else {
       setState(() => _selectedHighlightId = null);
+    }
+  }
+
+  /// Maps a persisted [HighlightType] back to the [ToolType] that created it.
+  ToolType _highlightTypeToToolType(HighlightType type) {
+    switch (type) {
+      case HighlightType.pen:
+        return ToolType.pen;
+      case HighlightType.highlight:
+        return ToolType.highlight;
+      case HighlightType.arrow:
+        return ToolType.arrow;
+      case HighlightType.rectangle:
+        return ToolType.rectangle;
+      case HighlightType.circle:
+        return ToolType.circle;
+      default:
+        return _tool;
     }
   }
 
@@ -89,24 +107,6 @@ extension _PDFViewerWidgetStateStyle on _PDFViewerWidgetState {
       final updated = shape.copyWith(strokeWidth: width);
       app.removeHighlight(pdf.id, shape);
       app.addHighlight(pdf.id, updated);
-    }
-  }
-
-  /// Maps a persisted HighlightType back to the ToolType that created it.
-  ToolType _highlightTypeToToolType(HighlightType type) {
-    switch (type) {
-      case HighlightType.pen:
-        return ToolType.pen;
-      case HighlightType.highlight:
-        return ToolType.highlight;
-      case HighlightType.arrow:
-        return ToolType.arrow;
-      case HighlightType.rectangle:
-        return ToolType.rectangle;
-      case HighlightType.circle:
-        return ToolType.circle;
-      default:
-        return _tool; // fallback to current tool
     }
   }
 

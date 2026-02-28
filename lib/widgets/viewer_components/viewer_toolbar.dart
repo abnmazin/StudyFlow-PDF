@@ -295,20 +295,30 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         _buildToolButton(
+                          icon: LucideIcons.hand,
+                          isActive: widget.activeTool == ToolType.cursor,
+                          onTap: () {
+                            widget.onToolChanged(ToolType.cursor);
+                          },
+                          tooltip: 'Hand / Scroll (Esc)',
+                          iconMuted: iconMuted,
+                        ),
+                        const SizedBox(width: 2),
+                        _buildToolButton(
                           icon: LucideIcons.mousePointer2,
                           isActive: [
-                            ToolType.cursor,
+                            ToolType.select,
                             ToolType.arrow,
                             ToolType.rectangle,
                             ToolType.circle,
                           ].contains(widget.activeTool),
                           onTap: () {
-                            widget.onToolChanged(ToolType.cursor);
+                            widget.onToolChanged(ToolType.select);
                             if (!widget.isRightPanelOpen) {
                               widget.onToggleRightPanel();
                             }
                           },
-                          tooltip: 'Read (Esc)',
+                          tooltip: 'Select',
                           iconMuted: iconMuted,
                         ),
                         const SizedBox(width: 2),

@@ -2,9 +2,8 @@
 
 extension _PDFViewerWidgetStateGestures on _PDFViewerWidgetState {
   void _handlePanStart(Offset position, PdfPage page, double scale) {
-    if (_tool == ToolType.cursor || _tool == ToolType.text) {
-      return; // Text handled by onTapUp
-    }
+    // Guard: only drawing tools reach here (Listener in overlay enforces this)
+    if (!_tool.isDrawingTool()) return;
     if (_tool == ToolType.eraser) {
       _eraseAt(position / scale, page.pageNumber);
       return;
@@ -18,7 +17,8 @@ extension _PDFViewerWidgetStateGestures on _PDFViewerWidgetState {
   }
 
   void _handlePanUpdate(Offset position, PdfPage page, double scale) {
-    if (_tool == ToolType.cursor || _tool == ToolType.text) return;
+    // Guard: only drawing tools reach here (Listener in overlay enforces this)
+    if (!_tool.isDrawingTool()) return;
     if (_tool == ToolType.eraser) {
       _eraseAt(position / scale, page.pageNumber);
     } else {

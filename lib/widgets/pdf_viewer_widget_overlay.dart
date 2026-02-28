@@ -8,20 +8,12 @@ extension _PDFViewerWidgetStateOverlay on _PDFViewerWidgetState {
     PdfItem pdf,
   ) {
     final scale = pageRect.width / page.width;
-    final ignoring = _tool == ToolType.cursor || _activePointerCount > 1;
+    final bool passThrough = _tool.isHand;
 
-    Widget overlay = Listener(
-      // Outer Listener MUST be outside IgnorePointer so pointer-up/cancel
-      // always fire even when the overlay is fully ignored (2-finger pan).
-      // Without this the counter deadlocks at 2 and drawing never resumes.
-      onPointerDown: (_) => setState(() => _activePointerCount++),
-      onPointerUp: (_) => setState(() => _activePointerCount--),
-      onPointerCancel: (_) => setState(() => _activePointerCount--),
-      child: IgnorePointer(
-      ignoring: ignoring,
+    return RepaintBoundary(
       child: Stack(
         children: [
-          // Highlights & Pen
+          // ── 1. الأشكال المحفوظة ──
           CustomPaint(
             size: Size(pageRect.width, pageRect.height),
             painter: HighlightPainter(
@@ -34,7 +26,7 @@ extension _PDFViewerWidgetStateOverlay on _PDFViewerWidgetState {
             ),
           ),
 
-          // Current Drawing
+          // ── 2. معاينة الرسم الحي ──
           if (_currentPage == page.pageNumber && _currentPath != null)
             CustomPaint(
               size: Size(pageRect.width, pageRect.height),
@@ -55,82 +47,26 @@ extension _PDFViewerWidgetStateOverlay on _PDFViewerWidgetState {
               ),
             ),
 
-          if (!ignoring)
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTapUp: (details) {
-                  // 1. Guard Clause: Prevent spawning new text if we are currently editing one.
-                  // Clicking outside should only close the active text (handled by onTapOutside).
-                  final appProvider = context.read<AppProvider>();
-                  if (appProvider.activeEditingCommentId != null) {
-                    return;
-                  }
-
-                  // 2. Normal Tool Logic
-                  if (_tool == ToolType.cursor) {
-                    _handleSelectionTap(
-                      details.localPosition,
-                      page,
-                      pdf,
-                      scale,
-                    );
-                  } else if (_tool == ToolType.text) {
-                    // Only create new text if we are NOT currently editing another one
-                    _addTextAt(details.localPosition / scale, page.pageNumber);
-                  } else {
-                    // Clear selection if tapping with a drawing tool
-                    if (_selectedHighlightId != null) {
-                      setState(() => _selectedHighlightId = null);
-                    }
-                  }
-                },
-                onPanStart: (details) {
-                  if (_tool == ToolType.cursor &&
-                      _selectedHighlightId != null) {
-                    // Allow dragging the selected shape
-                    return;
-                  }
-                  if (_tool != ToolType.cursor && _tool != ToolType.text) {
-                    _handlePanStart(details.localPosition, page, scale);
-                  }
-                },
-                onPanUpdate: (details) {
-                  if (_tool == ToolType.cursor &&
-                      _selectedHighlightId != null) {
-                    // Execute the drag logic for the selected shape
-                    final app = context.read<AppProvider>();
-                    final shape = pdf.highlights
-                        .where((h) => h.id == _selectedHighlightId)
-                        .firstOrNull;
-                    if (shape != null) {
-                      final delta = details.delta / scale;
-                      final newPath = shape.path.map((p) => p + delta).toList();
-                      final updated = shape.copyWith(path: newPath);
-                      app.removeHighlight(pdf.id, shape);
-                      app.addHighlight(pdf.id, updated);
-                    }
-                    return;
-                  }
-                  if (_tool != ToolType.cursor && _tool != ToolType.text) {
-                    _handlePanUpdate(details.localPosition, page, scale);
-                  }
-                },
-                onPanEnd: (details) {
-                  if (_tool != ToolType.cursor && _tool != ToolType.text) {
-                    _handlePanEnd(pdf);
-                  }
-                },
+          // ── 3. طبقة التفاعل: Listener فقط (لا يدخل gesture arena أبداً) ──
+          Positioned.fill(
+            child: IgnorePointer(
+              ignoring: passThrough,
+              child: Listener(
+                behavior: HitTestBehavior.translucent,
+                onPointerDown:   (e) => _onOverlayPointerDown(e, page, pdf, scale),
+                onPointerMove:   (e) => _onOverlayPointerMove(e, page, scale),
+                onPointerUp:     (e) => _onOverlayPointerUp(e, page, pdf, scale),
+                onPointerCancel: (e) => _onOverlayPointerCancel(e),
+                child: const SizedBox.expand(),
               ),
             ),
+          ),
 
-          // Text (Comments) - Must be on TOP to receive hits!
-          // Text (Comments) - Must be on TOP to receive hits!
+          // ── 4. التعليقات النصية (دائماً في الأعلى) ──
           ...pdf.comments.where((c) => c.page == page.pageNumber).map((c) {
             return Positioned(
-              // âœ… FIXED: Use unscaled position - DraggableTextWidget handles scaling
-              left: c.position.dx, // REMOVED * scale
-              top: c.position.dy, // REMOVED * scale
+              left: c.position.dx,
+              top: c.position.dy,
               child: DraggableTextWidget(
                 commentId: c.id,
                 content: c.content,
@@ -141,21 +77,16 @@ extension _PDFViewerWidgetStateOverlay on _PDFViewerWidgetState {
                 showBorder: c.showBorder,
                 borderColor: c.borderColor,
                 bgColor: c.bgColor,
-                scale:
-                    scale, // âœ… Keep scale for internal font sizing and visual offset
+                scale: scale,
                 isEditing: c.id == _editingCommentId,
-                enableDrag:
-                    !(_tool == ToolType.eraser) && (c.id != _editingCommentId),
+                enableDrag: !(_tool == ToolType.eraser) && (c.id != _editingCommentId),
                 onEditComplete: (newText, event) {
-                  // ALWAYS release the provider editing lock first.
-                  // Without this, an empty-text submit never calls endEditing,
-                  // leaving _activeEditingCommentId set and blocking all future taps.
                   final appProvider = context.read<AppProvider>();
                   if (newText.trim().isEmpty) {
-                    appProvider.cancelEditing(c.id); // clears lock, then remove
+                    appProvider.cancelEditing(c.id);
                     appProvider.removeComment(pdf.id, c);
                   } else {
-                    appProvider.endEditing(c.id, newText); // clears lock internally
+                    appProvider.endEditing(c.id, newText);
                   }
                   setState(() => _editingCommentId = null);
                 },
@@ -164,9 +95,7 @@ extension _PDFViewerWidgetStateOverlay on _PDFViewerWidgetState {
                     context.read<AppProvider>().startEditing(c.id, c);
                     setState(() {
                       _editingCommentId = c.id;
-                      final styles = context
-                          .read<AppProvider>()
-                          .getEditingStyles(c.id);
+                      final styles = context.read<AppProvider>().getEditingStyles(c.id);
                       if (styles != null) {
                         _textColor = Color(styles['color']);
                         _fontSize = styles['fontSize'];
@@ -184,11 +113,7 @@ extension _PDFViewerWidgetStateOverlay on _PDFViewerWidgetState {
                 },
                 onDragEnd: (offset) {
                   if (_tool == ToolType.text || _tool == ToolType.cursor) {
-                    // âœ… CORRECT: offset is in screen pixels, position is in page coordinates
-                    // DraggableTextWidget already applied the offset visually
-                    // Now we update the permanent position in the database
-                    final newPos = c.position + offset; // REMOVED / scale
-
+                    final newPos = c.position + offset;
                     context.read<AppProvider>().updateComment(
                       pdf.id,
                       c,
@@ -201,10 +126,98 @@ extension _PDFViewerWidgetStateOverlay on _PDFViewerWidgetState {
           }),
         ],
       ),
-    ),
     );
+  }
 
-    // PERFORMANCE SHIELD: Wrap entire overlay in RepaintBoundary to cache rendering
-    return RepaintBoundary(child: overlay);
+  // ═══════════════════════════════════════════════════════════════
+  // معالجات أحداث المؤشر — تعمل على مستوى Listener (بدون arena)
+  // ═══════════════════════════════════════════════════════════════
+
+  void _onOverlayPointerDown(PointerDownEvent e, PdfPage page, PdfItem pdf, double scale) {
+    _activePointerIds.add(e.pointer);
+
+    if (_activePointerIds.length == 1) {
+      _primaryPointerId = e.pointer;
+      _primaryDownPos   = e.localPosition;
+      _primaryDownTime  = DateTime.now();
+
+      if (_tool.isDrawing) {
+        setState(() => _isActivelyDrawing = true);
+        _handlePanStart(e.localPosition, page, scale);
+      }
+    } else {
+      // إصبع ثاني → إلغاء الرسم، pdfrx يتولى pinch-zoom
+      if (_isActivelyDrawing) {
+        setState(() {
+          _currentPath = null;
+          _isActivelyDrawing = false;
+        });
+      }
+    }
+  }
+
+  void _onOverlayPointerMove(PointerMoveEvent e, PdfPage page, double scale) {
+    if (_activePointerIds.length != 1) return;
+    if (e.pointer != _primaryPointerId) return;
+    if (!_isActivelyDrawing) return;
+    if (_currentPath == null) return;
+    if (_selectedHighlightId != null) return;
+
+    _handlePanUpdate(e.localPosition, page, scale);
+  }
+
+  void _onOverlayPointerUp(PointerUpEvent e, PdfPage page, PdfItem pdf, double scale) {
+    final wasPrimary = (e.pointer == _primaryPointerId);
+
+    if (wasPrimary && _isActivelyDrawing && _currentPath != null) {
+      _handlePanEnd(pdf);
+    }
+
+    // كشف النقر يدوياً (بديل onTapUp في GestureDetector)
+    if (wasPrimary && _primaryDownPos != null && _primaryDownTime != null) {
+      final distance = (e.localPosition - _primaryDownPos!).distance;
+      final duration = DateTime.now().difference(_primaryDownTime!);
+
+      if (distance < 8.0 && duration.inMilliseconds < 400) {
+        _handleOverlayTap(e.localPosition, page, pdf, scale);
+      }
+    }
+
+    _activePointerIds.remove(e.pointer);
+    if (wasPrimary) {
+      setState(() => _isActivelyDrawing = false);
+      _primaryPointerId = null;
+      _primaryDownPos   = null;
+      _primaryDownTime  = null;
+    }
+  }
+
+  void _onOverlayPointerCancel(PointerCancelEvent e) {
+    _activePointerIds.remove(e.pointer);
+
+    if (e.pointer == _primaryPointerId) {
+      if (_isActivelyDrawing && _currentPath != null) {
+        setState(() => _currentPath = null);
+      }
+      setState(() => _isActivelyDrawing = false);
+      _primaryPointerId = null;
+      _primaryDownPos   = null;
+      _primaryDownTime  = null;
+    }
+  }
+
+  void _handleOverlayTap(Offset pos, PdfPage page, PdfItem pdf, double scale) {
+    final appProvider = context.read<AppProvider>();
+    if (appProvider.activeEditingCommentId != null) return;
+
+    if (_tool == ToolType.cursor || _tool == ToolType.select) {
+      _handleSelectionTap(pos, page, pdf, scale);
+    } else if (_tool == ToolType.text) {
+      _addTextAt(pos / scale, page.pageNumber);
+    } else if (_tool.isDrawing) {
+      if (_selectedHighlightId != null) {
+        setState(() => _selectedHighlightId = null);
+      }
+    }
   }
 }
