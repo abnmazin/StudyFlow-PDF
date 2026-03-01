@@ -96,12 +96,6 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   Color _borderColor = const Color(0xFF000000); // Black border by default
   Color _textBgColor = Colors.transparent;
   Color _shapeFillColor = Colors.transparent;
-  // Raw pointer tracking (replaces old _activePointerCount)
-  final Set<int> _activePointerIds = {};
-  int?      _primaryPointerId;
-  Offset?   _primaryDownPos;
-  DateTime? _primaryDownTime;
-  bool      _isActivelyDrawing = false;
   // Current drawing state
   List<Offset>? _currentPath;
   int _currentPage = -1;
@@ -801,9 +795,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
       // mouse wheel while a drawing tool is active, so pdfrx handles scroll.
       // Pointer counting is handled in each page's overlay Listener instead.
       onPointerSignal: (pointerSignal) {
-        if (pointerSignal is PointerScrollEvent &&
-            _tool != ToolType.cursor &&
-            _tool != ToolType.select) {
+        if (pointerSignal is PointerScrollEvent && _tool != ToolType.cursor) {
           setState(() => _tool = ToolType.cursor);
         }
       },
@@ -818,9 +810,6 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
           maxScale: 4.0,
           minScale: 0.5,
           scrollByMouseWheel: 0.8,
-          // ── Disable pdfrx pan/scale while user is actively drawing ──
-          panEnabled: !_isActivelyDrawing,
-          scaleEnabled: !_isActivelyDrawing,
           pageOverlaysBuilder: (context, pageRect, page) {
             return [
               RepaintBoundary(
