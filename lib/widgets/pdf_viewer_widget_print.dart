@@ -1,6 +1,6 @@
 ﻿part of 'pdf_viewer_widget_w.dart';
 
-//  PRINT / RELOAD LIFECYCLE EXTENSION 
+//  PRINT / RELOAD LIFECYCLE EXTENSION
 // Extension on _PDFViewerWidgetState for print orchestration and hard reload.
 // Has full access to mutable state fields and setState via 	his.
 
@@ -26,7 +26,7 @@ extension _PDFViewerWidgetStatePrint on _PDFViewerWidgetState {
             const CircularProgressIndicator(),
             const SizedBox(height: 16),
             Text(
-              'Ø¬Ø§Ø±ÙŠ ØªØ¬Ù‡ÙŠØ² Ø§Ù„ØµÙØ­Ø§Øª Ù„Ù„Ø·Ø¨Ø§Ø¹Ø©...',
+              'جارٍ تجهيز الصفحات للطباعة...',
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w500,
@@ -35,7 +35,7 @@ extension _PDFViewerWidgetStatePrint on _PDFViewerWidgetState {
             ),
             const SizedBox(height: 8),
             Text(
-              'Ø³ÙŠØªÙ… Ø§Ø³ØªØ¦Ù†Ø§Ù Ø§Ù„Ø¹Ø±Ø¶ ØªÙ„Ù‚Ø§Ø¦ÙŠØ§Ù‹ Ø¨Ø¹Ø¯ Ø§Ù„Ø·Ø¨Ø§Ø¹Ø©',
+              'سيتم استئناف العرض تلقائيًا بعد الطباعة',
               style: TextStyle(fontSize: 12, color: Colors.grey[600]),
             ),
           ],
@@ -65,7 +65,7 @@ extension _PDFViewerWidgetStatePrint on _PDFViewerWidgetState {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Print error: $e')));
+        ).showSnackBar(SnackBar(content: Text('خطأ في الطباعة: $e')));
       }
     } finally {
       if (mounted) {

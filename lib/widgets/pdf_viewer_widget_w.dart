@@ -50,11 +50,6 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   bool _isSettingsMode = false;
   int _rightPanelTabIndex = 0; // 0: Tools, 1: AI, 2: Translate
 
-  // â”€â”€â”€ Smart Dynamic Threshold Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  static const double _kSpeedThreshold = 0.1; // pages per millisecond
-  static const int _kSlowThreshold = 25; // trim every 25 pages when slow
-  static const int _kFastThreshold = 15; // trim every 15 pages when fast
-
   ToolType _tool =
       ToolType.cursor; // 'cursor', 'highlight', 'eraser', 'pen', 'comment'
 
@@ -63,6 +58,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   Color _highlightColor = const Color(0xFFFFFF00);
   Color _shapeStrokeColor = const Color(0xFF000000); // arrow/rect/circle
   Color _textColor = const Color(0xFF000000);
+  String _textFontFamily = 'Segoe UI';
 
   /// Current stroke/main color for whatever tool is active.
   Color get _currentColor {
@@ -74,6 +70,19 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
       case ToolType.text:
         return _textColor;
       default: // arrow, rectangle, circle, cursor
+        return _shapeStrokeColor;
+    }
+  }
+
+  Color _colorForTool(ToolType tool) {
+    switch (tool) {
+      case ToolType.pen:
+        return _penColor;
+      case ToolType.highlight:
+        return _highlightColor;
+      case ToolType.text:
+        return _textColor;
+      default:
         return _shapeStrokeColor;
     }
   }
@@ -101,9 +110,15 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   int _currentPage = -1;
   bool _isProcessing = false; // Processing lock
   Timer? _scrollDebounce;
+  Timer? _scrollMaintenanceDebounce;
+  Timer? _autoFitDebounce;
   int _lastTimestamp = 0;
   int _lastReportedPage = 0;
   int _pagesSinceLastFlush = 0;
+  int _lastMemoryTrimAt = 0;
+  Size? _lastPdfViewSize;
+  bool _isAutoFitting = false;
+  bool _autoFitEnabled = true;
 
   String? _editingCommentId;
 
@@ -116,8 +131,59 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   PdfTextSearcher? _textSearcher;
   bool _isSearchVisible = false;
   PdfTextSelection? _textSelection;
-  bool _suppressTextSelection = false; // Suppress zombie refire after clearing selection
+  bool _isTextSelectionMenuVisible = false;
+  bool _suppressTextSelection =
+      false; // Suppress zombie refire after clearing selection
+  int _selectionChangeToken = 0;
+  DateTime _ignoreSelectionEventsUntil = DateTime.fromMillisecondsSinceEpoch(0);
   String? _selectedHighlightId; // NEW: Track selected shape
+  Offset? _shapeTransformStart;
+  Rect? _shapeTransformInitialBounds;
+  List<Offset>? _shapeTransformOriginalPath;
+  bool _isMovingSelectedShape = false;
+  int? _activeResizeHandleIndex;
+  MouseCursor _shapeHoverCursor = SystemMouseCursors.basic;
+
+  Future<void> _handleTextSelectionChange(PdfTextSelection? selection) async {
+    if (!mounted) return;
+
+    // Null selection always clears UI immediately.
+    if (selection == null) {
+      setState(() {
+        _textSelection = null;
+        _isTextSelectionMenuVisible = false;
+      });
+      return;
+    }
+
+    if (_suppressTextSelection) return;
+    if (DateTime.now().isBefore(_ignoreSelectionEventsUntil)) return;
+
+    final token = ++_selectionChangeToken;
+
+    try {
+      final ranges = await selection.getSelectedTextRanges();
+      if (!mounted) return;
+      if (token != _selectionChangeToken) return;
+      if (_suppressTextSelection) return;
+      if (DateTime.now().isBefore(_ignoreSelectionEventsUntil)) return;
+
+      if (ranges.isEmpty) {
+        setState(() {
+          _textSelection = null;
+          _isTextSelectionMenuVisible = false;
+        });
+        return;
+      }
+
+      setState(() {
+        _textSelection = selection;
+        _isTextSelectionMenuVisible = true;
+      });
+    } catch (_) {
+      // Ignore transient selection failures from underlying PDF engine.
+    }
+  }
 
   @override
   void initState() {
@@ -137,6 +203,8 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   void dispose() {
     _pdfController.removeListener(_onControllerChanged);
     _scrollDebounce?.cancel();
+    _scrollMaintenanceDebounce?.cancel();
+    _autoFitDebounce?.cancel();
     _searchFocusNode.dispose(); // Dispose node
     _textSearcher?.dispose();
     super.dispose();
@@ -157,7 +225,9 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
 
     // Check if search box is visible and might have focus
     if (_isSearchVisible) {
-      debugPrint('âŒ¨ï¸  Undo: Search box active, proceeding with global undo');
+      debugPrint(
+        'âŒ¨ï¸  Undo: Search box active, proceeding with global undo',
+      );
     }
 
     // Execute global undo
@@ -175,12 +245,67 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     app.redoLastAction();
   }
 
+  void _activateTool(ToolType nextTool) {
+    setState(() {
+      _tool = nextTool;
+      _isSettingsMode = false;
+
+      // Leaving selection mode should clear selected shape visuals/state.
+      if (nextTool != ToolType.select) {
+        _selectedHighlightId = null;
+        _endShapeTransform();
+        _shapeHoverCursor = SystemMouseCursors.basic;
+      }
+    });
+  }
+
+  void _maybeTrimWindowsMemory({bool force = false, int minIntervalMs = 1800}) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (!force && now - _lastMemoryTrimAt < minIntervalMs) {
+      return;
+    }
+    _lastMemoryTrimAt = now;
+    _trimWindowsMemory();
+  }
+
+  void _schedulePostScrollMaintenance() {
+    _scrollMaintenanceDebounce?.cancel();
+    _scrollMaintenanceDebounce = Timer(const Duration(milliseconds: 900), () {
+      if (!mounted) return;
+
+      try {
+        // ignore: avoid_dynamic_calls
+        (_pdfController as dynamic).clearImageCache?.call();
+      } catch (_) {}
+
+      // Keep this conservative to prioritize smoothness over aggressive trimming.
+      _maybeTrimWindowsMemory(minIntervalMs: 6000);
+      _pagesSinceLastFlush = 0;
+    });
+  }
+
+  ToolType? _selectedAnnotationTool(PdfItem? pdf) {
+    if (_selectedHighlightId == null || pdf == null) return null;
+    final selected = pdf.highlights
+        .where((h) => h.id == _selectedHighlightId)
+        .firstOrNull;
+    if (selected == null) return null;
+    return _highlightTypeToToolType(selected.type);
+  }
+
+  ToolType _panelTool(PdfItem? pdf) {
+    if (_tool != ToolType.select) return _tool;
+    return _selectedAnnotationTool(pdf) ?? _tool;
+  }
+
   @override
   Widget build(BuildContext context) {
     // PERFORMANCE: Use read instead of watch to prevent full rebuilds
     // Only rebuild when activePdf changes using Selector
     final app = context.read<AppProvider>();
     final pdf = context.select<AppProvider, PdfItem?>((app) => app.activePdf);
+    final selectedAnnotationTool = _selectedAnnotationTool(pdf);
+    final panelTool = _panelTool(pdf);
     final isDarkMode = context.select<AppProvider, bool>(
       (app) => app.isDarkMode,
     );
@@ -204,6 +329,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
         _textSearcher = null;
         _isSearchVisible = false;
         _textSelection = null;
+        _isTextSelectionMenuVisible = false;
       }
     }
 
@@ -212,35 +338,17 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
           ? <ShortcutActivator, VoidCallback>{}
           : {
               const SingleActivator(LogicalKeyboardKey.keyH): () =>
-                  setState(() {
-                    _tool = ToolType.highlight;
-                    _isSettingsMode = false;
-                  }),
+                  _activateTool(ToolType.highlight),
               const SingleActivator(LogicalKeyboardKey.keyE): () =>
-                  setState(() {
-                    _tool = ToolType.eraser;
-                    _isSettingsMode = false;
-                  }),
+                  _activateTool(ToolType.eraser),
               const SingleActivator(LogicalKeyboardKey.keyP): () =>
-                  setState(() {
-                    _tool = ToolType.pen;
-                    _isSettingsMode = false;
-                  }),
+                  _activateTool(ToolType.pen),
               const SingleActivator(LogicalKeyboardKey.keyT): () =>
-                  setState(() {
-                    _tool = ToolType.text;
-                    _isSettingsMode = false;
-                  }),
+                  _activateTool(ToolType.text),
               const SingleActivator(LogicalKeyboardKey.escape): () =>
-                  setState(() {
-                    _tool = ToolType.cursor;
-                    _isSettingsMode = false;
-                  }),
+                  _activateTool(ToolType.cursor),
               const SingleActivator(LogicalKeyboardKey.keyV): () =>
-                  setState(() {
-                    _tool = ToolType.cursor;
-                    _isSettingsMode = false;
-                  }),
+                  _activateTool(ToolType.cursor),
               const SingleActivator(
                 LogicalKeyboardKey.keyP,
                 control: true,
@@ -321,6 +429,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
             // 1. Toolbar (Top)
             StudyFlowToolbar(
               activeTool: _tool,
+              selectedAnnotationTool: selectedAnnotationTool,
               isRightPanelOpen: _isRightPanelOpen,
               isShapesPaletteVisible: _isShapesPaletteVisible,
               isDarkMode: isDarkMode,
@@ -330,21 +439,10 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
               onToggleShapesPalette: () {
                 setState(() {
                   _isShapesPaletteVisible = !_isShapesPaletteVisible;
-                  // When opening the palette, deselect any active shape tool so
-                  // the toolbar button doesn't remain falsely highlighted.
-                  if (_isShapesPaletteVisible &&
-                      (_tool == ToolType.arrow ||
-                          _tool == ToolType.rectangle ||
-                          _tool == ToolType.circle)) {
-                    _tool = ToolType.cursor;
-                  }
                 });
               },
               onToolChanged: (t) {
-                setState(() {
-                  _tool = t;
-                  _isSettingsMode = false;
-                });
+                _activateTool(t);
               },
               onToggleRightPanel: () {
                 setState(() => _isRightPanelOpen = !_isRightPanelOpen);
@@ -425,7 +523,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                       child: TextField(
                                         autofocus: true,
                                         decoration: const InputDecoration(
-                                          hintText: 'Find...',
+                                          hintText: 'بحث...',
                                           border: InputBorder.none,
                                           isDense: true,
                                         ),
@@ -438,13 +536,13 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                       icon: const Icon(LucideIcons.chevronUp),
                                       onPressed: () =>
                                           _textSearcher?.goToPrevMatch(),
-                                      tooltip: 'Previous',
+                                      tooltip: 'السابق',
                                     ),
                                     IconButton(
                                       icon: const Icon(LucideIcons.chevronDown),
                                       onPressed: () =>
                                           _textSearcher?.goToNextMatch(),
-                                      tooltip: 'Next',
+                                      tooltip: 'التالي',
                                     ),
                                     IconButton(
                                       icon: const Icon(LucideIcons.x),
@@ -454,7 +552,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                           () => _isSearchVisible = false,
                                         );
                                       },
-                                      tooltip: 'Close',
+                                      tooltip: 'إغلاق',
                                     ),
                                   ],
                                 ),
@@ -503,7 +601,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       IconButton(
-                                        tooltip: 'Rectangle',
+                                        tooltip: 'مستطيل',
                                         icon: const Icon(LucideIcons.square),
                                         color: _tool == ToolType.rectangle
                                             ? const Color(0xFF3B82F6)
@@ -513,12 +611,11 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                         onPressed: () {
                                           setState(() {
                                             _tool = ToolType.rectangle;
-
                                           });
                                         },
                                       ),
                                       IconButton(
-                                        tooltip: 'Circle',
+                                        tooltip: 'دائرة',
                                         icon: const Icon(LucideIcons.circle),
                                         color: _tool == ToolType.circle
                                             ? const Color(0xFF3B82F6)
@@ -532,7 +629,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                         },
                                       ),
                                       IconButton(
-                                        tooltip: 'Arrow',
+                                        tooltip: 'سهم',
                                         icon: const Icon(
                                           LucideIcons.arrowUpRight,
                                         ),
@@ -555,108 +652,89 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                           ),
 
                         // Text Selection Menu
-                        if (_textSelection != null)
+                        if (_isTextSelectionMenuVisible &&
+                            _textSelection != null)
                           Positioned(
                             bottom: 32,
                             left: 0,
                             right: 0,
                             child: GestureDetector(
                               behavior: HitTestBehavior.opaque,
-                              onTap: () {}, // Absorb taps — stop bleed-through to pdfrx
+                              onTap:
+                                  () {}, // Absorb taps — stop bleed-through to pdfrx
                               child: Center(
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(12),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withValues(
-                                        alpha: 0.1,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(12),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(
+                                          alpha: 0.1,
+                                        ),
+                                        blurRadius: 10,
+                                        offset: const Offset(0, 4),
                                       ),
-                                      blurRadius: 10,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
-                                ),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 8,
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    ...[
-                                      const Color(0xFFFEF08A), // Yellow
-                                      const Color(0xFFBBF7D0), // Green
-                                      const Color(0xFFBFDBFE), // Blue
-                                      const Color(0xFFFBCFE8), // Pink
-                                      const Color(0xFFDDD6FE), // Purple
-                                    ].map(
-                                      (c) => GestureDetector(
-                                        onTap: () => _addTextHighlight(c),
-                                        child: Container(
-                                          width: 24,
-                                          height: 24,
-                                          margin: const EdgeInsets.only(
-                                            right: 12,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: c,
-                                            shape: BoxShape.circle,
-                                            border: Border.all(
-                                              color: const Color(0xFFE2E8F0),
-                                              width: 1,
+                                    ],
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 8,
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      ...[
+                                        const Color(0xFFFEF08A), // Yellow
+                                        const Color(0xFFBBF7D0), // Green
+                                        const Color(0xFFBFDBFE), // Blue
+                                        const Color(0xFFFBCFE8), // Pink
+                                        const Color(0xFFDDD6FE), // Purple
+                                      ].map(
+                                        (c) => GestureDetector(
+                                          onTap: () => _addTextHighlight(c),
+                                          child: Container(
+                                            width: 24,
+                                            height: 24,
+                                            margin: const EdgeInsets.only(
+                                              right: 12,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: c,
+                                              shape: BoxShape.circle,
+                                              border: Border.all(
+                                                color: const Color(0xFFE2E8F0),
+                                                width: 1,
+                                              ),
                                             ),
                                           ),
                                         ),
                                       ),
-                                    ),
-                                    Container(
-                                      width: 1,
-                                      height: 24,
-                                      color: const Color(0xFFE2E8F0),
-                                      margin: const EdgeInsets.only(right: 8),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(LucideIcons.x, size: 20),
-                                      onPressed: () {
-                                        final sel = _textSelection;
-                                        if (mounted) {
-                                          setState(() {
-                                            _textSelection = null;
-                                            _suppressTextSelection = true;
-                                          });
-                                        }
-                                        if (sel is PdfTextSelectionDelegate) {
-                                          sel.clearTextSelection(); // fire-and-forget
-                                        }
-                                        // Lower flag after frame + brief delay so
-                                        // pdfrx state machine has fully settled
-                                        WidgetsBinding.instance
-                                            .addPostFrameCallback((_) {
-                                          Future.delayed(
-                                            const Duration(milliseconds: 50),
-                                            () {
-                                              if (mounted) {
-                                                setState(() =>
-                                                    _suppressTextSelection =
-                                                        false);
-                                              }
-                                            },
-                                          );
-                                        });
-                                      },
-                                      tooltip: 'Clear Selection',
-                                      color: const Color(0xFF64748B),
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(
-                                        minWidth: 32,
-                                        minHeight: 32,
+                                      Container(
+                                        width: 1,
+                                        height: 24,
+                                        color: const Color(0xFFE2E8F0),
+                                        margin: const EdgeInsets.only(right: 8),
                                       ),
-                                    ),
-                                  ],
+                                      IconButton(
+                                        icon: const Icon(
+                                          LucideIcons.x,
+                                          size: 20,
+                                        ),
+                                        onPressed: () {
+                                          _clearCurrentTextSelection();
+                                        },
+                                        tooltip: 'مسح التحديد',
+                                        color: const Color(0xFF64748B),
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(
+                                          minWidth: 32,
+                                          minHeight: 32,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
                               ),
                             ),
                           ),
@@ -720,24 +798,34 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                   if (_isRightPanelOpen)
                     StudyFlowRightPanel(
                       isSettingsMode: _isSettingsMode,
-                      activeTool: _tool,
-                      activeColor: _currentColor,
-                      strokeWidth: _currentStrokeWidth,
+                      activeTool: panelTool,
+                      activeColor: _colorForTool(panelTool),
+                      strokeWidth: _toolStrokeWidths[panelTool] ?? 2.0,
                       fontSize: _fontSize,
+                      fontFamily: _textFontFamily,
+                      fontOptions: const [
+                        'Segoe UI',
+                        'Tahoma',
+                        'Arial',
+                        'Noto Naskh Arabic',
+                        'Noto Sans Arabic',
+                        'Amiri',
+                      ],
                       isBold: _isBold,
                       activeTabIndex: _rightPanelTabIndex,
                       isDarkMode: isDarkMode,
                       activePdf: pdf,
                       pdfController: _pdfController,
                       selectedHighlightId: _selectedHighlightId,
-                      onToolChanged: (t) => setState(() {
-                        _tool = t;
-                        _isSettingsMode = false;
-                      }),
+                      onToolChanged: (t) => _activateTool(t),
                       onColorChanged: _onColorChanged,
                       onStrokeWidthChanged: _onStrokeWidthChanged,
                       onFontSizeChanged: (v) {
                         setState(() => _fontSize = v);
+                        if (_tool == ToolType.text) _updateCurrentEditingText();
+                      },
+                      onFontFamilyChanged: (family) {
+                        setState(() => _textFontFamily = family);
                         if (_tool == ToolType.text) _updateCurrentEditingText();
                       },
                       onBoldChanged: (v) {
@@ -751,7 +839,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                       },
                       showBorder: _showBorder,
                       borderColor: _borderColor,
-                      bgColor: _tool == ToolType.text
+                      bgColor: panelTool == ToolType.text
                           ? _textBgColor
                           : _shapeFillColor,
                       onShowBorderChanged: (v) {
@@ -791,11 +879,22 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
 
   Widget _buildPdfViewerCore(PdfItem pdf) {
     return Listener(
-      // onPointerSignal: auto-switch to Hand tool when the user scrolls with
-      // mouse wheel while a drawing tool is active, so pdfrx handles scroll.
-      // Pointer counting is handled in each page's overlay Listener instead.
+      // Auto-switch to Hand tool when the user scrolls while a drawing tool
+      // is active, so pdfrx handles navigation naturally.
       onPointerSignal: (pointerSignal) {
         if (pointerSignal is PointerScrollEvent && _tool != ToolType.cursor) {
+          setState(() => _tool = ToolType.cursor);
+        }
+      },
+      // Windows/macOS touchpads emit pan/zoom pointer events for two-finger
+      // scrolling. Handle them the same way as mouse wheel scrolling.
+      onPointerPanZoomStart: (_) {
+        if (_tool != ToolType.cursor) {
+          setState(() => _tool = ToolType.cursor);
+        }
+      },
+      onPointerPanZoomUpdate: (_) {
+        if (_tool != ToolType.cursor) {
           setState(() => _tool = ToolType.cursor);
         }
       },
@@ -823,11 +922,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
               _editingCommentId == null && !_isSearchVisible,
           textSelectionParams: PdfTextSelectionParams(
             onTextSelectionChange: (selection) {
-              if (!mounted) return;
-              if (_suppressTextSelection) return;
-              setState(() {
-                _textSelection = selection;
-              });
+              _handleTextSelectionChange(selection);
             },
           ),
           onViewerReady: (document, controller) {
@@ -837,7 +932,21 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                 _textSearcher ??= PdfTextSearcher(_pdfController)
                   ..addListener(_onControllerChanged);
               });
+              _requestAutoFit(
+                delay: const Duration(milliseconds: 120),
+                force: true,
+              );
             }
+          },
+          onViewSizeChanged: (viewSize, oldViewSize, controller) {
+            _lastPdfViewSize = viewSize;
+            if (!_autoFitEnabled || oldViewSize == null) return;
+
+            final widthDiff = (viewSize.width - oldViewSize.width).abs();
+            final heightDiff = (viewSize.height - oldViewSize.height).abs();
+            if (widthDiff < 1 && heightDiff < 1) return;
+
+            _requestAutoFit();
           },
           onPageChanged: (page) {
             final now = DateTime.now().millisecondsSinceEpoch;
@@ -847,25 +956,6 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
 
             if (pagesPassed > 0 && timeDiff > 0) {
               _pagesSinceLastFlush += pagesPassed;
-
-              final scrollSpeed = pagesPassed / timeDiff;
-              final dynamicThreshold = scrollSpeed > _kSpeedThreshold
-                  ? _kFastThreshold
-                  : _kSlowThreshold;
-
-              if (_pagesSinceLastFlush >= dynamicThreshold) {
-                try {
-                  // ignore: avoid_dynamic_calls
-                  (_pdfController as dynamic).clearImageCache?.call();
-                } catch (_) {}
-
-                _trimWindowsMemory();
-                _pagesSinceLastFlush = 0;
-                debugPrint(
-                  'ðŸ§  Smart trim | speed: ${scrollSpeed.toStringAsFixed(4)} pages/ms'
-                  ' | threshold: $dynamicThreshold',
-                );
-              }
             }
 
             _lastTimestamp = now;
@@ -879,20 +969,12 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
               if (mounted) {
                 context.read<AppProvider>().updatePdfScroll(
                   pdf.id,
-                  pageNumber: page,
+                  pageNumber: currentPage,
                 );
-                setState(() {});
-
-                Future.delayed(const Duration(milliseconds: 100), () {
-                  try {
-                    // ignore: avoid_dynamic_calls
-                    (_pdfController as dynamic).clearImageCache?.call();
-                  } catch (_) {}
-                  _trimWindowsMemory();
-                  _pagesSinceLastFlush = 0;
-                });
               }
             });
+
+            _schedulePostScrollMaintenance();
           },
         ),
         initialPageNumber: pdf.lastPage ?? 1,

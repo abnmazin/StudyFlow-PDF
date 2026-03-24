@@ -104,6 +104,7 @@ class PdfComment {
   final double fontSize;
   final bool isBold;
   final bool isLatex; // NEW: LaTeX rendering mode flag
+  final String fontFamily;
 
   // Border & Background
   final bool showBorder; // toggle border on/off
@@ -120,6 +121,7 @@ class PdfComment {
     this.fontSize = 14.0,
     this.isBold = false,
     this.isLatex = false,
+    this.fontFamily = 'Segoe UI',
     this.showBorder = true,
     this.borderColor = const Color(0xFF000000),  // Black border default
     this.bgColor = const Color(0xFFFEF3C7),  // Light yellow background default
@@ -136,6 +138,7 @@ class PdfComment {
     'fontSize': fontSize,
     'isBold': isBold,
     'isLatex': isLatex, // NEW
+    'fontFamily': fontFamily,
     'showBorder': showBorder,
     'borderColor': borderColor.value,
     'bgColor': bgColor.value,
@@ -152,6 +155,7 @@ class PdfComment {
       fontSize: json['fontSize']?.toDouble() ?? 14.0,
       isBold: json['isBold'] ?? false,
       isLatex: json['isLatex'] ?? false,
+      fontFamily: json['fontFamily'] ?? 'Segoe UI',
       showBorder: json['showBorder'] ?? true,
       borderColor: Color(json['borderColor'] ?? 0xFF000000),  // Black border default
       bgColor: Color(json['bgColor'] ?? 0xFFFEF3C7),  // Light yellow background default
@@ -167,6 +171,7 @@ class PdfComment {
     double? fontSize,
     bool? isBold,
     bool? isLatex, // NEW
+    String? fontFamily,
     bool? showBorder,
     Color? borderColor,
     Color? bgColor,
@@ -181,6 +186,7 @@ class PdfComment {
       fontSize: fontSize ?? this.fontSize,
       isBold: isBold ?? this.isBold,
       isLatex: isLatex ?? this.isLatex, // NEW
+      fontFamily: fontFamily ?? this.fontFamily,
       showBorder: showBorder ?? this.showBorder,
       borderColor: borderColor ?? this.borderColor,
       bgColor: bgColor ?? this.bgColor,

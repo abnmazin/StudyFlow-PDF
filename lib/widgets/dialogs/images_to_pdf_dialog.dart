@@ -14,7 +14,9 @@ class ImagesToPdfDialog extends StatefulWidget {
 class _ImagesToPdfDialogState extends State<ImagesToPdfDialog> {
   final List<File> _selectedImages = [];
   bool _isProcessing = false;
-  bool _fitToPage = true;
+  bool _fitToPage = false;
+  double _jpegQuality = 78;
+  int _maxImageDimension = 0;
 
   Future<void> _pickImages() async {
     final result = await FilePicker.platform.pickFiles(
@@ -38,14 +40,14 @@ class _ImagesToPdfDialogState extends State<ImagesToPdfDialog> {
   Future<void> _convertImages() async {
     if (_selectedImages.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select at least one image.')),
+        const SnackBar(content: Text('يرجى اختيار صورة واحدة على الأقل.')),
       );
       return;
     }
 
     // Pick save location
     final String? outputPath = await FilePicker.platform.saveFile(
-      dialogTitle: 'Save PDF',
+      dialogTitle: 'حفظ PDF',
       fileName: 'images_to_pdf.pdf',
       type: FileType.custom,
       allowedExtensions: ['pdf'],
@@ -60,17 +62,17 @@ class _ImagesToPdfDialogState extends State<ImagesToPdfDialog> {
         _selectedImages.map((f) => f.path).toList(),
         outputPath,
         fitToPage: _fitToPage,
+        jpegQuality: _jpegQuality.round(),
+        maxImageDimension: _maxImageDimension,
       );
 
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'Images converted to PDF successfully at $outputPath',
-            ),
+            content: Text('تم تحويل الصور إلى PDF بنجاح في $outputPath'),
             action: SnackBarAction(
-              label: 'Open',
+              label: 'فتح',
               onPressed: () {
                 // TODO: Open the file
               },
@@ -82,7 +84,7 @@ class _ImagesToPdfDialogState extends State<ImagesToPdfDialog> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Error converting images: $e')));
+        ).showSnackBar(SnackBar(content: Text('خطأ أثناء تحويل الصور: $e')));
       }
     } finally {
       if (mounted) setState(() => _isProcessing = false);
@@ -108,7 +110,7 @@ class _ImagesToPdfDialogState extends State<ImagesToPdfDialog> {
                 ), // Green
                 const SizedBox(width: 12),
                 const Text(
-                  'Images to PDF',
+                  'تحويل الصور إلى PDF',
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
                 const Spacer(),
@@ -120,7 +122,7 @@ class _ImagesToPdfDialogState extends State<ImagesToPdfDialog> {
             ),
             const SizedBox(height: 16),
             const Text(
-              'Select images to convert. They will be added as pages in the PDF.',
+              'اختر الصور لتحويلها، وستُضاف كصفحات داخل ملف PDF.',
               style: TextStyle(color: Colors.grey),
             ),
             const SizedBox(height: 16),
@@ -133,7 +135,55 @@ class _ImagesToPdfDialogState extends State<ImagesToPdfDialog> {
                   onChanged: (val) => setState(() => _fitToPage = val),
                   activeColor: const Color(0xFF10B981),
                 ),
-                const Text('Fit images to A4 page'),
+                const Text('ملاءمة الصور مع صفحة A4 (إيقاف = الحجم الأصلي)'),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const SizedBox(width: 120, child: Text('جودة JPEG')),
+                Expanded(
+                  child: Slider(
+                    value: _jpegQuality,
+                    min: 40,
+                    max: 95,
+                    divisions: 11,
+                    label: _jpegQuality.round().toString(),
+                    onChanged: (val) => setState(() => _jpegQuality = val),
+                  ),
+                ),
+                SizedBox(
+                  width: 42,
+                  child: Text(
+                    '${_jpegQuality.round()}',
+                    textAlign: TextAlign.right,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const SizedBox(width: 120, child: Text('أقصى ضلع')),
+                DropdownButton<int>(
+                  value: _maxImageDimension,
+                  items: const [
+                    DropdownMenuItem(
+                      value: 0,
+                      child: Text('أصلي (بدون تغيير حجم)'),
+                    ),
+                    DropdownMenuItem(value: 1280, child: Text('1280 px')),
+                    DropdownMenuItem(value: 1600, child: Text('1600 px')),
+                    DropdownMenuItem(value: 1920, child: Text('1920 px')),
+                    DropdownMenuItem(value: 2560, child: Text('2560 px')),
+                    DropdownMenuItem(value: 4096, child: Text('4096 px')),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) {
+                      setState(() => _maxImageDimension = val);
+                    }
+                  },
+                ),
               ],
             ),
             const SizedBox(height: 16),
@@ -158,14 +208,14 @@ class _ImagesToPdfDialogState extends State<ImagesToPdfDialog> {
                             ),
                             const SizedBox(height: 12),
                             Text(
-                              'No images selected',
+                              'لم يتم اختيار صور',
                               style: TextStyle(color: Colors.grey[600]),
                             ),
                             const SizedBox(height: 12),
                             OutlinedButton.icon(
                               onPressed: _pickImages,
                               icon: const Icon(LucideIcons.plus, size: 16),
-                              label: const Text('Add Images'),
+                              label: const Text('إضافة صور'),
                             ),
                           ],
                         ),
@@ -226,7 +276,7 @@ class _ImagesToPdfDialogState extends State<ImagesToPdfDialog> {
                 child: TextButton.icon(
                   onPressed: _pickImages,
                   icon: const Icon(LucideIcons.plus, size: 16),
-                  label: const Text('Add More Images'),
+                  label: const Text('إضافة صور أخرى'),
                 ),
               ),
 
@@ -236,7 +286,7 @@ class _ImagesToPdfDialogState extends State<ImagesToPdfDialog> {
               children: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel'),
+                  child: const Text('إلغاء'),
                 ),
                 const SizedBox(width: 12),
                 FilledButton.icon(
@@ -251,7 +301,7 @@ class _ImagesToPdfDialogState extends State<ImagesToPdfDialog> {
                           ),
                         )
                       : const Icon(LucideIcons.check),
-                  label: Text(_isProcessing ? 'Converting...' : 'Create PDF'),
+                  label: Text(_isProcessing ? 'جارٍ التحويل...' : 'إنشاء PDF'),
                   style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFF10B981), // Green
                   ),

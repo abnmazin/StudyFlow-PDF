@@ -51,38 +51,77 @@ extension _PDFViewerWidgetStateOverlay on _PDFViewerWidgetState {
           // ── 3. طبقة التفاعل — GestureDetector فقط عندما الأداة ليست cursor ──
           if (!ignoring)
             Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTapUp: (details) {
-                  final appProvider = context.read<AppProvider>();
-                  if (appProvider.activeEditingCommentId != null) return;
-
+              child: MouseRegion(
+                cursor: _tool == ToolType.select
+                    ? _shapeHoverCursor
+                    : SystemMouseCursors.basic,
+                onHover: (event) {
                   if (_tool == ToolType.select) {
-                    _handleSelectionTap(
-                        details.localPosition, page, pdf, scale);
-                  } else if (_tool == ToolType.text) {
-                    _addTextAt(details.localPosition / scale, page.pageNumber);
-                  } else {
-                    if (_selectedHighlightId != null) {
-                      setState(() => _selectedHighlightId = null);
+                    _updateShapeHoverCursor(
+                      event.localPosition / scale,
+                      pdf,
+                      page.pageNumber,
+                      scale,
+                    );
+                  }
+                },
+                onExit: (_) {
+                  if (_tool == ToolType.select) {
+                    _resetShapeHoverCursor();
+                  }
+                },
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTapUp: (details) {
+                    final appProvider = context.read<AppProvider>();
+                    if (appProvider.activeEditingCommentId != null) return;
+
+                    if (_tool == ToolType.text) {
+                      _addTextAt(details.localPosition / scale, page.pageNumber);
+                    } else if (_tool == ToolType.select) {
+                      _handleSelectionTap(
+                        details.localPosition,
+                        page,
+                        pdf,
+                        scale,
+                      );
+                    } else {
+                      if (_selectedHighlightId != null) {
+                        setState(() => _selectedHighlightId = null);
+                      }
                     }
-                  }
-                },
-                onPanStart: (details) {
-                  if (_tool.isDrawing) {
-                    _handlePanStart(details.localPosition, page, scale);
-                  }
-                },
-                onPanUpdate: (details) {
-                  if (_tool.isDrawing && _currentPath != null) {
-                    _handlePanUpdate(details.localPosition, page, scale);
-                  }
-                },
-                onPanEnd: (details) {
-                  if (_tool.isDrawing && _currentPath != null) {
-                    _handlePanEnd(pdf);
-                  }
-                },
+                  },
+                  onPanStart: (details) {
+                    if (_tool.isDrawing) {
+                      _handlePanStart(details.localPosition, page, scale);
+                    } else if (_tool == ToolType.select) {
+                      _beginShapeTransform(
+                        details.localPosition / scale,
+                        pdf,
+                        page.pageNumber,
+                        scale,
+                      );
+                    }
+                  },
+                  onPanUpdate: (details) {
+                    if (_tool.isDrawing && _currentPath != null) {
+                      _handlePanUpdate(details.localPosition, page, scale);
+                    } else if (_tool == ToolType.select) {
+                      _updateShapeTransform(
+                        details.localPosition / scale,
+                        pdf,
+                        page.pageNumber,
+                      );
+                    }
+                  },
+                  onPanEnd: (details) {
+                    if (_tool.isDrawing && _currentPath != null) {
+                      _handlePanEnd(pdf);
+                    } else if (_tool == ToolType.select) {
+                      _endShapeTransform();
+                    }
+                  },
+                ),
               ),
             ),
 
@@ -98,6 +137,7 @@ extension _PDFViewerWidgetStateOverlay on _PDFViewerWidgetState {
                 fontSize: c.fontSize,
                 isBold: c.isBold,
                 isLatex: c.isLatex,
+                fontFamily: c.fontFamily,
                 showBorder: c.showBorder,
                 borderColor: c.borderColor,
                 bgColor: c.bgColor,
@@ -127,6 +167,7 @@ extension _PDFViewerWidgetStateOverlay on _PDFViewerWidgetState {
                         _fontSize = styles['fontSize'];
                         _isBold = styles['isBold'];
                         _isLatex = styles['isLatex'];
+                        _textFontFamily = styles['fontFamily'];
                         _showBorder = styles['showBorder'];
                         _borderColor = Color(styles['borderColor']);
                         _textBgColor = Color(styles['bgColor']);
@@ -138,7 +179,9 @@ extension _PDFViewerWidgetStateOverlay on _PDFViewerWidgetState {
                   if (mounted) setState(() {});
                 },
                 onDragEnd: (offset) {
-                  if (_tool == ToolType.text || _tool == ToolType.cursor) {
+                  if (_tool == ToolType.text ||
+                      _tool == ToolType.cursor ||
+                      _tool == ToolType.select) {
                     final newPos = c.position + offset / scale;
                     context.read<AppProvider>().updateComment(
                           pdf.id,

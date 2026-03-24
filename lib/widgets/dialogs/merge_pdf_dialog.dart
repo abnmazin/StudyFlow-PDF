@@ -40,7 +40,7 @@ class _MergePdfDialogState extends State<MergePdfDialog> {
     if (_selectedFiles.length < 2) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please select at least 2 PDF files to merge.'),
+          content: Text('يرجى اختيار ملفي PDF على الأقل لدمجهما.'),
         ),
       );
       return;
@@ -48,7 +48,7 @@ class _MergePdfDialogState extends State<MergePdfDialog> {
 
     // Pick save location
     final String? outputPath = await FilePicker.platform.saveFile(
-      dialogTitle: 'Save Merged PDF',
+      dialogTitle: 'حفظ ملف PDF المدمج',
       fileName: 'merged_document.pdf',
       type: FileType.custom,
       allowedExtensions: ['pdf'],
@@ -68,9 +68,9 @@ class _MergePdfDialogState extends State<MergePdfDialog> {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('PDFs merged successfully to $outputPath'),
+            content: Text('تم دمج ملفات PDF بنجاح في $outputPath'),
             action: SnackBarAction(
-              label: 'Open',
+              label: 'فتح',
               onPressed: () {
                 // TODO: Open the file using FileManagerService or platform channel
                 // For now, we just notify success
@@ -83,7 +83,7 @@ class _MergePdfDialogState extends State<MergePdfDialog> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Error merging PDFs: $e')));
+        ).showSnackBar(SnackBar(content: Text('خطأ أثناء دمج ملفات PDF: $e')));
       }
     } finally {
       if (mounted) setState(() => _isProcessing = false);
@@ -109,7 +109,7 @@ class _MergePdfDialogState extends State<MergePdfDialog> {
                 ), // Purple
                 const SizedBox(width: 12),
                 const Text(
-                  'Merge PDFs',
+                  'دمج ملفات PDF',
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
                 const Spacer(),
@@ -121,7 +121,7 @@ class _MergePdfDialogState extends State<MergePdfDialog> {
             ),
             const SizedBox(height: 16),
             const Text(
-              'Drag and drop to reorder files. The merged PDF will follow this order.',
+              'اسحب وأفلت لإعادة ترتيب الملفات. سيتم دمج PDF حسب هذا الترتيب.',
               style: TextStyle(color: Colors.grey),
             ),
             const SizedBox(height: 16),
@@ -146,14 +146,14 @@ class _MergePdfDialogState extends State<MergePdfDialog> {
                           ),
                           const SizedBox(height: 12),
                           Text(
-                            'No documents selected',
+                            'لم يتم اختيار أي مستند',
                             style: TextStyle(color: Colors.grey[600]),
                           ),
                           const SizedBox(height: 12),
                           OutlinedButton.icon(
                             onPressed: _pickFiles,
                             icon: const Icon(LucideIcons.plus, size: 16),
-                            label: const Text('Add PDFs'),
+                            label: const Text('إضافة ملفات PDF'),
                           ),
                         ],
                       ),
@@ -207,7 +207,7 @@ class _MergePdfDialogState extends State<MergePdfDialog> {
                 child: TextButton.icon(
                   onPressed: _pickFiles,
                   icon: const Icon(LucideIcons.plus, size: 16),
-                  label: const Text('Add More Files'),
+                  label: const Text('إضافة ملفات أخرى'),
                 ),
               ),
 
@@ -217,7 +217,7 @@ class _MergePdfDialogState extends State<MergePdfDialog> {
               children: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel'),
+                  child: const Text('إلغاء'),
                 ),
                 const SizedBox(width: 12),
                 FilledButton.icon(
@@ -232,7 +232,9 @@ class _MergePdfDialogState extends State<MergePdfDialog> {
                           ),
                         )
                       : const Icon(LucideIcons.check),
-                  label: Text(_isProcessing ? 'Merging...' : 'Merge Documents'),
+                  label: Text(
+                    _isProcessing ? 'جارٍ الدمج...' : 'دمج المستندات',
+                  ),
                   style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFF8B5CF6), // Purple
                   ),

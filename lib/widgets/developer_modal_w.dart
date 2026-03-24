@@ -69,6 +69,9 @@ class _DeveloperModalState extends State<DeveloperModal>
       return const SizedBox.shrink();
     }
 
+    final modalMaxHeight =
+        (MediaQuery.of(context).size.height - 40).clamp(320.0, 600.0) as double;
+
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
@@ -96,9 +99,9 @@ class _DeveloperModalState extends State<DeveloperModal>
                   scale: _scaleAnimation,
                   child: Container(
                     width: double.infinity,
-                    constraints: const BoxConstraints(
+                    constraints: BoxConstraints(
                       maxWidth: 400,
-                      maxHeight: 600,
+                      maxHeight: modalMaxHeight,
                     ),
                     margin: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
@@ -114,8 +117,13 @@ class _DeveloperModalState extends State<DeveloperModal>
                     ),
                     clipBehavior: Clip.hardEdge,
                     child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [_buildHeader(), _buildInfoList()],
+                      mainAxisSize: MainAxisSize.max,
+                      children: [
+                        _buildHeader(),
+                        Flexible(
+                          child: SingleChildScrollView(child: _buildInfoList()),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -129,7 +137,7 @@ class _DeveloperModalState extends State<DeveloperModal>
 
   Widget _buildHeader() {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
+      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
       width: double.infinity,
       decoration: const BoxDecoration(
         color: Color(0xFF0F172A), // Slate 900
@@ -188,15 +196,15 @@ class _DeveloperModalState extends State<DeveloperModal>
           _buildClickableRow(
             icon: LucideIcons.send,
             color: const Color(0xFF3B82F6), // Blue 500
-            label: 'Telegram',
-            value: '@fff_6',
-            onTap: () => _launchUrl('https://t.me/fff_6'),
+            label: 'تيليجرام',
+            value: '@FFFF_6',
+            onTap: () => _launchUrl('https://t.me/FFFF_6'),
           ),
           const SizedBox(height: 16),
           _buildClickableRow(
             icon: LucideIcons.tv,
             color: const Color(0xFF8B5CF6), // Violet 500
-            label: 'Channel',
+            label: 'القناة',
             value: '@AnyDesire',
             onTap: () => _launchUrl('https://t.me/AnyDesire'),
           ),
@@ -204,9 +212,17 @@ class _DeveloperModalState extends State<DeveloperModal>
           _buildClickableRow(
             icon: LucideIcons.phone,
             color: const Color(0xFF10B981), // Emerald 500
-            label: 'Phone',
+            label: 'الهاتف',
             value: '07710529693',
             onTap: () => _launchUrl('tel:07710529693'),
+          ),
+          const SizedBox(height: 16),
+          _buildClickableRow(
+            icon: LucideIcons.webcam,
+            color: const Color(0xFF10B981), // Emerald 500
+            label: 'الموقع الإلكتروني',
+            value: 'AbnMazin.engineer',
+            onTap: () => _launchUrl('https://AbnMazin.engineer'),
           ),
           const SizedBox(height: 32),
           SizedBox(

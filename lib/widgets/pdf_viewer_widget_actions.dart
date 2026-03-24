@@ -1,6 +1,6 @@
 ﻿part of 'pdf_viewer_widget_w.dart';
 
-//  UTILITY ACTIONS EXTENSION 
+//  UTILITY ACTIONS EXTENSION
 // All methods here are extension methods on _PDFViewerWidgetState.
 // Being in the same library (via `part of`) gives full access to:
 //    `this`   the state instance
@@ -8,7 +8,7 @@
 //    `_isProcessing`, `_pdfController`, etc.  library-private fields
 
 extension _PDFViewerWidgetStateActions on _PDFViewerWidgetState {
-  //  Page Operations 
+  //  Page Operations
 
   void _addPage(PdfItem pdf) {
     if (_isProcessing) return;
@@ -40,14 +40,14 @@ extension _PDFViewerWidgetStateActions on _PDFViewerWidgetState {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Page?'),
+        title: const Text('حذف الصفحة؟'),
         content: Text(
-          'Are you sure you want to delete page $pageToDelete? This cannot be undone.',
+          'هل أنت متأكد من حذف الصفحة $pageToDelete؟ لا يمكن التراجع عن هذا الإجراء.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: const Text('إلغاء'),
           ),
           TextButton(
             onPressed: () {
@@ -57,14 +57,14 @@ extension _PDFViewerWidgetStateActions on _PDFViewerWidgetState {
               // Page numbers in controller are 1-based, our API expects 0-based index
               context.read<AppProvider>().deletePage(pdf.id, pageToDelete - 1);
             },
-            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+            child: const Text('حذف', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
     );
   }
 
-  //  Bookmark 
+  //  Bookmark
 
   void _showAddBookmarkDialog(PdfItem pdf) {
     final controller = TextEditingController();
@@ -73,12 +73,12 @@ extension _PDFViewerWidgetStateActions on _PDFViewerWidgetState {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Add Bookmark'),
+        title: const Text('إضافة علامة مرجعية'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Page $currentPage',
+              'الصفحة $currentPage',
               style: const TextStyle(fontSize: 14, color: Color(0xFF64748B)),
             ),
             const SizedBox(height: 16),
@@ -86,7 +86,7 @@ extension _PDFViewerWidgetStateActions on _PDFViewerWidgetState {
               controller: controller,
               autofocus: true,
               decoration: const InputDecoration(
-                hintText: 'Bookmark name',
+                hintText: 'اسم العلامة المرجعية',
                 border: OutlineInputBorder(),
               ),
               onSubmitted: (_) {
@@ -105,7 +105,7 @@ extension _PDFViewerWidgetStateActions on _PDFViewerWidgetState {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
+            child: const Text('إلغاء'),
           ),
           TextButton(
             onPressed: () {
@@ -118,14 +118,14 @@ extension _PDFViewerWidgetStateActions on _PDFViewerWidgetState {
                 Navigator.of(ctx).pop();
               }
             },
-            child: const Text('Add'),
+            child: const Text('إضافة'),
           ),
         ],
       ),
     );
   }
 
-  //  Win32 Memory Trim 
+  //  Win32 Memory Trim
   // Calls EmptyWorkingSet via FFI to force Windows to release native heap pages
   // back to the OS. Safe to call from the main thread  it does NOT freeze the UI.
   void _trimWindowsMemory() {
@@ -148,16 +148,62 @@ extension _PDFViewerWidgetStateActions on _PDFViewerWidgetState {
     }
   }
 
-  //  PDF Relayout 
+  //  PDF Relayout
 
-  void _forcePdfRelayout() {
+  void _requestAutoFit({
+    Duration delay = const Duration(milliseconds: 180),
+    bool force = false,
+  }) {
+    if (!_autoFitEnabled && !force) return;
     if (!_pdfController.isReady) return;
-    final currentPage = _pdfController.pageNumber ?? 1;
-    // VIEWPORT ADAPTER: Wait 300ms for sidebar animation to complete
-    Future.delayed(const Duration(milliseconds: 300), () {
-      if (mounted && _pdfController.isReady) {
+
+    _autoFitDebounce?.cancel();
+    _autoFitDebounce = Timer(delay, () {
+      _applyAutoFit(force: force);
+    });
+  }
+
+  void _applyAutoFit({bool force = false}) {
+    if ((!_autoFitEnabled && !force) || !_pdfController.isReady || !mounted) {
+      return;
+    }
+    if (_isAutoFitting) return;
+
+    _isAutoFitting = true;
+    try {
+      final currentPage = _pdfController.pageNumber ?? 1;
+      final dynamic controller = _pdfController;
+
+      final dynamic matrix = controller.value;
+      final Size? viewSize = controller.viewSize as Size?;
+      final double? fitScale = (controller.alternativeFitScale as num?)
+          ?.toDouble();
+
+      if (matrix != null && viewSize != null && fitScale != null) {
+        final Size basisSize = _lastPdfViewSize ?? viewSize;
+        final Offset centerPosition = matrix.calcPosition(basisSize) as Offset;
+        final Matrix4 target =
+            controller.calcMatrixFor(
+                  centerPosition,
+                  zoom: fitScale,
+                  viewSize: viewSize,
+                )
+                as Matrix4;
+        controller.goTo(target);
+      } else {
+        // Fallback: keep page stable even if fit APIs are unavailable.
         _pdfController.goToPage(pageNumber: currentPage);
       }
-    });
+    } catch (_) {
+      final currentPage = _pdfController.pageNumber ?? 1;
+      _pdfController.goToPage(pageNumber: currentPage);
+    } finally {
+      _isAutoFitting = false;
+    }
+  }
+
+  void _forcePdfRelayout() {
+    // Wait for panel animation/layout to settle, then fit the current page.
+    _requestAutoFit(delay: const Duration(milliseconds: 320), force: true);
   }
 }

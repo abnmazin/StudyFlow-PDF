@@ -113,12 +113,55 @@ extension _PDFViewerWidgetStateGestures on _PDFViewerWidgetState {
           }
         }
       }
+      // Geometric shapes: allow erasing from border or inside area.
+      else if ((h.type == HighlightType.rectangle ||
+              h.type == HighlightType.circle ||
+              h.type == HighlightType.arrow) &&
+          h.path.length >= 2) {
+        final p1 = h.path.first;
+        final p2 = h.path.last;
+
+        if (h.type == HighlightType.arrow) {
+          final d = _distanceToSegment(pt, p1, p2);
+          hit = d <= hitRadius;
+        } else if (h.type == HighlightType.rectangle) {
+          final rect = Rect.fromPoints(p1, p2);
+          final inside = rect.inflate(hitRadius).contains(pt);
+          if (inside) {
+            final onEdge = pt.dx <= rect.left + hitRadius ||
+                pt.dx >= rect.right - hitRadius ||
+                pt.dy <= rect.top + hitRadius ||
+                pt.dy >= rect.bottom - hitRadius;
+            hit = onEdge || rect.contains(pt);
+          }
+        } else if (h.type == HighlightType.circle) {
+          final rect = Rect.fromPoints(p1, p2);
+          final cx = (rect.left + rect.right) / 2;
+          final cy = (rect.top + rect.bottom) / 2;
+          final rx = rect.width / 2;
+          final ry = rect.height / 2;
+          if (rx > 0 && ry > 0) {
+            final nx = (pt.dx - cx) / rx;
+            final ny = (pt.dy - cy) / ry;
+            final v = nx * nx + ny * ny;
+            hit = v <= 1.15; // include border tolerance
+          }
+        }
+      }
       // Ø¥Ø°Ø§ ÙƒØ§Ù† ØªØ¸Ù„ÙŠÙ„Ø§Ù‹ Ø­Ø±Ø§Ù‹ Ø£Ùˆ Ù‚Ù„Ù…Ø§Ù‹
       else {
-        for (var p in h.path) {
+        for (var i = 0; i < h.path.length; i++) {
+          final p = h.path[i];
           if ((p - pt).distance < hitRadius) {
             hit = true;
             break;
+          }
+          if (i > 0) {
+            final d = _distanceToSegment(pt, h.path[i - 1], p);
+            if (d <= hitRadius) {
+              hit = true;
+              break;
+            }
           }
         }
       }
@@ -138,6 +181,16 @@ extension _PDFViewerWidgetStateGestures on _PDFViewerWidgetState {
     }
   }
 
+  double _distanceToSegment(Offset p, Offset a, Offset b) {
+    final ab = b - a;
+    final ap = p - a;
+    final abLen2 = ab.dx * ab.dx + ab.dy * ab.dy;
+    if (abLen2 == 0) return (p - a).distance;
+    final t = ((ap.dx * ab.dx + ap.dy * ab.dy) / abLen2).clamp(0.0, 1.0);
+    final proj = Offset(a.dx + ab.dx * t, a.dy + ab.dy * t);
+    return (p - proj).distance;
+  }
+
   void _addTextAt(Offset pt, int pageNumber) {
     if (_isProcessing) return;
 
@@ -152,6 +205,7 @@ extension _PDFViewerWidgetStateGestures on _PDFViewerWidgetState {
       fontSize: _fontSize,
       isBold: _isBold,
       isLatex: _isLatex, // NEW: carry current LaTeX mode
+      fontFamily: _textFontFamily,
       showBorder: _showBorder,
       borderColor: _borderColor,
       bgColor: _textBgColor,
@@ -181,6 +235,7 @@ extension _PDFViewerWidgetStateGestures on _PDFViewerWidgetState {
         fontSize: _fontSize,
         isBold: _isBold,
         isLatex: _isLatex,
+        fontFamily: _textFontFamily,
         showBorder: _showBorder,
         borderColor: _borderColor,
         bgColor: _textBgColor,
@@ -231,12 +286,40 @@ extension _PDFViewerWidgetStateGestures on _PDFViewerWidgetState {
         app.addHighlight(pdf.id, highlight);
       }
 
-      if (selection is PdfTextSelectionDelegate) {
-        await selection.clearTextSelection();
-      }
-      if (mounted) setState(() => _textSelection = null);
+      await _clearCurrentTextSelection(selection);
     } catch (e) {
       debugPrint('Error adding text highlight: $e');
     }
+  }
+
+  Future<void> _clearCurrentTextSelection([PdfTextSelection? selection]) async {
+    final currentSelection = selection ?? _textSelection;
+
+    _selectionChangeToken++;
+    _ignoreSelectionEventsUntil = DateTime.now().add(
+      const Duration(milliseconds: 900),
+    );
+
+    if (mounted) {
+      setState(() {
+        _textSelection = null;
+        _isTextSelectionMenuVisible = false;
+        _suppressTextSelection = true;
+      });
+    }
+
+    if (currentSelection is PdfTextSelectionDelegate) {
+      await currentSelection.clearTextSelection();
+    }
+
+    if (!mounted) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(milliseconds: 350), () {
+        if (mounted) {
+          setState(() => _suppressTextSelection = false);
+        }
+      });
+    });
   }
 }

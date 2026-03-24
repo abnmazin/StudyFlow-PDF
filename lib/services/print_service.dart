@@ -29,7 +29,18 @@ class PrintService {
     final sourceBytes = await file.readAsBytes();
     final processedBytes = await compute(
       _processPdfIsolate,
-      _ProcessArgs(sourceBytes, settings, currentPage),
+      _ProcessArgs(
+        sourceBytes: sourceBytes,
+        currentPage: currentPage,
+        destinationIndex: settings.destination.index,
+        outputPath: settings.outputPath,
+        pageRange: settings.pageRange,
+        parity: settings.parity,
+        reverse: settings.reverse,
+        copies: settings.copies,
+        orientationIndex: settings.orientation.index,
+        colorModeIndex: settings.colorMode.index,
+      ),
     );
 
     if (settings.destination == PrintDestination.pdfFile) {
@@ -53,22 +64,32 @@ class PrintService {
     final sf.PdfDocument source = sf.PdfDocument(inputBytes: args.sourceBytes);
     final int total = source.pages.count;
 
-    // ── Resolve page numbers (1-indexed) ─────────────────────────────────────
+    final settings = PrintSettings(
+      destination: PrintDestination.values[args.destinationIndex],
+      outputPath: args.outputPath,
+      pageRange: args.pageRange,
+      parity: args.parity,
+      reverse: args.reverse,
+      copies: args.copies,
+      orientation: PrintOrientation.values[args.orientationIndex],
+      colorMode: PrintColorMode.values[args.colorModeIndex],
+    );
+
     // ── Resolve page numbers (1-indexed) ─────────────────────────────────────
     List<int> basePages;
-    if (args.settings.pageRange == 'all') {
+    if (settings.pageRange == 'all') {
       basePages = List.generate(total, (i) => i + 1);
-    } else if (args.settings.pageRange == 'current') {
+    } else if (settings.pageRange == 'current') {
       basePages = [args.currentPage.clamp(1, total)];
     } else {
       // Custom range (e.g., "1-3, 5")
-      basePages = PrintUtils.parsePageRange(args.settings.pageRange, total);
+      basePages = PrintUtils.parsePageRange(settings.pageRange, total);
     }
 
     final List<int> pageNums = PrintUtils.applyParityAndReverse(
       basePages,
-      args.settings.parity,
-      args.settings.reverse,
+      settings.parity,
+      settings.reverse,
     );
 
     // ── Build output document ─────────────────────────────────────────────────
@@ -79,7 +100,7 @@ class PrintService {
       final Size srcSize = srcPage.size; // dart:ui Size
       final bool srcIsPortrait = srcSize.height >= srcSize.width;
       final bool wantLandscape =
-          args.settings.orientation == PrintOrientation.landscape;
+          settings.orientation == PrintOrientation.landscape;
       final bool needsRotation = wantLandscape == srcIsPortrait;
 
       // Add a section so we can set per-page dimensions
@@ -142,8 +163,26 @@ class PrintService {
 
 class _ProcessArgs {
   final Uint8List sourceBytes;
-  final PrintSettings settings;
   final int currentPage;
+  final int destinationIndex;
+  final String? outputPath;
+  final String pageRange;
+  final String parity;
+  final bool reverse;
+  final int copies;
+  final int orientationIndex;
+  final int colorModeIndex;
 
-  const _ProcessArgs(this.sourceBytes, this.settings, this.currentPage);
+  const _ProcessArgs({
+    required this.sourceBytes,
+    required this.currentPage,
+    required this.destinationIndex,
+    required this.outputPath,
+    required this.pageRange,
+    required this.parity,
+    required this.reverse,
+    required this.copies,
+    required this.orientationIndex,
+    required this.colorModeIndex,
+  });
 }

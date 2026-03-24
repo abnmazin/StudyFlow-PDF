@@ -222,7 +222,7 @@ class _PrintDialogState extends State<PrintDialog> {
               borderRadius: BorderRadius.circular(6),
             ),
             child: Text(
-              _outputPath ?? 'No file selected',
+              _outputPath ?? 'لم يتم اختيار ملف',
               style: TextStyle(
                 fontSize: 12,
                 color: _outputPath != null
@@ -237,7 +237,7 @@ class _PrintDialogState extends State<PrintDialog> {
         OutlinedButton.icon(
           onPressed: _pickOutputPath,
           icon: const Icon(LucideIcons.folderOpen, size: 14),
-          label: const Text('Browse'),
+          label: const Text('استعراض'),
           style: OutlinedButton.styleFrom(
             foregroundColor: _accent,
             side: const BorderSide(color: _accent),
@@ -251,7 +251,7 @@ class _PrintDialogState extends State<PrintDialog> {
 
   Future<void> _pickOutputPath() async {
     final result = await FilePicker.platform.saveFile(
-      dialogTitle: 'Save PDF as…',
+      dialogTitle: 'حفظ PDF باسم…',
       fileName: '${widget.pdfName.replaceAll('.pdf', '')}_printed.pdf',
       type: FileType.custom,
       allowedExtensions: ['pdf'],
@@ -265,17 +265,17 @@ class _PrintDialogState extends State<PrintDialog> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildSectionLabel('PAGE RANGE'),
-        _rangeRadio('all', 'All pages (${widget.totalPages})'),
-        _rangeRadio('current', 'Current page (${widget.currentPage})'),
-        _rangeRadio('odd', 'Odd pages'),
-        _rangeRadio('even', 'Even pages'),
-        _rangeRadio('custom', 'Custom range'),
+        _rangeRadio('all', 'كل الصفحات (${widget.totalPages})'),
+        _rangeRadio('current', 'الصفحة الحالية (${widget.currentPage})'),
+        _rangeRadio('odd', 'الصفحات الفردية'),
+        _rangeRadio('even', 'الصفحات الزوجية'),
+        _rangeRadio('custom', 'نطاق مخصص'),
         if (_rangeType == 'custom') ...[
           const SizedBox(height: 8),
           TextField(
             controller: _customRangeCtrl,
             decoration: InputDecoration(
-              hintText: 'e.g. 1-5, 7, 9-12',
+              hintText: 'مثال: 1-5, 7, 9-12',
               hintStyle: const TextStyle(
                 color: Color(0xFFD1D5DB),
                 fontSize: 13,
@@ -300,15 +300,15 @@ class _PrintDialogState extends State<PrintDialog> {
           ),
           const SizedBox(height: 12),
           const Text(
-            'Include:',
+            'تضمين:',
             style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 6),
           Row(
             children: [
-              _parityRadio('all', 'All'),
-              _parityRadio('odd', 'Odd only'),
-              _parityRadio('even', 'Even only'),
+              _parityRadio('all', 'الكل'),
+              _parityRadio('odd', 'فردية فقط'),
+              _parityRadio('even', 'زوجية فقط'),
             ],
           ),
         ],
@@ -460,7 +460,7 @@ class _PrintDialogState extends State<PrintDialog> {
           contentPadding: EdgeInsets.zero,
           dense: true,
           title: const Text(
-            'Reverse order',
+            'عكس الترتيب',
             style: TextStyle(fontSize: 13, color: _labelColor),
           ),
           value: _reverse,
@@ -484,7 +484,7 @@ class _PrintDialogState extends State<PrintDialog> {
               child: _orientationTile(
                 PrintOrientation.portrait,
                 LucideIcons.arrowUp,
-                'Portrait',
+                'عمودي',
               ),
             ),
             const SizedBox(width: 8),
@@ -492,7 +492,7 @@ class _PrintDialogState extends State<PrintDialog> {
               child: _orientationTile(
                 PrintOrientation.landscape,
                 LucideIcons.arrowRight,
-                'Landscape',
+                'أفقي',
               ),
             ),
           ],
@@ -551,7 +551,7 @@ class _PrintDialogState extends State<PrintDialog> {
               child: _colorTile(
                 PrintColorMode.color,
                 LucideIcons.palette,
-                'Color',
+                'ملون',
               ),
             ),
             const SizedBox(width: 8),
@@ -559,7 +559,7 @@ class _PrintDialogState extends State<PrintDialog> {
               child: _colorTile(
                 PrintColorMode.grayscale,
                 LucideIcons.contrast,
-                'Grayscale',
+                'تدرج رمادي',
               ),
             ),
           ],
@@ -619,7 +619,7 @@ class _PrintDialogState extends State<PrintDialog> {
           TextButton(
             onPressed: _isPrinting ? null : () => Navigator.of(context).pop(),
             child: const Text(
-              'Cancel',
+              'إلغاء',
               style: TextStyle(color: Color(0xFF6B7280)),
             ),
           ),
@@ -639,11 +639,11 @@ class _PrintDialogState extends State<PrintDialog> {
             label: Text(
               _isPrinting
                   ? (_destination == PrintDestination.pdfFile
-                        ? 'Saving…'
-                        : 'Printing…')
+                        ? 'جارٍ الحفظ…'
+                        : 'جارٍ الطباعة…')
                   : (_destination == PrintDestination.pdfFile
-                        ? 'Save PDF'
-                        : 'Print'),
+                        ? 'حفظ PDF'
+                        : 'طباعة'),
             ),
             style: FilledButton.styleFrom(backgroundColor: _accent),
           ),
@@ -659,15 +659,13 @@ class _PrintDialogState extends State<PrintDialog> {
     if (_destination == PrintDestination.pdfFile &&
         (_outputPath == null || _outputPath!.isEmpty)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select an output location first.'),
-        ),
+        const SnackBar(content: Text('يرجى اختيار مكان الحفظ أولًا.')),
       );
       return;
     }
     if (_rangeType == 'custom' && _customRangeCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a custom page range.')),
+        const SnackBar(content: Text('يرجى إدخال نطاق صفحات مخصص.')),
       );
       return;
     }
@@ -712,8 +710,8 @@ class _PrintDialogState extends State<PrintDialog> {
           SnackBar(
             content: Text(
               _destination == PrintDestination.printer
-                  ? 'Sent to printer'
-                  : 'PDF saved to $_outputPath',
+                  ? 'تم الإرسال إلى الطابعة'
+                  : 'تم حفظ PDF في $_outputPath',
             ),
           ),
         );
@@ -723,7 +721,7 @@ class _PrintDialogState extends State<PrintDialog> {
         setState(() => _isPrinting = false);
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Print failed: $e')));
+        ).showSnackBar(SnackBar(content: Text('فشلت عملية الطباعة: $e')));
       }
     }
   }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 
 class DraggableTextWidget extends StatefulWidget {
@@ -8,6 +9,7 @@ class DraggableTextWidget extends StatefulWidget {
   final double fontSize;
   final bool isBold;
   final bool isLatex;
+  final String fontFamily;
   final bool showBorder;
   final Color borderColor;
   final Color bgColor;
@@ -26,6 +28,7 @@ class DraggableTextWidget extends StatefulWidget {
     required this.fontSize,
     required this.isBold,
     required this.isLatex,
+    required this.fontFamily,
     required this.showBorder,
     required this.borderColor,
     required this.bgColor,
@@ -45,6 +48,12 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
   Offset _dragOffset = Offset.zero;
   late TextEditingController _textController;
   late FocusNode _focusNode;
+
+  bool _containsRtlText(String text) {
+    // Hebrew, Arabic, Syriac, Thaana, N'Ko, and Arabic presentation forms.
+    final rtlRegex = RegExp(r'[\u0590-\u08FF\uFB1D-\uFDFD\uFE70-\uFEFC]');
+    return rtlRegex.hasMatch(text);
+  }
 
   @override
   void initState() {
@@ -105,11 +114,21 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
     final effectiveShowBorder = widget.showBorder;
 
     // تحديد الـ TextStyle المشترك
+    final isRtl = _containsRtlText(_textController.text);
+
     final sharedStyle = TextStyle(
       color: widget.color,
       fontSize: widget.fontSize * widget.scale,
       fontWeight: widget.isBold ? FontWeight.bold : FontWeight.normal,
-      fontFamily: 'Roboto',
+      fontFamily: widget.fontFamily,
+      fontFamilyFallback: const [
+        'Noto Naskh Arabic',
+        'Noto Sans Arabic',
+        'Amiri',
+        'Segoe UI',
+        'Tahoma',
+        'Arial',
+      ],
     );
 
     // تجهيز المحتوى (حقل تعديل أو نص عرض)
@@ -118,24 +137,38 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
     if (widget.isEditing) {
       // ── وضع التعديل: حقل نص مضمّن ──────────────────────────────────────
       contentWidget = IntrinsicWidth(
-        child: TextField(
-          controller: _textController,
-          focusNode: _focusNode,
-          autofocus: true,
-          maxLines: null,
-          minLines: 1,
-          style: sharedStyle,
-          decoration: const InputDecoration(
-            border: InputBorder.none,
-            isDense: true,
-            contentPadding: EdgeInsets.zero,
+        child: Focus(
+          onKeyEvent: (node, event) {
+            if (event.logicalKey == LogicalKeyboardKey.space) {
+              return KeyEventResult.skipRemainingHandlers;
+            }
+            return KeyEventResult.ignored;
+          },
+          child: TextField(
+            controller: _textController,
+            focusNode: _focusNode,
+            autofocus: true,
+            maxLines: null,
+            minLines: 1,
+            style: sharedStyle,
+            textDirection: isRtl ? TextDirection.rtl : TextDirection.ltr,
+            textAlign: isRtl ? TextAlign.right : TextAlign.left,
+            decoration: const InputDecoration(
+              border: InputBorder.none,
+              isDense: true,
+              contentPadding: EdgeInsets.zero,
+            ),
+            onChanged: (_) {
+              // Re-evaluate direction while typing so mixed-language text feels natural.
+              setState(() {});
+            },
+            onTapOutside: (event) {
+              widget.onEditComplete(_textController.text, event);
+            },
+            onSubmitted: (value) {
+              widget.onEditComplete(value, null);
+            },
           ),
-          onTapOutside: (event) {
-            widget.onEditComplete(_textController.text, event);
-          },
-          onSubmitted: (value) {
-            widget.onEditComplete(value, null);
-          },
         ),
       );
     } else if (widget.isLatex) {
@@ -145,13 +178,27 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
       // ── وضع العرض: نص عادي ───────────────────────────────────────────────
       List<String> lines = widget.content.split('\n');
       if (lines.length <= 1) {
-        contentWidget = Text(widget.content, style: sharedStyle);
+        contentWidget = Text(
+          widget.content,
+          style: sharedStyle,
+          textDirection: isRtl ? TextDirection.rtl : TextDirection.ltr,
+          textAlign: isRtl ? TextAlign.right : TextAlign.left,
+        );
       } else {
         contentWidget = Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: isRtl
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
           children: lines
-              .map((line) => Text(line, style: sharedStyle))
+              .map(
+                (line) => Text(
+                  line,
+                  style: sharedStyle,
+                  textDirection: isRtl ? TextDirection.rtl : TextDirection.ltr,
+                  textAlign: isRtl ? TextAlign.right : TextAlign.left,
+                ),
+              )
               .toList(),
         );
       }

@@ -33,21 +33,21 @@ class _SidebarState extends State<Sidebar> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Class?'),
+        title: const Text('حذف القسم؟'),
         content: const Text(
-          'Are you sure you want to delete this class and all its PDFs?',
+          'هل أنت متأكد من حذف هذا القسم وكل ملفات PDF بداخله؟',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: const Text('إلغاء'),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
               app.deleteClass(classId);
             },
-            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+            child: const Text('حذف', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -63,19 +63,19 @@ class _SidebarState extends State<Sidebar> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete PDF?'),
-        content: Text('Are you sure you want to delete "${pdf.name}"?'),
+        title: const Text('حذف ملف PDF؟'),
+        content: Text('هل أنت متأكد من حذف "${pdf.name}"؟'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: const Text('إلغاء'),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
               app.deletePdf(classId, pdf.id);
             },
-            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+            child: const Text('حذف', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -88,23 +88,31 @@ class _SidebarState extends State<Sidebar> {
     final isMobile = MediaQuery.of(context).size.width < 768;
     final scheme = Theme.of(context).colorScheme;
     final sidebarBg = app.isDarkMode ? const Color(0xFF0F172A) : scheme.surface;
-    final sidebarBorder =
-        app.isDarkMode ? const Color(0xFF1E293B) : scheme.outlineVariant;
-    final textPrimary = app.isDarkMode ? const Color(0xFFF1F5F9) : scheme.onSurface;
-    final textMuted =
-        app.isDarkMode ? const Color(0xFF94A3B8) : scheme.onSurfaceVariant;
+    final separatorColor = app.isDarkMode
+        ? Colors.white.withOpacity(0.1)
+        : Colors.black.withOpacity(0.05);
+    final textPrimary = app.isDarkMode
+        ? const Color(0xFFF1F5F9)
+        : scheme.onSurface;
+    final textMuted = app.isDarkMode
+        ? const Color(0xFF94A3B8)
+        : scheme.onSurfaceVariant;
 
     return Container(
       width: 288, // w-72
-      color: sidebarBg,
+      decoration: BoxDecoration(
+        color: sidebarBg,
+        border: Border(right: BorderSide(color: separatorColor, width: 1)),
+      ),
       child: Column(
         children: [
           // Header
           Container(
-            padding: const EdgeInsets.all(16),
+            height: 64,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             decoration: BoxDecoration(
               border: Border(
-                bottom: BorderSide(color: sidebarBorder),
+                bottom: BorderSide(color: separatorColor, width: 1),
               ),
             ),
             child: Row(
@@ -112,11 +120,7 @@ class _SidebarState extends State<Sidebar> {
               children: [
                 Row(
                   children: [
-                    Icon(
-                      LucideIcons.book,
-                      color: Color(0xFF60A5FA),
-                      size: 24,
-                    ),
+                    Icon(LucideIcons.book, color: Color(0xFF60A5FA), size: 24),
                     SizedBox(width: 8),
                     Text(
                       'StudyFlow',
@@ -133,19 +137,13 @@ class _SidebarState extends State<Sidebar> {
                     if (!isMobile)
                       IconButton(
                         onPressed: () => app.toggleSidebar(),
-                        icon: Icon(
-                          LucideIcons.chevronLeft,
-                          color: textMuted,
-                        ),
-                        tooltip: 'Collapse',
+                        icon: Icon(LucideIcons.chevronLeft, color: textMuted),
+                        tooltip: 'طي القائمة',
                       ),
                     if (isMobile)
                       IconButton(
                         onPressed: () => app.toggleMobile(),
-                        icon: Icon(
-                          LucideIcons.x,
-                          color: textMuted,
-                        ),
+                        icon: Icon(LucideIcons.x, color: textMuted),
                       ),
                   ],
                 ),
@@ -187,7 +185,7 @@ class _SidebarState extends State<Sidebar> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'STUDY OVERVIEW',
+                        'نظرة عامة',
                         style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
@@ -202,7 +200,7 @@ class _SidebarState extends State<Sidebar> {
                           _buildStatItem(
                             LucideIcons.fileText,
                             app.totalPdfs.toString(),
-                            'Files',
+                            'ملفات',
                             const Color(0xFF60A5FA),
                           ),
                           Container(
@@ -213,7 +211,7 @@ class _SidebarState extends State<Sidebar> {
                           _buildStatItem(
                             LucideIcons.highlighter,
                             app.totalHighlights.toString(),
-                            'Highlights',
+                            'هايلايت',
                             const Color(0xFFFBBF24),
                           ),
                           Container(
@@ -224,7 +222,7 @@ class _SidebarState extends State<Sidebar> {
                           _buildStatItem(
                             LucideIcons.messageSquare,
                             app.totalComments.toString(),
-                            'Notes',
+                            'ملاحظات',
                             const Color(0xFFA78BFA),
                           ),
                         ],
@@ -238,7 +236,7 @@ class _SidebarState extends State<Sidebar> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text(
-                      'YOUR CLASSES',
+                      'أقسامك',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -270,12 +268,15 @@ class _SidebarState extends State<Sidebar> {
                           child: Builder(
                             builder: (ctx) {
                               final scheme = Theme.of(ctx).colorScheme;
-                              final isDark = context.watch<AppProvider>().isDarkMode;
+                              final isDark = context
+                                  .watch<AppProvider>()
+                                  .isDarkMode;
                               final inputBg = isDark
                                   ? const Color(0xFF1E293B)
                                   : scheme.surfaceContainerHigh;
-                              final inputText =
-                                  isDark ? Colors.white : scheme.onSurface;
+                              final inputText = isDark
+                                  ? Colors.white
+                                  : scheme.onSurface;
                               return TextField(
                                 controller: _classController,
                                 autofocus: true,
@@ -284,11 +285,13 @@ class _SidebarState extends State<Sidebar> {
                                   fontSize: 14,
                                 ),
                                 decoration: InputDecoration(
-                                  hintText: 'Name...',
+                                  hintText: 'اسم القسم...',
                                   hintStyle: TextStyle(
                                     color: isDark
                                         ? Colors.white.withOpacity(0.5)
-                                        : scheme.onSurfaceVariant.withOpacity(0.6),
+                                        : scheme.onSurfaceVariant.withOpacity(
+                                            0.6,
+                                          ),
                                   ),
                                   filled: true,
                                   fillColor: inputBg,
@@ -332,7 +335,22 @@ class _SidebarState extends State<Sidebar> {
                   ),
 
                 // Class List
-                ...app.classes.map((cls) => _buildClassItem(context, cls, app)),
+                ReorderableListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  buildDefaultDragHandles: false,
+                  itemCount: app.classes.length,
+                  onReorder: (oldIndex, newIndex) {
+                    app.reorderClasses(oldIndex, newIndex);
+                  },
+                  itemBuilder: (context, index) {
+                    final cls = app.classes[index];
+                    return Container(
+                      key: ValueKey('class_${cls.id}'),
+                      child: _buildClassItem(context, cls, app, index),
+                    );
+                  },
+                ),
               ],
             ),
           ),
@@ -340,8 +358,8 @@ class _SidebarState extends State<Sidebar> {
           // Footer
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: const BoxDecoration(
-              border: Border(top: BorderSide(color: Color(0xFF1E293B))),
+            decoration: BoxDecoration(
+              border: Border(top: BorderSide(color: separatorColor, width: 1)),
             ),
             child: InkWell(
               onTap: () => app.toggleDevInfo(true),
@@ -376,13 +394,23 @@ class _SidebarState extends State<Sidebar> {
     );
   }
 
-  Widget _buildClassItem(BuildContext context, ClassItem cls, AppProvider app) {
+  Widget _buildClassItem(
+    BuildContext context,
+    ClassItem cls,
+    AppProvider app,
+    int classIndex,
+  ) {
     final isActive = app.activeClassId == cls.id;
     final scheme = Theme.of(context).colorScheme;
-    final textMuted =
-        app.isDarkMode ? const Color(0xFF94A3B8) : scheme.onSurfaceVariant;
-    final textPrimary = app.isDarkMode ? const Color(0xFFF1F5F9) : scheme.onSurface;
-    final hoverBg = app.isDarkMode ? const Color(0xFF1E3A8A) : scheme.surfaceContainerHighest;
+    final textMuted = app.isDarkMode
+        ? const Color(0xFF94A3B8)
+        : scheme.onSurfaceVariant;
+    final textPrimary = app.isDarkMode
+        ? const Color(0xFFF1F5F9)
+        : scheme.onSurface;
+    final hoverBg = app.isDarkMode
+        ? const Color(0xFF1E3A8A)
+        : scheme.surfaceContainerHighest;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -407,7 +435,9 @@ class _SidebarState extends State<Sidebar> {
                   color: isHovering
                       ? hoverBg
                       : (isActive
-                            ? (app.isDarkMode ? const Color(0xFF1E293B) : scheme.surfaceContainerHigh)
+                            ? (app.isDarkMode
+                                  ? const Color(0xFF1E293B)
+                                  : scheme.surfaceContainerHigh)
                             : Colors.transparent),
                   borderRadius: BorderRadius.circular(4),
                 ),
@@ -436,8 +466,20 @@ class _SidebarState extends State<Sidebar> {
                           size: 14,
                           color: textMuted,
                         ),
-                        tooltip: 'Upload PDF',
+                        tooltip: 'رفع PDF',
                         onPressed: () => app.uploadPdf(cls.id),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    ReorderableDragStartListener(
+                      index: classIndex,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 2),
+                        child: Icon(
+                          LucideIcons.gripVertical,
+                          size: 16,
+                          color: textMuted,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 4),
@@ -451,7 +493,7 @@ class _SidebarState extends State<Sidebar> {
                           size: 16,
                           color: Color(0xFFF87171),
                         ),
-                        tooltip: 'Delete Class',
+                        tooltip: 'حذف القسم',
                         onPressed: () =>
                             _confirmDeleteClass(context, cls.id, app),
                       ),
@@ -541,7 +583,7 @@ class _SidebarState extends State<Sidebar> {
                   size: 14,
                   color: Color(0xFFF87171),
                 ),
-                tooltip: 'Delete PDF',
+                tooltip: 'حذف PDF',
                 onPressed: () => _confirmDeletePdf(context, pdf, app, classId),
               ),
             ),
@@ -550,49 +592,81 @@ class _SidebarState extends State<Sidebar> {
       ),
     );
 
-    return Draggable<Map<String, String>>(
-      data: {'pdfId': pdf.id, 'sourceClassId': classId},
-      feedback: Material(
-        color: Colors.transparent,
-        child: Container(
-          width: 220,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+    return DragTarget<Map<String, String>>(
+      onWillAccept: (data) =>
+          data != null && data['pdfId'] != null && data['pdfId'] != pdf.id,
+      onAccept: (data) {
+        final draggedPdfId = data['pdfId'];
+        final sourceClassId = data['sourceClassId'];
+        if (draggedPdfId == null || sourceClassId == null) return;
+
+        if (sourceClassId == classId) {
+          app.reorderPdfWithinClass(classId, draggedPdfId, pdf.id);
+          return;
+        }
+
+        app.movePdf(draggedPdfId, sourceClassId, classId);
+        app.reorderPdfWithinClass(classId, draggedPdfId, pdf.id);
+      },
+      builder: (context, candidateData, rejectedData) {
+        final isHovering = candidateData.isNotEmpty;
+        final targetChild = AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
           decoration: BoxDecoration(
-            color: const Color(0xFF1E293B).withOpacity(0.9),
             borderRadius: BorderRadius.circular(4),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.3),
-                blurRadius: 8,
-                offset: const Offset(0, 4),
-              ),
-            ],
+            color: isHovering ? const Color(0x223B82F6) : Colors.transparent,
+            border: isHovering
+                ? Border.all(color: const Color(0xFF3B82F6), width: 1)
+                : null,
           ),
-          child: Row(
-            children: [
-              const Icon(
-                LucideIcons.fileText,
-                size: 14,
-                color: Color(0xFF94A3B8),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  pdf.name,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: Color(0xFFF1F5F9),
-                    decoration: TextDecoration.none,
+          child: child,
+        );
+
+        return Draggable<Map<String, String>>(
+          data: {'pdfId': pdf.id, 'sourceClassId': classId},
+          feedback: Material(
+            color: Colors.transparent,
+            child: Container(
+              width: 220,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E293B).withOpacity(0.9),
+                borderRadius: BorderRadius.circular(4),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
                   ),
-                  overflow: TextOverflow.ellipsis,
-                ),
+                ],
               ),
-            ],
+              child: Row(
+                children: [
+                  const Icon(
+                    LucideIcons.fileText,
+                    size: 14,
+                    color: Color(0xFF94A3B8),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      pdf.name,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Color(0xFFF1F5F9),
+                        decoration: TextDecoration.none,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
-        ),
-      ),
-      childWhenDragging: Opacity(opacity: 0.3, child: child),
-      child: child,
+          childWhenDragging: Opacity(opacity: 0.3, child: targetChild),
+          child: targetChild,
+        );
+      },
     );
   }
 

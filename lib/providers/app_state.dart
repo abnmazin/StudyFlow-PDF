@@ -430,6 +430,23 @@ class AppProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void reorderClasses(int oldIndex, int newIndex) {
+    if (oldIndex < 0 || oldIndex >= _classes.length) return;
+    if (newIndex < 0 || newIndex > _classes.length) return;
+
+    if (newIndex > oldIndex) {
+      newIndex -= 1;
+    }
+
+    if (oldIndex == newIndex) return;
+
+    final moved = _classes.removeAt(oldIndex);
+    _classes.insert(newIndex, moved);
+
+    _saveState();
+    notifyListeners();
+  }
+
   Future<void> uploadPdf(String classId) async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -553,6 +570,27 @@ class AppProvider extends ChangeNotifier {
     }
   }
 
+  void clearAllAnnotations(String pdfId) {
+    for (var cls in _classes) {
+      final pdf = cls.pdfs.firstWhere(
+        (p) => p.id == pdfId,
+        orElse: () => PdfItem(id: '', name: '', path: ''),
+      );
+      if (pdf.id.isEmpty) continue;
+
+      pdf.highlights.clear();
+      pdf.comments.clear();
+
+      _actionHistory.removeWhere((a) => a.pdfId == pdfId);
+      _redoHistory.removeWhere((a) => a.pdfId == pdfId);
+
+      notifyListeners();
+      _saveTimer?.cancel();
+      _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
+      return;
+    }
+  }
+
   void updateComment(
     String pdfId,
     PdfComment oldComment,
@@ -579,6 +617,7 @@ class AppProvider extends ChangeNotifier {
             'fontSize': oldComment.fontSize,
             'isBold': oldComment.isBold,
             'isLatex': oldComment.isLatex,
+            'fontFamily': oldComment.fontFamily,
             'showBorder': oldComment.showBorder,
             'borderColor': oldComment.borderColor.value,
             'bgColor': oldComment.bgColor.value,
@@ -590,6 +629,7 @@ class AppProvider extends ChangeNotifier {
             'fontSize': newComment.fontSize,
             'isBold': newComment.isBold,
             'isLatex': newComment.isLatex,
+            'fontFamily': newComment.fontFamily,
             'showBorder': newComment.showBorder,
             'borderColor': newComment.borderColor.value,
             'bgColor': newComment.bgColor.value,
@@ -917,6 +957,7 @@ class AppProvider extends ChangeNotifier {
       'fontSize': comment.fontSize,
       'isBold': comment.isBold,
       'isLatex': comment.isLatex,
+      'fontFamily': comment.fontFamily,
       'showBorder': comment.showBorder,
       'borderColor': comment.borderColor.value,
       'bgColor': comment.bgColor.value,
@@ -931,6 +972,7 @@ class AppProvider extends ChangeNotifier {
     double? fontSize,
     bool? isBold,
     bool? isLatex,
+    String? fontFamily,
     bool? showBorder,
     Color? borderColor,
     Color? bgColor,
@@ -942,6 +984,7 @@ class AppProvider extends ChangeNotifier {
     if (fontSize != null) styles['fontSize'] = fontSize;
     if (isBold != null) styles['isBold'] = isBold;
     if (isLatex != null) styles['isLatex'] = isLatex;
+    if (fontFamily != null) styles['fontFamily'] = fontFamily;
     if (showBorder != null) styles['showBorder'] = showBorder;
     if (borderColor != null) styles['borderColor'] = borderColor.value;
     if (bgColor != null) styles['bgColor'] = bgColor.value;
@@ -973,6 +1016,7 @@ class AppProvider extends ChangeNotifier {
         fontSize: styles['fontSize'],
         isBold: styles['isBold'],
         isLatex: styles['isLatex'],
+        fontFamily: styles['fontFamily'],
         showBorder: styles['showBorder'],
         borderColor: Color(styles['borderColor']),
         bgColor: Color(styles['bgColor']),
@@ -1306,6 +1350,26 @@ class AppProvider extends ChangeNotifier {
       // If the moved PDF was active, keep it active but ensure ensuring class context is correct
       // (activeClassId is already updated above)
     }
+
+    _saveState();
+    notifyListeners();
+  }
+
+  void reorderPdfWithinClass(String classId, String draggedPdfId, String targetPdfId) {
+    final classIndex = _classes.indexWhere((c) => c.id == classId);
+    if (classIndex == -1) return;
+
+    final cls = _classes[classIndex];
+    final oldIndex = cls.pdfs.indexWhere((p) => p.id == draggedPdfId);
+    final targetIndex = cls.pdfs.indexWhere((p) => p.id == targetPdfId);
+    if (oldIndex == -1 || targetIndex == -1 || oldIndex == targetIndex) return;
+
+    final dragged = cls.pdfs.removeAt(oldIndex);
+    var insertIndex = targetIndex;
+    if (oldIndex < targetIndex) {
+      insertIndex -= 1;
+    }
+    cls.pdfs.insert(insertIndex, dragged);
 
     _saveState();
     notifyListeners();

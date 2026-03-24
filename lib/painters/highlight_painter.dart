@@ -32,6 +32,8 @@ class HighlightPainter extends CustomPainter {
 
     for (var h in highlights) {
       if (h.path.isEmpty && (h.rects == null || h.rects!.isEmpty)) continue;
+      final isSelected = _selectedHighlightId != null &&
+          h.id == _selectedHighlightId;
 
       // Base paint configuration - will be customized per shape type
       final paint = Paint()
@@ -58,12 +60,12 @@ class HighlightPainter extends CustomPainter {
           h.type == HighlightType.text) {
         final highlightPaint = Paint()
           ..style = PaintingStyle.fill
-          ..color = h.color.withOpacity(0.3);
+          ..color = h.color.withOpacity(0.45);
         if (h.rects != null && h.rects!.isNotEmpty) {
           for (final rect in h.rects!) canvas.drawRect(rect, highlightPaint);
         } else if (h.path.length >= 2) {
           final strokePaint = Paint()
-            ..color = h.color.withOpacity(0.4)
+            ..color = h.color.withOpacity(0.55)
             ..style = PaintingStyle.stroke
             ..strokeWidth = h.strokeWidth * 1.4
             ..strokeCap = StrokeCap.round
@@ -96,8 +98,78 @@ class HighlightPainter extends CustomPainter {
           _drawSelectionHandles(canvas, p1, p2);
         }
       }
+
+      if (isSelected) {
+        _drawSelectedHighlightOverlay(canvas, h);
+      }
     }
     canvas.restore();
+  }
+
+  void _drawSelectedHighlightOverlay(Canvas canvas, Highlight h) {
+    final rect = _boundsForHighlight(h);
+    if (rect == null) return;
+
+    final normalizedRect = rect.inflate(math.max(6.0, h.strokeWidth + 2.0));
+
+    final selectionPaint = Paint()
+      ..color = const Color(0xFF2563EB).withOpacity(0.95)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.8;
+    canvas.drawRect(normalizedRect, selectionPaint);
+
+    final handlePaint = Paint()
+      ..color = const Color(0xFF2563EB)
+      ..style = PaintingStyle.fill;
+    final borderPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+
+    const handleRadius = 4.5;
+    final points = <Offset>[
+      normalizedRect.topLeft,
+      normalizedRect.topRight,
+      normalizedRect.bottomLeft,
+      normalizedRect.bottomRight,
+    ];
+
+    for (final point in points) {
+      canvas.drawCircle(point, handleRadius, handlePaint);
+      canvas.drawCircle(point, handleRadius, borderPaint);
+    }
+  }
+
+  Rect? _boundsForHighlight(Highlight h) {
+    if (h.rects != null && h.rects!.isNotEmpty) {
+      var left = h.rects!.first.left;
+      var top = h.rects!.first.top;
+      var right = h.rects!.first.right;
+      var bottom = h.rects!.first.bottom;
+      for (final r in h.rects!) {
+        left = math.min(left, r.left);
+        top = math.min(top, r.top);
+        right = math.max(right, r.right);
+        bottom = math.max(bottom, r.bottom);
+      }
+      return Rect.fromLTRB(left, top, right, bottom);
+    }
+
+    if (h.path.isNotEmpty) {
+      var left = h.path.first.dx;
+      var top = h.path.first.dy;
+      var right = h.path.first.dx;
+      var bottom = h.path.first.dy;
+      for (final p in h.path) {
+        left = math.min(left, p.dx);
+        top = math.min(top, p.dy);
+        right = math.max(right, p.dx);
+        bottom = math.max(bottom, p.dy);
+      }
+      return Rect.fromLTRB(left, top, right, bottom);
+    }
+
+    return null;
   }
 
   void _drawProfessionalArrow(
