@@ -605,6 +605,124 @@ class StudyFlowRightPanel extends StatelessWidget {
                                 const SizedBox(height: 24),
                               ],
 
+                              if (activeTool == ToolType.eraser) ...[
+                                Text(
+                                  'تنظيف المستند',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: textMuted,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Container(
+                                  decoration: BoxDecoration(
+                                    color: surfaceAlt,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: panelBorder),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      _buildSettingsTile(
+                                        icon: LucideIcons.highlighter,
+                                        label: 'مسح كل التظليل',
+                                        onTap: () {
+                                          if (activePdf == null) return;
+                                          _showBulkCleanupDialog(
+                                            context,
+                                            title: 'مسح كل التظليل؟',
+                                            message:
+                                                'سيتم حذف كل عناصر الهايلايت في هذا المستند نهائيًا.',
+                                            successMessage:
+                                                'تم مسح كل التظليل.',
+                                            onConfirm: () => context
+                                                .read<AppProvider>()
+                                                .clearAllHighlightsOnly(
+                                                  activePdf!.id,
+                                                ),
+                                          );
+                                        },
+                                        isDanger: true,
+                                        textPrimary: textPrimary,
+                                        textMuted: textMuted,
+                                      ),
+                                      _buildSettingsDivider(panelBorder),
+                                      _buildSettingsTile(
+                                        icon: LucideIcons.penTool,
+                                        label: 'مسح كل الرسم',
+                                        onTap: () {
+                                          if (activePdf == null) return;
+                                          _showBulkCleanupDialog(
+                                            context,
+                                            title: 'مسح كل الرسم؟',
+                                            message:
+                                                'سيتم حذف كل الرسومات (قلم، سهم، مستطيل، دائرة) نهائيًا.',
+                                            successMessage: 'تم مسح كل الرسم.',
+                                            onConfirm: () => context
+                                                .read<AppProvider>()
+                                                .clearAllDrawingsOnly(
+                                                  activePdf!.id,
+                                                ),
+                                          );
+                                        },
+                                        isDanger: true,
+                                        textPrimary: textPrimary,
+                                        textMuted: textMuted,
+                                      ),
+                                      _buildSettingsDivider(panelBorder),
+                                      _buildSettingsTile(
+                                        icon: LucideIcons.bookmark,
+                                        label: 'مسح كل المرجعيات',
+                                        onTap: () {
+                                          if (activePdf == null) return;
+                                          _showBulkCleanupDialog(
+                                            context,
+                                            title: 'مسح كل المرجعيات؟',
+                                            message:
+                                                'سيتم حذف كل العلامات المرجعية في هذا المستند نهائيًا.',
+                                            successMessage:
+                                                'تم مسح كل المرجعيات.',
+                                            onConfirm: () => context
+                                                .read<AppProvider>()
+                                                .clearAllBookmarks(
+                                                  activePdf!.id,
+                                                ),
+                                          );
+                                        },
+                                        isDanger: true,
+                                        textPrimary: textPrimary,
+                                        textMuted: textMuted,
+                                      ),
+                                      _buildSettingsDivider(panelBorder),
+                                      _buildSettingsTile(
+                                        icon: LucideIcons.messageSquare,
+                                        label: 'مسح كل الملاحظات',
+                                        onTap: () {
+                                          if (activePdf == null) return;
+                                          _showBulkCleanupDialog(
+                                            context,
+                                            title: 'مسح كل الملاحظات؟',
+                                            message:
+                                                'سيتم حذف كل الملاحظات النصية في هذا المستند نهائيًا.',
+                                            successMessage:
+                                                'تم مسح كل الملاحظات.',
+                                            onConfirm: () => context
+                                                .read<AppProvider>()
+                                                .clearAllComments(
+                                                  activePdf!.id,
+                                                ),
+                                          );
+                                        },
+                                        isDanger: true,
+                                        textPrimary: textPrimary,
+                                        textMuted: textMuted,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                              ],
+
                               // Stroke Width & Color (Preserved)
                               if ([
                                 ToolType.highlight,
@@ -688,9 +806,8 @@ class StudyFlowRightPanel extends StatelessWidget {
                                   },
                                   colorTarget: _ColorTarget.stroke,
                                 ),
-                              ] else if (!activeTool.toString().contains(
-                                    'cursor',
-                                  ) &&
+                              ] else if (activeTool != ToolType.eraser &&
+                                  !activeTool.toString().contains('cursor') &&
                                   !activeTool.toString().contains('arrow') &&
                                   !activeTool.toString().contains(
                                     'rectangle',
@@ -707,106 +824,108 @@ class StudyFlowRightPanel extends StatelessWidget {
                                   ),
                                 ),
 
-                              // Bookmarks Section (Preserved)
-                              const SizedBox(height: 32),
-                              Divider(color: panelBorder),
-                              const SizedBox(height: 16),
-                              Text(
-                                'العلامات المرجعية',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  color: textPrimary,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              if (activePdf != null &&
-                                  activePdf!.bookmarks.isNotEmpty)
-                                ...activePdf!.bookmarks.map((bookmark) {
-                                  return Card(
-                                    margin: const EdgeInsets.only(bottom: 8),
-                                    elevation: 1,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                      side: BorderSide(color: panelBorder),
-                                    ),
-                                    color: surfaceAlt,
-                                    child: InkWell(
-                                      onTap: () {
-                                        if (pdfController.isReady) {
-                                          pdfController.goToPage(
-                                            pageNumber: bookmark.page,
-                                          );
-                                        }
-                                      },
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: Padding(
-                                        padding: const EdgeInsets.all(12),
-                                        child: Row(
-                                          children: [
-                                            const Icon(
-                                              LucideIcons.bookmark,
-                                              size: 16,
-                                              color: Color(0xFF3B82F6),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    bookmark.name,
-                                                    style: TextStyle(
-                                                      fontSize: 14,
-                                                      fontWeight:
-                                                          FontWeight.w500,
-                                                      color: textPrimary,
-                                                    ),
-                                                  ),
-                                                  Text(
-                                                    'الصفحة ${bookmark.page}',
-                                                    style: TextStyle(
-                                                      fontSize: 12,
-                                                      color: textMuted,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                            IconButton(
-                                              icon: const Icon(
-                                                LucideIcons.trash2,
-                                                size: 16,
-                                                color: Color(0xFFDC2626),
-                                              ),
-                                              onPressed: () {
-                                                context
-                                                    .read<AppProvider>()
-                                                    .deleteBookmark(
-                                                      activePdf!.id,
-                                                      bookmark.id,
-                                                    );
-                                              },
-                                              tooltip: 'حذف العلامة المرجعية',
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                })
-                              else
-                                Center(
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(top: 16),
-                                    child: Text(
-                                      'لا توجد علامات مرجعية بعد',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(color: textMuted),
-                                    ),
+                              if (activeTool == ToolType.cursor) ...[
+                                // Bookmarks Section (Hand tool only)
+                                const SizedBox(height: 32),
+                                Divider(color: panelBorder),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'العلامات المرجعية',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    color: textPrimary,
                                   ),
                                 ),
+                                const SizedBox(height: 12),
+                                if (activePdf != null &&
+                                    activePdf!.bookmarks.isNotEmpty)
+                                  ...activePdf!.bookmarks.map((bookmark) {
+                                    return Card(
+                                      margin: const EdgeInsets.only(bottom: 8),
+                                      elevation: 1,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                        side: BorderSide(color: panelBorder),
+                                      ),
+                                      color: surfaceAlt,
+                                      child: InkWell(
+                                        onTap: () {
+                                          if (pdfController.isReady) {
+                                            pdfController.goToPage(
+                                              pageNumber: bookmark.page,
+                                            );
+                                          }
+                                        },
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(12),
+                                          child: Row(
+                                            children: [
+                                              const Icon(
+                                                LucideIcons.bookmark,
+                                                size: 16,
+                                                color: Color(0xFF3B82F6),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      bookmark.name,
+                                                      style: TextStyle(
+                                                        fontSize: 14,
+                                                        fontWeight:
+                                                            FontWeight.w500,
+                                                        color: textPrimary,
+                                                      ),
+                                                    ),
+                                                    Text(
+                                                      'الصفحة ${bookmark.page}',
+                                                      style: TextStyle(
+                                                        fontSize: 12,
+                                                        color: textMuted,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              IconButton(
+                                                icon: const Icon(
+                                                  LucideIcons.trash2,
+                                                  size: 16,
+                                                  color: Color(0xFFDC2626),
+                                                ),
+                                                onPressed: () {
+                                                  context
+                                                      .read<AppProvider>()
+                                                      .deleteBookmark(
+                                                        activePdf!.id,
+                                                        bookmark.id,
+                                                      );
+                                                },
+                                                tooltip: 'حذف العلامة المرجعية',
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  })
+                                else
+                                  Center(
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(top: 16),
+                                      child: Text(
+                                        'لا توجد علامات مرجعية بعد',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(color: textMuted),
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ],
                           ),
                         ),
@@ -1042,6 +1161,52 @@ class StudyFlowRightPanel extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('تم حذف جميع التعليقات.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _showBulkCleanupDialog(
+    BuildContext context, {
+    required String title,
+    required String message,
+    required String successMessage,
+    required VoidCallback onConfirm,
+  }) async {
+    final scheme = Theme.of(context).colorScheme;
+    final dialogBg = isDarkMode ? const Color(0xFF1E293B) : scheme.surface;
+    final dialogText = isDarkMode ? Colors.white : scheme.onSurface;
+
+    final shouldClear = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: dialogBg,
+          title: Text(title, style: TextStyle(color: dialogText)),
+          content: Text(message, style: TextStyle(color: dialogText)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFDC2626),
+              ),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('تأكيد', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldClear == true && context.mounted) {
+      onConfirm();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(successMessage),
           behavior: SnackBarBehavior.floating,
         ),
       );

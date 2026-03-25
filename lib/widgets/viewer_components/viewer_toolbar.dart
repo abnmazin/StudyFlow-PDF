@@ -451,21 +451,6 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                       tooltip: 'بحث (Ctrl+F)',
                       iconMuted: iconMuted,
                     ),
-                    const SizedBox(width: 4),
-
-                    // Bookmark
-                    _buildToolButton(
-                      icon: LucideIcons.bookmark,
-                      isActive: false,
-                      onTap: () {
-                        if (pdf != null && widget.pdfController.isReady) {
-                          widget.onAddBookmark(pdf);
-                        }
-                      },
-                      tooltip: 'إضافة علامة مرجعية',
-                      iconMuted: iconMuted,
-                    ),
-                    const SizedBox(width: 8),
 
                     // ─── Divider ──
                     Container(width: 1, height: 28, color: separatorColor),
@@ -574,7 +559,23 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                         ],
                       ),
                     ),
-                    const SizedBox(width: 170),
+                    // Bookmark (Hand tool only)
+                    if (widget.activeTool == ToolType.cursor) ...[
+                      const SizedBox(width: 8),
+                      Container(width: 1, height: 28, color: separatorColor),
+                      _buildToolButton(
+                        icon: LucideIcons.bookmark,
+                        isActive: false,
+                        onTap: () {
+                          if (pdf != null && widget.pdfController.isReady) {
+                            widget.onAddBookmark(pdf);
+                          }
+                        },
+                        tooltip: 'إضافة علامة مرجعية',
+                        iconMuted: iconMuted,
+                      ),
+                    ],
+                    const SizedBox(width: 350),
 
                     // ─── Divider ──
                     Container(width: 1, height: 28, color: separatorColor),

@@ -1,4 +1,3 @@
-
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:async';
@@ -39,8 +38,11 @@ extension ActionTypes on AppProvider {
 }
 
 class AppProvider extends ChangeNotifier {
-
-  void updateHighlight(String pdfId, Highlight oldHighlight, Highlight newHighlight) {
+  void updateHighlight(
+    String pdfId,
+    Highlight oldHighlight,
+    Highlight newHighlight,
+  ) {
     for (var cls in _classes) {
       var pdf = cls.pdfs.firstWhere(
         (p) => p.id == pdfId,
@@ -60,13 +62,17 @@ class AppProvider extends ChangeNotifier {
             'color': oldHighlight.color.value,
             'strokeWidth': oldHighlight.strokeWidth,
             'backgroundColor': oldHighlight.backgroundColor,
-            'path': oldHighlight.path.map((p) => {'dx': p.dx, 'dy': p.dy}).toList(),
+            'path': oldHighlight.path
+                .map((p) => {'dx': p.dx, 'dy': p.dy})
+                .toList(),
           },
           newState: {
             'color': newHighlight.color.value,
             'strokeWidth': newHighlight.strokeWidth,
             'backgroundColor': newHighlight.backgroundColor,
-            'path': newHighlight.path.map((p) => {'dx': p.dx, 'dy': p.dy}).toList(),
+            'path': newHighlight.path
+                .map((p) => {'dx': p.dx, 'dy': p.dy})
+                .toList(),
           },
         );
         notifyListeners();
@@ -77,25 +83,28 @@ class AppProvider extends ChangeNotifier {
     }
   }
 
-    void recordUpdate({
-      required String pdfId,
-      required String itemId,
-      required String actionType,
-      required Map<String, dynamic> oldState,
-      required Map<String, dynamic> newState,
-    }) {
-      _actionHistory.add(ActionRecord(
+  void recordUpdate({
+    required String pdfId,
+    required String itemId,
+    required String actionType,
+    required Map<String, dynamic> oldState,
+    required Map<String, dynamic> newState,
+  }) {
+    _actionHistory.add(
+      ActionRecord(
         pdfId: pdfId,
         actionType: actionType,
         itemId: itemId,
         oldState: oldState,
         newState: newState,
-      ));
-      _redoHistory.clear();
-      _saveTimer?.cancel();
-      _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
-      notifyListeners();
-    }
+      ),
+    );
+    _redoHistory.clear();
+    _saveTimer?.cancel();
+    _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
+    notifyListeners();
+  }
+
   List<ClassItem> _classes = [];
   String? _activeClassId;
   String? _activePdfId;
@@ -480,12 +489,14 @@ class AppProvider extends ChangeNotifier {
       if (pdfIndex != -1) {
         cls.pdfs[pdfIndex].highlights.add(highlight);
         // سجل الإضافة في سجل العمليات
-        _actionHistory.add(ActionRecord(
-          pdfId: pdfId,
-          actionType: ActionTypes.ACTION_ADD_HIGHLIGHT,
-          itemId: highlight.id,
-          newState: highlight.toJson(),
-        ));
+        _actionHistory.add(
+          ActionRecord(
+            pdfId: pdfId,
+            actionType: ActionTypes.ACTION_ADD_HIGHLIGHT,
+            itemId: highlight.id,
+            newState: highlight.toJson(),
+          ),
+        );
         debugPrint('📝 Action recorded: highlight ${highlight.id}');
         _redoHistory.clear();
         _saveState();
@@ -539,12 +550,14 @@ class AppProvider extends ChangeNotifier {
 
       pdf.comments.add(comment);
       // سجل الإضافة في سجل العمليات
-      _actionHistory.add(ActionRecord(
-        pdfId: pdfId,
-        actionType: ActionTypes.ACTION_ADD_COMMENT,
-        itemId: comment.id,
-        newState: comment.toJson(),
-      ));
+      _actionHistory.add(
+        ActionRecord(
+          pdfId: pdfId,
+          actionType: ActionTypes.ACTION_ADD_COMMENT,
+          itemId: comment.id,
+          newState: comment.toJson(),
+        ),
+      );
       debugPrint('📝 Action recorded: comment ${comment.id}');
       _redoHistory.clear();
       notifyListeners();
@@ -591,6 +604,89 @@ class AppProvider extends ChangeNotifier {
     }
   }
 
+  void clearAllHighlightsOnly(String pdfId) {
+    for (var cls in _classes) {
+      final pdf = cls.pdfs.firstWhere(
+        (p) => p.id == pdfId,
+        orElse: () => PdfItem(id: '', name: '', path: ''),
+      );
+      if (pdf.id.isEmpty) continue;
+
+      pdf.highlights.removeWhere((h) => h.type == HighlightType.highlight);
+
+      _actionHistory.removeWhere((a) => a.pdfId == pdfId);
+      _redoHistory.removeWhere((a) => a.pdfId == pdfId);
+
+      notifyListeners();
+      _saveTimer?.cancel();
+      _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
+      return;
+    }
+  }
+
+  void clearAllDrawingsOnly(String pdfId) {
+    for (var cls in _classes) {
+      final pdf = cls.pdfs.firstWhere(
+        (p) => p.id == pdfId,
+        orElse: () => PdfItem(id: '', name: '', path: ''),
+      );
+      if (pdf.id.isEmpty) continue;
+
+      pdf.highlights.removeWhere(
+        (h) =>
+            h.type == HighlightType.pen ||
+            h.type == HighlightType.arrow ||
+            h.type == HighlightType.rectangle ||
+            h.type == HighlightType.circle,
+      );
+
+      _actionHistory.removeWhere((a) => a.pdfId == pdfId);
+      _redoHistory.removeWhere((a) => a.pdfId == pdfId);
+
+      notifyListeners();
+      _saveTimer?.cancel();
+      _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
+      return;
+    }
+  }
+
+  void clearAllBookmarks(String pdfId) {
+    for (var cls in _classes) {
+      final pdf = cls.pdfs.firstWhere(
+        (p) => p.id == pdfId,
+        orElse: () => PdfItem(id: '', name: '', path: ''),
+      );
+      if (pdf.id.isEmpty) continue;
+
+      pdf.bookmarks.clear();
+
+      notifyListeners();
+      _saveTimer?.cancel();
+      _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
+      return;
+    }
+  }
+
+  void clearAllComments(String pdfId) {
+    for (var cls in _classes) {
+      final pdf = cls.pdfs.firstWhere(
+        (p) => p.id == pdfId,
+        orElse: () => PdfItem(id: '', name: '', path: ''),
+      );
+      if (pdf.id.isEmpty) continue;
+
+      pdf.comments.clear();
+
+      _actionHistory.removeWhere((a) => a.pdfId == pdfId);
+      _redoHistory.removeWhere((a) => a.pdfId == pdfId);
+
+      notifyListeners();
+      _saveTimer?.cancel();
+      _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
+      return;
+    }
+  }
+
   void updateComment(
     String pdfId,
     PdfComment oldComment,
@@ -621,7 +717,10 @@ class AppProvider extends ChangeNotifier {
             'showBorder': oldComment.showBorder,
             'borderColor': oldComment.borderColor.value,
             'bgColor': oldComment.bgColor.value,
-            'position': {'dx': oldComment.position.dx, 'dy': oldComment.position.dy},
+            'position': {
+              'dx': oldComment.position.dx,
+              'dy': oldComment.position.dy,
+            },
           },
           newState: {
             'content': newComment.content,
@@ -633,7 +732,10 @@ class AppProvider extends ChangeNotifier {
             'showBorder': newComment.showBorder,
             'borderColor': newComment.borderColor.value,
             'bgColor': newComment.bgColor.value,
-            'position': {'dx': newComment.position.dx, 'dy': newComment.position.dy},
+            'position': {
+              'dx': newComment.position.dx,
+              'dy': newComment.position.dy,
+            },
           },
         );
       }
@@ -678,12 +780,14 @@ class AppProvider extends ChangeNotifier {
         final idx = pdf.highlights.indexWhere((h) => h.id == action.itemId);
         if (idx != -1) {
           final removed = pdf.highlights.removeAt(idx);
-          _redoHistory.add(ActionRecord(
-            pdfId: action.pdfId,
-            actionType: ActionTypes.ACTION_ADD_HIGHLIGHT,
-            itemId: action.itemId,
-            newState: removed.toJson(),
-          ));
+          _redoHistory.add(
+            ActionRecord(
+              pdfId: action.pdfId,
+              actionType: ActionTypes.ACTION_ADD_HIGHLIGHT,
+              itemId: action.itemId,
+              newState: removed.toJson(),
+            ),
+          );
           debugPrint('🔙 Undo: Removed highlight ${action.itemId}');
         }
         break;
@@ -691,12 +795,14 @@ class AppProvider extends ChangeNotifier {
         final idx = pdf.comments.indexWhere((c) => c.id == action.itemId);
         if (idx != -1) {
           final removed = pdf.comments.removeAt(idx);
-          _redoHistory.add(ActionRecord(
-            pdfId: action.pdfId,
-            actionType: ActionTypes.ACTION_ADD_COMMENT,
-            itemId: action.itemId,
-            newState: removed.toJson(),
-          ));
+          _redoHistory.add(
+            ActionRecord(
+              pdfId: action.pdfId,
+              actionType: ActionTypes.ACTION_ADD_COMMENT,
+              itemId: action.itemId,
+              newState: removed.toJson(),
+            ),
+          );
           debugPrint('🔙 Undo: Removed comment ${action.itemId}');
         }
         break;
@@ -704,13 +810,15 @@ class AppProvider extends ChangeNotifier {
         if (action.oldState != null) {
           final idx = pdf.highlights.indexWhere((h) => h.id == action.itemId);
           if (idx != -1) {
-            _redoHistory.add(ActionRecord(
-              pdfId: action.pdfId,
-              actionType: action.actionType,
-              itemId: action.itemId,
-              oldState: action.newState,
-              newState: action.oldState,
-            ));
+            _redoHistory.add(
+              ActionRecord(
+                pdfId: action.pdfId,
+                actionType: action.actionType,
+                itemId: action.itemId,
+                oldState: action.newState,
+                newState: action.oldState,
+              ),
+            );
             final restored = Highlight.fromJson(action.oldState!);
             pdf.highlights[idx] = restored;
             debugPrint('🔙 Undo: Restored highlight ${action.itemId}');
@@ -722,13 +830,15 @@ class AppProvider extends ChangeNotifier {
         if (action.oldState != null) {
           final idx = pdf.comments.indexWhere((c) => c.id == action.itemId);
           if (idx != -1) {
-            _redoHistory.add(ActionRecord(
-              pdfId: action.pdfId,
-              actionType: action.actionType,
-              itemId: action.itemId,
-              oldState: action.newState,
-              newState: action.oldState,
-            ));
+            _redoHistory.add(
+              ActionRecord(
+                pdfId: action.pdfId,
+                actionType: action.actionType,
+                itemId: action.itemId,
+                oldState: action.newState,
+                newState: action.oldState,
+              ),
+            );
             final restored = PdfComment.fromJson(action.oldState!);
             pdf.comments[idx] = restored;
             debugPrint('🔙 Undo: Restored comment ${action.itemId}');
@@ -739,12 +849,14 @@ class AppProvider extends ChangeNotifier {
         if (action.newState != null) {
           final restored = Highlight.fromJson(action.newState!);
           pdf.highlights.add(restored);
-          _redoHistory.add(ActionRecord(
-            pdfId: action.pdfId,
-            actionType: action.actionType,
-            itemId: action.itemId,
-            oldState: action.newState,
-          ));
+          _redoHistory.add(
+            ActionRecord(
+              pdfId: action.pdfId,
+              actionType: action.actionType,
+              itemId: action.itemId,
+              oldState: action.newState,
+            ),
+          );
           debugPrint('🔙 Undo: Restored deleted highlight ${action.itemId}');
         }
         break;
@@ -752,12 +864,14 @@ class AppProvider extends ChangeNotifier {
         if (action.newState != null) {
           final restored = PdfComment.fromJson(action.newState!);
           pdf.comments.add(restored);
-          _redoHistory.add(ActionRecord(
-            pdfId: action.pdfId,
-            actionType: action.actionType,
-            itemId: action.itemId,
-            oldState: action.newState,
-          ));
+          _redoHistory.add(
+            ActionRecord(
+              pdfId: action.pdfId,
+              actionType: action.actionType,
+              itemId: action.itemId,
+              oldState: action.newState,
+            ),
+          );
           debugPrint('🔙 Undo: Restored deleted comment ${action.itemId}');
         }
         break;
@@ -813,13 +927,15 @@ class AppProvider extends ChangeNotifier {
         if (action.oldState != null) {
           final idx = pdf.highlights.indexWhere((h) => h.id == action.itemId);
           if (idx != -1) {
-            _actionHistory.add(ActionRecord(
-              pdfId: action.pdfId,
-              actionType: action.actionType,
-              itemId: action.itemId,
-              oldState: action.newState,
-              newState: action.oldState,
-            ));
+            _actionHistory.add(
+              ActionRecord(
+                pdfId: action.pdfId,
+                actionType: action.actionType,
+                itemId: action.itemId,
+                oldState: action.newState,
+                newState: action.oldState,
+              ),
+            );
             final restored = Highlight.fromJson(action.oldState!);
             pdf.highlights[idx] = restored;
             debugPrint('↪️ Redo: Restored highlight ${action.itemId}');
@@ -831,13 +947,15 @@ class AppProvider extends ChangeNotifier {
         if (action.oldState != null) {
           final idx = pdf.comments.indexWhere((c) => c.id == action.itemId);
           if (idx != -1) {
-            _actionHistory.add(ActionRecord(
-              pdfId: action.pdfId,
-              actionType: action.actionType,
-              itemId: action.itemId,
-              oldState: action.newState,
-              newState: action.oldState,
-            ));
+            _actionHistory.add(
+              ActionRecord(
+                pdfId: action.pdfId,
+                actionType: action.actionType,
+                itemId: action.itemId,
+                oldState: action.newState,
+                newState: action.oldState,
+              ),
+            );
             final restored = PdfComment.fromJson(action.oldState!);
             pdf.comments[idx] = restored;
             debugPrint('↪️ Redo: Restored comment ${action.itemId}');
@@ -849,12 +967,14 @@ class AppProvider extends ChangeNotifier {
           final idx = pdf.highlights.indexWhere((h) => h.id == action.itemId);
           if (idx != -1) {
             final removed = pdf.highlights.removeAt(idx);
-            _actionHistory.add(ActionRecord(
-              pdfId: action.pdfId,
-              actionType: action.actionType,
-              itemId: action.itemId,
-              newState: removed.toJson(),
-            ));
+            _actionHistory.add(
+              ActionRecord(
+                pdfId: action.pdfId,
+                actionType: action.actionType,
+                itemId: action.itemId,
+                newState: removed.toJson(),
+              ),
+            );
             debugPrint('↪️ Redo: Removed highlight ${action.itemId}');
           }
         }
@@ -864,12 +984,14 @@ class AppProvider extends ChangeNotifier {
           final idx = pdf.comments.indexWhere((c) => c.id == action.itemId);
           if (idx != -1) {
             final removed = pdf.comments.removeAt(idx);
-            _actionHistory.add(ActionRecord(
-              pdfId: action.pdfId,
-              actionType: action.actionType,
-              itemId: action.itemId,
-              newState: removed.toJson(),
-            ));
+            _actionHistory.add(
+              ActionRecord(
+                pdfId: action.pdfId,
+                actionType: action.actionType,
+                itemId: action.itemId,
+                newState: removed.toJson(),
+              ),
+            );
             debugPrint('↪️ Redo: Removed comment ${action.itemId}');
           }
         }
@@ -1355,7 +1477,11 @@ class AppProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void reorderPdfWithinClass(String classId, String draggedPdfId, String targetPdfId) {
+  void reorderPdfWithinClass(
+    String classId,
+    String draggedPdfId,
+    String targetPdfId,
+  ) {
     final classIndex = _classes.indexWhere((c) => c.id == classId);
     if (classIndex == -1) return;
 

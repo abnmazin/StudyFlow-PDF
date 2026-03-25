@@ -7,6 +7,7 @@ extension _PDFViewerWidgetStateOverlay on _PDFViewerWidgetState {
     PdfPage page,
     PdfItem pdf,
   ) {
+    final appProvider = context.watch<AppProvider>();
     final scale = pageRect.width / page.width;
     final ignoring = _tool == ToolType.cursor;
 
@@ -77,7 +78,10 @@ extension _PDFViewerWidgetStateOverlay on _PDFViewerWidgetState {
                     if (appProvider.activeEditingCommentId != null) return;
 
                     if (_tool == ToolType.text) {
-                      _addTextAt(details.localPosition / scale, page.pageNumber);
+                      _addTextAt(
+                        details.localPosition / scale,
+                        page.pageNumber,
+                      );
                     } else if (_tool == ToolType.select) {
                       _handleSelectionTap(
                         details.localPosition,
@@ -127,26 +131,51 @@ extension _PDFViewerWidgetStateOverlay on _PDFViewerWidgetState {
 
           // ── 4. التعليقات النصية (دائماً في الأعلى) ──
           ...pdf.comments.where((c) => c.page == page.pageNumber).map((c) {
+            final liveStyles = appProvider.getEditingStyles(c.id);
+            final effectiveColor = liveStyles != null
+                ? Color(liveStyles['color'] as int)
+                : c.color;
+            final effectiveFontSize = liveStyles != null
+                ? (liveStyles['fontSize'] as num).toDouble()
+                : c.fontSize;
+            final effectiveIsBold = liveStyles != null
+                ? (liveStyles['isBold'] as bool)
+                : c.isBold;
+            final effectiveIsLatex = liveStyles != null
+                ? (liveStyles['isLatex'] as bool)
+                : c.isLatex;
+            final effectiveFontFamily = liveStyles != null
+                ? (liveStyles['fontFamily'] as String)
+                : c.fontFamily;
+            final effectiveShowBorder = liveStyles != null
+                ? (liveStyles['showBorder'] as bool)
+                : c.showBorder;
+            final effectiveBorderColor = liveStyles != null
+                ? Color(liveStyles['borderColor'] as int)
+                : c.borderColor;
+            final effectiveBgColor = liveStyles != null
+                ? Color(liveStyles['bgColor'] as int)
+                : c.bgColor;
+
             return Positioned(
               left: c.position.dx * scale,
               top: c.position.dy * scale,
               child: DraggableTextWidget(
                 commentId: c.id,
                 content: c.content,
-                color: c.color,
-                fontSize: c.fontSize,
-                isBold: c.isBold,
-                isLatex: c.isLatex,
-                fontFamily: c.fontFamily,
-                showBorder: c.showBorder,
-                borderColor: c.borderColor,
-                bgColor: c.bgColor,
+                color: effectiveColor,
+                fontSize: effectiveFontSize,
+                isBold: effectiveIsBold,
+                isLatex: effectiveIsLatex,
+                fontFamily: effectiveFontFamily,
+                showBorder: effectiveShowBorder,
+                borderColor: effectiveBorderColor,
+                bgColor: effectiveBgColor,
                 scale: scale,
                 isEditing: c.id == _editingCommentId,
-                enableDrag: !(_tool == ToolType.eraser) &&
-                    (c.id != _editingCommentId),
+                enableDrag:
+                    !(_tool == ToolType.eraser) && (c.id != _editingCommentId),
                 onEditComplete: (newText, event) {
-                  final appProvider = context.read<AppProvider>();
                   if (newText.trim().isEmpty) {
                     appProvider.cancelEditing(c.id);
                     appProvider.removeComment(pdf.id, c);
@@ -160,8 +189,9 @@ extension _PDFViewerWidgetStateOverlay on _PDFViewerWidgetState {
                     context.read<AppProvider>().startEditing(c.id, c);
                     setState(() {
                       _editingCommentId = c.id;
-                      final styles =
-                          context.read<AppProvider>().getEditingStyles(c.id);
+                      final styles = context
+                          .read<AppProvider>()
+                          .getEditingStyles(c.id);
                       if (styles != null) {
                         _textColor = Color(styles['color']);
                         _fontSize = styles['fontSize'];
@@ -184,10 +214,10 @@ extension _PDFViewerWidgetStateOverlay on _PDFViewerWidgetState {
                       _tool == ToolType.select) {
                     final newPos = c.position + offset / scale;
                     context.read<AppProvider>().updateComment(
-                          pdf.id,
-                          c,
-                          c.copyWith(position: newPos),
-                        );
+                      pdf.id,
+                      c,
+                      c.copyWith(position: newPos),
+                    );
                   }
                 },
               ),
