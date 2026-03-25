@@ -273,11 +273,6 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     _scrollMaintenanceDebounce = Timer(const Duration(milliseconds: 900), () {
       if (!mounted) return;
 
-      try {
-        // ignore: avoid_dynamic_calls
-        (_pdfController as dynamic).clearImageCache?.call();
-      } catch (_) {}
-
       // Keep this conservative to prioritize smoothness over aggressive trimming.
       _maybeTrimWindowsMemory(minIntervalMs: 6000);
       _pagesSinceLastFlush = 0;
@@ -905,7 +900,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
         ),
         controller: _pdfController,
         params: PdfViewerParams(
-          maxImageBytesCachedOnMemory: 10 * 1024 * 1024,
+          maxImageBytesCachedOnMemory: 40 * 1024 * 1024,
           maxScale: 4.0,
           minScale: 0.5,
           scrollByMouseWheel: 0.8,
@@ -937,16 +932,6 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                 force: true,
               );
             }
-          },
-          onViewSizeChanged: (viewSize, oldViewSize, controller) {
-            _lastPdfViewSize = viewSize;
-            if (!_autoFitEnabled || oldViewSize == null) return;
-
-            final widthDiff = (viewSize.width - oldViewSize.width).abs();
-            final heightDiff = (viewSize.height - oldViewSize.height).abs();
-            if (widthDiff < 1 && heightDiff < 1) return;
-
-            _requestAutoFit();
           },
           onPageChanged: (page) {
             final now = DateTime.now().millisecondsSinceEpoch;
