@@ -5,7 +5,6 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../models/print_settings.dart';
 import '../../services/print_service.dart';
-
 // ─────────────────────────────────────────────────────────────────────────────
 // PrintDialog — Phase 1: destination, page range, copies, orientation, color
 // ─────────────────────────────────────────────────────────────────────────────
@@ -15,7 +14,6 @@ class PrintDialog extends StatefulWidget {
   final String pdfName;
   final int totalPages;
   final int currentPage;
-  final Future<void> Function(PrintSettings settings)? onPrint; // NEW
 
   const PrintDialog({
     super.key,
@@ -23,7 +21,6 @@ class PrintDialog extends StatefulWidget {
     required this.pdfName,
     required this.totalPages,
     this.currentPage = 1,
-    this.onPrint, // NEW
   });
 
   @override
@@ -39,6 +36,9 @@ class _PrintDialogState extends State<PrintDialog> {
   int _copies = 1;
   PrintOrientation _orientation = PrintOrientation.portrait;
   PrintColorMode _colorMode = PrintColorMode.color;
+  bool _enableDiagnostics = true;
+  PrintRunMode _runMode = PrintRunMode.normal;
+  String? _debugOutputPath;
   String? _outputPath;
   bool _isPrinting = false;
 
@@ -78,6 +78,8 @@ class _PrintDialogState extends State<PrintDialog> {
                     _buildOrientationSection(),
                     _buildDivider(),
                     _buildColorSection(),
+                    _buildDivider(),
+                    _buildDiagnosticsSection(),
                     const SizedBox(height: 8),
                   ],
                 ),
@@ -606,6 +608,117 @@ class _PrintDialogState extends State<PrintDialog> {
     );
   }
 
+  Widget _buildDiagnosticsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionLabel('DIAGNOSTICS'),
+        SwitchListTile.adaptive(
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          value: _enableDiagnostics,
+          activeColor: _accent,
+          title: const Text(
+            'تفعيل سجل تشخيص الطباعة',
+            style: TextStyle(fontSize: 13, color: _labelColor),
+          ),
+          subtitle: Text(
+            'المسار: ${PrintService.diagnosticsLogPath}',
+            style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280)),
+          ),
+          onChanged: (v) => setState(() => _enableDiagnostics = v),
+        ),
+        const SizedBox(height: 6),
+        DropdownButtonFormField<PrintRunMode>(
+          value: _runMode,
+          decoration: InputDecoration(
+            labelText: 'وضع التنفيذ',
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 10,
+            ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+            isDense: true,
+          ),
+          items: const [
+            DropdownMenuItem(
+              value: PrintRunMode.normal,
+              child: Text('عادي (يفتح نافذة طباعة ويندوز)'),
+            ),
+            DropdownMenuItem(
+              value: PrintRunMode.preprocessOnly,
+              child: Text('تشخيص: تجهيز فقط بدون نافذة الطباعة'),
+            ),
+            DropdownMenuItem(
+              value: PrintRunMode.preprocessAndSaveDebugPdf,
+              child: Text('تشخيص: تجهيز + حفظ ملف PDF تحليلي'),
+            ),
+          ],
+          onChanged: (v) {
+            if (v != null) {
+              setState(() => _runMode = v);
+            }
+          },
+        ),
+        if (_runMode == PrintRunMode.preprocessAndSaveDebugPdf) ...[
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: _border),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    _debugOutputPath ?? 'اختياري: حدد مسار ملف التشخيص',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: _debugOutputPath != null
+                          ? _labelColor
+                          : const Color(0xFF9CA3AF),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                onPressed: _pickDebugOutputPath,
+                icon: const Icon(LucideIcons.folderOpen, size: 14),
+                label: const Text('مسار'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _accent,
+                  side: const BorderSide(color: _accent),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  textStyle: const TextStyle(fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  Future<void> _pickDebugOutputPath() async {
+    final result = await FilePicker.platform.saveFile(
+      dialogTitle: 'حفظ ملف تشخيص الطباعة باسم…',
+      fileName: '${widget.pdfName.replaceAll('.pdf', '')}_debug_print.pdf',
+      type: FileType.custom,
+      allowedExtensions: ['pdf'],
+    );
+    if (result != null) setState(() => _debugOutputPath = result);
+  }
+
   // FOOTER ────────────────────────────────────────────────────────────────────
   Widget _buildFooter() {
     return Container(
@@ -670,8 +783,6 @@ class _PrintDialogState extends State<PrintDialog> {
       return;
     }
 
-    setState(() => _isPrinting = true);
-
     // If user chose 'odd' or 'even' in the main list, we treat it as 'all' pages
     // but filtered by the parity field (which we synced in onChanged).
     String effectiveRange = _rangeType;
@@ -690,40 +801,13 @@ class _PrintDialogState extends State<PrintDialog> {
       copies: _copies,
       orientation: _orientation,
       colorMode: _colorMode,
+      enableDiagnostics: _enableDiagnostics,
+      runMode: _runMode,
+      debugOutputPath: _debugOutputPath,
     );
 
-    try {
-      if (widget.onPrint != null) {
-        await widget.onPrint!(settings);
-      } else {
-        await PrintService.executePrint(
-          widget.pdfPath,
-          settings,
-          currentPage: widget.currentPage,
-          printJobName: widget.pdfName,
-        );
-      }
-
-      if (mounted) {
-        Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _destination == PrintDestination.printer
-                  ? 'تم الإرسال إلى الطابعة'
-                  : 'تم حفظ PDF في $_outputPath',
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isPrinting = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('فشلت عملية الطباعة: $e')));
-      }
-    }
+    // Close dialog first so OS printing runs after modal teardown.
+    Navigator.of(context).pop(settings);
   }
 
   @override

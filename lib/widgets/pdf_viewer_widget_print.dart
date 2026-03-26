@@ -45,52 +45,112 @@ extension _PDFViewerWidgetStatePrint on _PDFViewerWidgetState {
   }
 
   Future<void> _executeSafePrint(PdfItem pdf, PrintSettings settings) async {
+    final sw = Stopwatch()..start();
+    void logStage(String stage) {
+      debugPrint('[PrintTiming] +${sw.elapsedMilliseconds}ms $stage');
+    }
+
+    debugPrint(
+      '[Print] start pdf=${pdf.name} destination=${settings.destination.name} runMode=${settings.runMode.name} diagnostics=${settings.enableDiagnostics}',
+    );
+    logStage('start executeSafePrint');
     // Save current state
     final currentPage = _pdfController.pageNumber ?? 1;
     // final currentZoom = _pdfController.zoomLevel ?? 1.0; // unavailable in this version
 
-    // Pause rendering to avoid Thread Collision
-    if (mounted) setState(() => _isPreparingPrint = true);
-    await Future.delayed(const Duration(milliseconds: 100));
+    // Total unmount mode: remove PdfViewer from widget tree before printing.
+    if (mounted) {
+      _isPrintingMode = true;
+      setState(() {});
+      logStage('entered printing mode (viewer unmounted)');
+    }
+
+    // Ensure the old pdfrx texture/view is fully detached before touching
+    // Windows print APIs.
+    logStage('waiting for unmount frame');
+    await Future.delayed(const Duration(milliseconds: 16));
+    await WidgetsBinding.instance.endOfFrame;
+    await Future.delayed(const Duration(milliseconds: 700));
+    logStage('unmount settle finished');
 
     try {
+      _pdfController.removeListener(_onControllerChanged);
+    } catch (e) {
+      logStage('ignore pre-print removeListener error: $e');
+    }
+    _pdfController = PdfViewerController();
+    _pdfController.addListener(_onControllerChanged);
+    logStage('controller detached and replaced before print');
+
+    try {
+      logStage('before PrintService.executePrint');
       await PrintService.executePrint(
         pdf.path,
         settings,
         currentPage: currentPage,
         printJobName: pdf.name,
       );
+      logStage('after PrintService.executePrint (success)');
     } catch (e) {
       debugPrint("Print Error: $e");
+      logStage('PrintService.executePrint threw error: $e');
+      debugPrint(
+        '[Print] diagnostics log path: ${PrintService.diagnosticsLogPath}',
+      );
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('خطأ في الطباعة: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'خطأ في الطباعة: $e\nسجل التشخيص: ${PrintService.diagnosticsLogPath}',
+            ),
+          ),
+        );
       }
     } finally {
-      if (mounted) {
-        // Store state for resurrection
-        _targetPageAfterReload = currentPage;
-        // _targetZoomAfterReload = currentZoom;
-        _needsReload = true;
+      // Store state for resurrection
+      _targetPageAfterReload = currentPage;
+      // _targetZoomAfterReload = currentZoom;
+      _needsReload = true;
 
-        // Remove loading screen but DO NOT render old pointers yet
-        setState(() => _isPreparingPrint = false);
+      // 1) Cool-down: let Windows spooler release native/GPU handles.
+      logStage('cool-down start (2s)');
+      await Future.delayed(const Duration(seconds: 2));
+      logStage('cool-down end');
 
-        // Wait for UI to flush
-        await Future.delayed(const Duration(milliseconds: 50));
+      if (!mounted) return;
+      _isPrintingMode = false;
+      setState(() {});
+      logStage('printing mode disabled (UI structure restored)');
 
-        // Resurrect the viewer
-        if (mounted && _needsReload) {
-          _performHardReload(pdf);
-        }
+      // 2) Stabilization: allow Flutter to paint post-unmount UI first.
+      logStage('stabilization start (1s)');
+      await Future.delayed(const Duration(seconds: 1));
+      logStage('stabilization end');
+
+      if (!mounted || !_needsReload) return;
+
+      // 3) Defensive resurrection.
+      try {
+        logStage('before _performHardReload');
+        _performHardReload(pdf);
+        logStage('after _performHardReload');
+      } catch (e) {
+        debugPrint('[Print] hard reload failed: $e');
+        logStage('hard reload failed: $e');
       }
+
+      sw.stop();
+      debugPrint('[PrintTiming] total=${sw.elapsedMilliseconds}ms');
     }
   }
 
   void _performHardReload(PdfItem pdf) {
-    // 1. Safely kill old controller to prevent Memory Leaks! (CRITICAL)
-    _pdfController.removeListener(_onControllerChanged);
+    // 1. Safely kill old controller to prevent memory/native handle issues.
+    try {
+      _pdfController.removeListener(_onControllerChanged);
+    } catch (e) {
+      debugPrint('[Print] ignore removeListener error during reload: $e');
+    }
     // _pdfController.dispose(); // Not available in this version of pdfrx
 
     // 2. Create fresh controller (forces new PDFium initialization)
@@ -104,7 +164,7 @@ extension _PDFViewerWidgetStatePrint on _PDFViewerWidgetState {
     setState(() {});
 
     // 5. Restore position after the new native view is mounted
-    Future.delayed(const Duration(milliseconds: 300), () {
+    Future.delayed(const Duration(milliseconds: 600), () {
       if (mounted && _pdfController.isReady) {
         _pdfController.goToPage(pageNumber: _targetPageAfterReload);
         // _pdfController.zoomLevel = _targetZoomAfterReload;
@@ -112,24 +172,24 @@ extension _PDFViewerWidgetStatePrint on _PDFViewerWidgetState {
     });
   }
 
-  void _showPrintDialog(PdfItem pdf) {
+  Future<void> _showPrintDialog(PdfItem pdf) async {
     // Resolve total pages: prefer the controller's known count, fall back to 0.
     final totalPages = _pdfController.isReady
         ? _pdfController.pageCount
         : (pdf.lastPage ?? 1);
     final currentPage = _pdfController.pageNumber ?? pdf.lastPage ?? 1;
 
-    showDialog(
+    final settings = await showDialog<PrintSettings>(
       context: context,
       builder: (_) => PrintDialog(
         pdfPath: pdf.path,
         pdfName: pdf.name,
         totalPages: totalPages,
         currentPage: currentPage,
-        onPrint: (settings) async {
-          await _executeSafePrint(pdf, settings);
-        },
       ),
     );
+
+    if (!mounted || settings == null) return;
+    await _executeSafePrint(pdf, settings);
   }
 }

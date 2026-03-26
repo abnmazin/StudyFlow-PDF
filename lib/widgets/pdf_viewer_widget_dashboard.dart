@@ -3,66 +3,72 @@ part of 'pdf_viewer_widget_w.dart';
 // ─── DASHBOARD ─────────────────────────────────────────────────────────────
 
 Widget _buildDashboard(BuildContext context) {
-  final app = context.watch<AppProvider>();
-  final isDarkMode = context.select<AppProvider, bool>((app) => app.isDarkMode);
-  final dashboardBg = isDarkMode
-      ? const Color(0xFF0F172A)
-      : const Color(0xFFF8FAFC);
+  return Consumer<AppProvider>(
+    builder: (context, app, _) {
+      final isDarkMode = app.isDarkMode;
+      final dashboardBg = isDarkMode
+          ? const Color(0xFF0F172A)
+          : const Color(0xFFF8FAFC);
 
-  // Use FutureBuilder for async recent docs
-  return ColoredBox(
-    color: dashboardBg,
-    child: SizedBox.expand(
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final width = constraints.maxWidth;
-          final horizontalPadding = width < 700
-              ? 12.0
-              : (width < 1100 ? 20.0 : 32.0);
-          final verticalPadding = width < 700 ? 12.0 : 20.0;
+      // Use FutureBuilder for async recent docs
+      return ColoredBox(
+        color: dashboardBg,
+        child: SizedBox.expand(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth;
+              final horizontalPadding = width < 700
+                  ? 12.0
+                  : (width < 1100 ? 20.0 : 32.0);
+              final verticalPadding = width < 700 ? 12.0 : 20.0;
 
-          return FutureBuilder<List<List<PdfDocument>>>(
-            future: Future.wait([
-              context.read<FileManagerService>().getRecentDocuments(limit: 6),
-              context.read<FileManagerService>().getAllDocuments(),
-            ]),
-            builder: (context, snapshot) {
-              final recentDocs = snapshot.data != null
-                  ? snapshot.data![0]
-                  : <PdfDocument>[];
-              final allDocs = snapshot.data != null
-                  ? snapshot.data![1]
-                  : <PdfDocument>[];
-              final readingTimeEstimate = _estimateReadingTime(allDocs);
-
-              return SingleChildScrollView(
-                padding: EdgeInsets.symmetric(
-                  horizontal: horizontalPadding,
-                  vertical: verticalPadding,
-                ),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minHeight: constraints.maxHeight - (verticalPadding * 2),
+              return FutureBuilder<List<List<PdfDocument>>>(
+                future: Future.wait([
+                  context.read<FileManagerService>().getRecentDocuments(
+                    limit: 6,
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildWelcomeHeader(app),
-                      const SizedBox(height: 24),
-                      _buildQuickActionsGrid(context, isDarkMode),
-                      const SizedBox(height: 32),
-                      _buildRecentDocumentsSection(recentDocs, isDarkMode),
-                      const SizedBox(height: 32),
-                      _buildStatisticsSection(app, readingTimeEstimate),
-                    ],
-                  ),
-                ),
+                  context.read<FileManagerService>().getAllDocuments(),
+                ]),
+                builder: (context, snapshot) {
+                  final recentDocs = snapshot.data != null
+                      ? snapshot.data![0]
+                      : <PdfDocument>[];
+                  final allDocs = snapshot.data != null
+                      ? snapshot.data![1]
+                      : <PdfDocument>[];
+                  final readingTimeEstimate = _estimateReadingTime(allDocs);
+
+                  return SingleChildScrollView(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: horizontalPadding,
+                      vertical: verticalPadding,
+                    ),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight:
+                            constraints.maxHeight - (verticalPadding * 2),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildWelcomeHeader(app),
+                          const SizedBox(height: 24),
+                          _buildQuickActionsGrid(context, isDarkMode),
+                          const SizedBox(height: 32),
+                          _buildRecentDocumentsSection(recentDocs, isDarkMode),
+                          const SizedBox(height: 32),
+                          _buildStatisticsSection(app, readingTimeEstimate),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               );
             },
-          );
-        },
-      ),
-    ),
+          ),
+        ),
+      );
+    },
   );
 }
 

@@ -49,10 +49,21 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
   late TextEditingController _textController;
   late FocusNode _focusNode;
 
-  bool _containsRtlText(String text) {
-    // Hebrew, Arabic, Syriac, Thaana, N'Ko, and Arabic presentation forms.
+  TextDirection _resolveBaseDirection(String text) {
+    // Determine direction from the first strong character.
+    // This avoids forcing RTL for mixed text like (0) inside notes.
     final rtlRegex = RegExp(r'[\u0590-\u08FF\uFB1D-\uFDFD\uFE70-\uFEFC]');
-    return rtlRegex.hasMatch(text);
+    final ltrRegex = RegExp(r'[A-Za-z]');
+
+    for (final rune in text.runes) {
+      final ch = String.fromCharCode(rune);
+      if (rtlRegex.hasMatch(ch)) return TextDirection.rtl;
+      if (ltrRegex.hasMatch(ch)) return TextDirection.ltr;
+    }
+
+    // If no strong characters exist (digits/symbols only), prefer LTR so
+    // parentheses and cursor movement behave naturally.
+    return TextDirection.ltr;
   }
 
   @override
@@ -114,7 +125,8 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
     final effectiveShowBorder = widget.showBorder;
 
     // تحديد الـ TextStyle المشترك
-    final isRtl = _containsRtlText(_textController.text);
+    final textDirection = _resolveBaseDirection(_textController.text);
+    final isRtl = textDirection == TextDirection.rtl;
 
     final sharedStyle = TextStyle(
       color: widget.color,
@@ -142,6 +154,18 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
             if (event.logicalKey == LogicalKeyboardKey.space) {
               return KeyEventResult.skipRemainingHandlers;
             }
+
+            // Keep arrow keys inside the text editor and stop viewer-level
+            // handlers from hijacking navigation.
+            if (event.logicalKey == LogicalKeyboardKey.arrowLeft ||
+                event.logicalKey == LogicalKeyboardKey.arrowRight ||
+                event.logicalKey == LogicalKeyboardKey.arrowUp ||
+                event.logicalKey == LogicalKeyboardKey.arrowDown ||
+                event.logicalKey == LogicalKeyboardKey.home ||
+                event.logicalKey == LogicalKeyboardKey.end) {
+              return KeyEventResult.skipRemainingHandlers;
+            }
+
             return KeyEventResult.ignored;
           },
           child: TextField(
@@ -151,7 +175,7 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
             maxLines: null,
             minLines: 1,
             style: sharedStyle,
-            textDirection: isRtl ? TextDirection.rtl : TextDirection.ltr,
+            textDirection: textDirection,
             textAlign: isRtl ? TextAlign.right : TextAlign.left,
             decoration: const InputDecoration(
               border: InputBorder.none,

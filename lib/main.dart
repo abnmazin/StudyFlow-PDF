@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:desktop_drop/desktop_drop.dart';
@@ -132,6 +133,7 @@ Future<void> _startSingleInstanceServer() async {
 
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: '.env');
 
   // 🚀 OPTIMIZATION: منع استهلاك الرام العالي (ت    حديد الذاكرة بـ 50 ميجا)
   PaintingBinding.instance.imageCache.maximumSizeBytes = 10 * 1024 * 1024;

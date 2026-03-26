@@ -114,6 +114,11 @@ class AppProvider extends ChangeNotifier {
   bool _showDevInfo = false;
   bool _isSidebarCollapsed = false;
   bool _isDarkMode = false; // Default light mode
+  String _aiProvider = 'groq';
+  String _geminiModel = 'gemini-2.5-flash';
+  String _groqModel = 'llama-3.3-70b-versatile';
+  String _geminiApiKey = '';
+  String _groqApiKey = '';
 
   // Concurrency Locks
   bool _isSaving = false;
@@ -161,6 +166,11 @@ class AppProvider extends ChangeNotifier {
   bool get showDevInfo => _showDevInfo;
   bool get isSidebarCollapsed => _isSidebarCollapsed;
   bool get isDarkMode => _isDarkMode;
+  String get aiProvider => _aiProvider;
+  String get geminiModel => _geminiModel;
+  String get groqModel => _groqModel;
+  String get geminiApiKey => _geminiApiKey;
+  String get groqApiKey => _groqApiKey;
 
   PdfItem? get activePdf {
     if (_activeClassId == null || _activePdfId == null) return null;
@@ -176,6 +186,11 @@ class AppProvider extends ChangeNotifier {
   static const String _prefsKeyClasses = 'pdfreader_classes';
   static const String _prefsKeyActiveClass = 'pdfreader_active_class';
   static const String _prefsKeyDarkMode = 'pdfreader_dark_mode';
+  static const String _prefsKeyAiProvider = 'pdfreader_ai_provider';
+  static const String _prefsKeyGeminiModel = 'pdfreader_gemini_model';
+  static const String _prefsKeyGroqModel = 'pdfreader_groq_model';
+  static const String _prefsKeyGeminiApiKey = 'pdfreader_gemini_api_key';
+  static const String _prefsKeyGroqApiKey = 'pdfreader_groq_api_key';
 
   Future<void> _loadState() async {
     try {
@@ -214,6 +229,13 @@ class AppProvider extends ChangeNotifier {
 
       // Load dark mode preference
       _isDarkMode = prefs.getBool(_prefsKeyDarkMode) ?? false;
+      _aiProvider = prefs.getString(_prefsKeyAiProvider) ?? 'groq';
+      _geminiModel =
+          prefs.getString(_prefsKeyGeminiModel) ?? 'gemini-2.5-flash';
+      _groqModel =
+          prefs.getString(_prefsKeyGroqModel) ?? 'llama-3.3-70b-versatile';
+      _geminiApiKey = prefs.getString(_prefsKeyGeminiApiKey) ?? '';
+      _groqApiKey = prefs.getString(_prefsKeyGroqApiKey) ?? '';
 
       // CRITICAL SYSTEM CLEANUP: Drop orphaned temp files
       await _cleanupTempFiles();
@@ -321,6 +343,47 @@ class AppProvider extends ChangeNotifier {
     SharedPreferences.getInstance().then(
       (prefs) => prefs.setBool(_prefsKeyDarkMode, _isDarkMode),
     );
+  }
+
+  void setAiProvider(String provider) {
+    if (provider != 'gemini' && provider != 'groq') return;
+    _aiProvider = provider;
+    notifyListeners();
+    _persistAiSettings();
+  }
+
+  void setGeminiModel(String model) {
+    _geminiModel = model;
+    notifyListeners();
+    _persistAiSettings();
+  }
+
+  void setGroqModel(String model) {
+    _groqModel = model;
+    notifyListeners();
+    _persistAiSettings();
+  }
+
+  void setGeminiApiKey(String key) {
+    _geminiApiKey = key.trim();
+    notifyListeners();
+    _persistAiSettings();
+  }
+
+  void setGroqApiKey(String key) {
+    _groqApiKey = key.trim();
+    notifyListeners();
+    _persistAiSettings();
+  }
+
+  void _persistAiSettings() {
+    SharedPreferences.getInstance().then((prefs) async {
+      await prefs.setString(_prefsKeyAiProvider, _aiProvider);
+      await prefs.setString(_prefsKeyGeminiModel, _geminiModel);
+      await prefs.setString(_prefsKeyGroqModel, _groqModel);
+      await prefs.setString(_prefsKeyGeminiApiKey, _geminiApiKey);
+      await prefs.setString(_prefsKeyGroqApiKey, _groqApiKey);
+    });
   }
 
   void setActiveClass(String id) {

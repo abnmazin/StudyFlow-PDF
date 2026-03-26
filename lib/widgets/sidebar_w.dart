@@ -334,22 +334,12 @@ class _SidebarState extends State<Sidebar> {
                     ),
                   ),
 
-                // Class List
-                ReorderableListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  buildDefaultDragHandles: false,
-                  itemCount: app.classes.length,
-                  onReorder: (oldIndex, newIndex) {
-                    app.reorderClasses(oldIndex, newIndex);
-                  },
-                  itemBuilder: (context, index) {
-                    final cls = app.classes[index];
-                    return Container(
-                      key: ValueKey('class_${cls.id}'),
-                      child: _buildClassItem(context, cls, app, index),
-                    );
-                  },
+                // Class List (custom drag/drop for folders)
+                Column(
+                  children: [
+                    for (final entry in app.classes.asMap().entries)
+                      _buildClassItem(context, entry.value, app, entry.key),
+                  ],
                 ),
               ],
             ),
@@ -417,11 +407,35 @@ class _SidebarState extends State<Sidebar> {
       children: [
         // Class Header + DragTarget
         DragTarget<Map<String, String>>(
-          onWillAccept: (data) =>
-              data != null && data['sourceClassId'] != cls.id,
+          onWillAccept: (data) {
+            if (data == null) return false;
+            final dragType = data['dragType'];
+
+            if (dragType == 'pdf') {
+              return data['sourceClassId'] != cls.id;
+            }
+
+            if (dragType == 'class') {
+              return data['classId'] != cls.id;
+            }
+
+            return false;
+          },
           onAccept: (data) {
-            if (data['pdfId'] != null && data['sourceClassId'] != null) {
+            final dragType = data['dragType'];
+
+            if (dragType == 'pdf' &&
+                data['pdfId'] != null &&
+                data['sourceClassId'] != null) {
               app.movePdf(data['pdfId']!, data['sourceClassId']!, cls.id);
+              return;
+            }
+
+            if (dragType == 'class' && data['classId'] != null) {
+              final sourceClassId = data['classId']!;
+              final oldIndex = app.classes.indexWhere((c) => c.id == sourceClassId);
+              if (oldIndex == -1 || oldIndex == classIndex) return;
+              app.reorderClasses(oldIndex, classIndex);
             }
           },
           builder: (context, candidateData, rejectedData) {
@@ -471,8 +485,58 @@ class _SidebarState extends State<Sidebar> {
                       ),
                     ),
                     const SizedBox(width: 4),
-                    ReorderableDragStartListener(
-                      index: classIndex,
+                    Draggable<Map<String, String>>(
+                      data: {'dragType': 'class', 'classId': cls.id},
+                      feedback: Material(
+                        color: Colors.transparent,
+                        child: Container(
+                          width: 220,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1E293B).withOpacity(0.9),
+                            borderRadius: BorderRadius.circular(4),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.3),
+                                blurRadius: 8,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                LucideIcons.folder,
+                                size: 14,
+                                color: Color(0xFF94A3B8),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  cls.name,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    color: Color(0xFFF1F5F9),
+                                    decoration: TextDecoration.none,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      childWhenDragging: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 2),
+                        child: Icon(
+                          LucideIcons.gripVertical,
+                          size: 16,
+                          color: textMuted.withOpacity(0.35),
+                        ),
+                      ),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 2),
                         child: Icon(
@@ -594,7 +658,10 @@ class _SidebarState extends State<Sidebar> {
 
     return DragTarget<Map<String, String>>(
       onWillAccept: (data) =>
-          data != null && data['pdfId'] != null && data['pdfId'] != pdf.id,
+          data != null &&
+          data['dragType'] == 'pdf' &&
+          data['pdfId'] != null &&
+          data['pdfId'] != pdf.id,
       onAccept: (data) {
         final draggedPdfId = data['pdfId'];
         final sourceClassId = data['sourceClassId'];
@@ -623,7 +690,11 @@ class _SidebarState extends State<Sidebar> {
         );
 
         return Draggable<Map<String, String>>(
-          data: {'pdfId': pdf.id, 'sourceClassId': classId},
+          data: {
+            'dragType': 'pdf',
+            'pdfId': pdf.id,
+            'sourceClassId': classId,
+          },
           feedback: Material(
             color: Colors.transparent,
             child: Container(

@@ -3,11 +3,20 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 import '../../models/models.dart';
 import '../../providers/app_state.dart';
+import 'mini_calculator_widget.dart';
 
 /// Which color slot the picker is editing.
 enum _ColorTarget { stroke, bg, border }
+
+const String _aiConversationKeyPrefix = 'ai_chat_conversation_';
+final ValueNotifier<int> _aiConversationRevision = ValueNotifier<int>(0);
 
 class StudyFlowRightPanel extends StatelessWidget {
   final bool isSettingsMode;
@@ -151,6 +160,26 @@ class StudyFlowRightPanel extends StatelessWidget {
     final textMuted = isDarkMode
         ? const Color(0xFF94A3B8)
         : scheme.onSurfaceVariant;
+
+    if (!isSettingsMode && activeTool == ToolType.cursor) {
+      return TextFieldTapRegion(
+        child: Container(
+          width: 320,
+          decoration: BoxDecoration(
+            color: panelBg,
+            border: Border(left: BorderSide(color: panelBorder, width: 1.5)),
+          ),
+          child: _buildCursorUtilitiesHub(
+            context,
+            panelBg,
+            panelBorder,
+            surfaceAlt,
+            textPrimary,
+            textMuted,
+          ),
+        ),
+      );
+    }
 
     return TextFieldTapRegion(
       child: Container(
@@ -717,6 +746,29 @@ class StudyFlowRightPanel extends StatelessWidget {
                                         textPrimary: textPrimary,
                                         textMuted: textMuted,
                                       ),
+                                      _buildSettingsDivider(panelBorder),
+                                      _buildSettingsTile(
+                                        icon: LucideIcons.bot,
+                                        label: 'تصفير سجل AI لهذا الملف',
+                                        onTap: () {
+                                          if (activePdf == null) return;
+                                          _showBulkCleanupDialog(
+                                            context,
+                                            title: 'تصفير سجل AI؟',
+                                            message:
+                                                'سيتم حذف محادثة الذكاء الاصطناعي الخاصة بهذا الملف وإرجاع الرسالة الافتراضية.',
+                                            successMessage:
+                                                'تم تصفير سجل AI لهذا الملف.',
+                                            onConfirm: () =>
+                                                _clearAiConversationForPdf(
+                                                  activePdf!.id,
+                                                ),
+                                          );
+                                        },
+                                        isDanger: true,
+                                        textPrimary: textPrimary,
+                                        textMuted: textMuted,
+                                      ),
                                     ],
                                   ),
                                 ),
@@ -948,6 +1000,7 @@ class StudyFlowRightPanel extends StatelessWidget {
     Color textPrimary,
     Color textMuted,
   ) {
+    final app = context.watch<AppProvider>();
     return Column(
       children: [
         // --- HEADER ---
@@ -1051,11 +1104,417 @@ class StudyFlowRightPanel extends StatelessWidget {
                     ),
                   ],
                 ),
+                const SizedBox(height: 16),
+                _buildAiSettingsCard(
+                  context,
+                  app,
+                  surfaceAlt,
+                  panelBorder,
+                  textPrimary,
+                  textMuted,
+                ),
               ],
             ),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildAiSettingsCard(
+    BuildContext context,
+    AppProvider app,
+    Color surfaceAlt,
+    Color panelBorder,
+    Color textPrimary,
+    Color textMuted,
+  ) {
+    final isDark = app.isDarkMode;
+    const geminiModels = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+    const groqModels = [
+      'llama-3.3-70b-versatile',
+      'llama-3.1-8b-instant',
+      'mixtral-8x7b-32768',
+    ];
+
+    final providerItems = const [
+      DropdownMenuItem(value: 'gemini', child: Text('Google Gemini')),
+      DropdownMenuItem(value: 'groq', child: Text('Groq')),
+    ];
+
+    final modelItems = (app.aiProvider == 'groq' ? groqModels : geminiModels)
+        .map((m) => DropdownMenuItem(value: m, child: Text(m)))
+        .toList();
+
+    final selectedModel = app.aiProvider == 'groq'
+        ? app.groqModel
+        : app.geminiModel;
+    final inputFill = isDark ? const Color(0xFF0B1220) : Colors.white;
+    final borderColor = isDark
+        ? const Color(0xFF334155)
+        : const Color(0xFFCBD5E1);
+
+    InputDecoration _decoration(String label) {
+      return InputDecoration(
+        labelText: label,
+        isDense: true,
+        filled: true,
+        fillColor: inputFill,
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: borderColor),
+        ),
+        focusedBorder: const OutlineInputBorder(
+          borderRadius: BorderRadius.all(Radius.circular(10)),
+          borderSide: BorderSide(color: Color(0xFF3B82F6), width: 1.4),
+        ),
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: surfaceAlt,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: panelBorder),
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(LucideIcons.bot, size: 18, color: textPrimary),
+              const SizedBox(width: 8),
+              Text(
+                'إعدادات الذكاء الاصطناعي',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: textPrimary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            value: app.aiProvider,
+            dropdownColor: inputFill,
+            style: TextStyle(color: textPrimary, fontSize: 13),
+            decoration: _decoration('مزود الذكاء'),
+            items: providerItems,
+            onChanged: (value) {
+              if (value != null) {
+                app.setAiProvider(value);
+              }
+            },
+          ),
+          const SizedBox(height: 10),
+          DropdownButtonFormField<String>(
+            value: selectedModel,
+            dropdownColor: inputFill,
+            style: TextStyle(color: textPrimary, fontSize: 13),
+            decoration: _decoration('النموذج'),
+            items: modelItems,
+            onChanged: (value) {
+              if (value == null) return;
+              if (app.aiProvider == 'groq') {
+                app.setGroqModel(value);
+              } else {
+                app.setGeminiModel(value);
+              }
+            },
+          ),
+          if (app.aiProvider == 'gemini') ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    app.geminiApiKey.isEmpty
+                        ? 'Gemini API key غير مضبوط'
+                        : 'Gemini API key مضبوط',
+                    style: TextStyle(color: textMuted, fontSize: 12),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: () => _showAiKeyDialog(
+                    context: context,
+                    title: 'Gemini API Key',
+                    initialValue: app.geminiApiKey,
+                    hint: 'AIza...',
+                    onSave: app.setGeminiApiKey,
+                  ),
+                  icon: const Icon(LucideIcons.keyRound, size: 14),
+                  label: const Text('تعديل المفتاح'),
+                ),
+              ],
+            ),
+          ],
+          if (app.aiProvider == 'groq') ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    app.groqApiKey.isEmpty
+                        ? 'Groq API key غير مضبوط'
+                        : 'Groq API key مضبوط',
+                    style: TextStyle(color: textMuted, fontSize: 12),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: () => _showAiKeyDialog(
+                    context: context,
+                    title: 'Groq API Key',
+                    initialValue: app.groqApiKey,
+                    hint: 'gsk_...',
+                    onSave: app.setGroqApiKey,
+                  ),
+                  icon: const Icon(LucideIcons.keyRound, size: 14),
+                  label: const Text('تعديل المفتاح'),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showAiKeyDialog({
+    required BuildContext context,
+    required String title,
+    required String initialValue,
+    required String hint,
+    required ValueChanged<String> onSave,
+  }) async {
+    final app = context.read<AppProvider>();
+    final isDark = app.isDarkMode;
+    final controller = TextEditingController(text: initialValue);
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        final bg = isDark ? const Color(0xFF0F172A) : Colors.white;
+        final border = isDark
+            ? const Color(0xFF334155)
+            : const Color(0xFFCBD5E1);
+        return AlertDialog(
+          backgroundColor: bg,
+          title: Text(title),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            obscureText: true,
+            decoration: InputDecoration(
+              hintText: hint,
+              filled: true,
+              fillColor: isDark ? const Color(0xFF0B1220) : Colors.white,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: border),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: border),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: () {
+                onSave(controller.text);
+                Navigator.of(ctx).pop();
+              },
+              child: const Text('حفظ'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildCursorUtilitiesHub(
+    BuildContext context,
+    Color panelBg,
+    Color panelBorder,
+    Color surfaceAlt,
+    Color textPrimary,
+    Color textMuted,
+  ) {
+    final indicatorColor = const Color(0xFF3B82F6);
+    final tabBg = isDarkMode
+        ? const Color(0xFF111827)
+        : const Color(0xFFE2E8F0);
+
+    return DefaultTabController(
+      length: 3,
+      child: Column(
+        children: [
+          Container(
+            margin: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: tabBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: panelBorder),
+            ),
+            child: TabBar(
+              indicator: BoxDecoration(
+                color: indicatorColor.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: indicatorColor.withValues(alpha: 0.45),
+                ),
+              ),
+              labelColor: indicatorColor,
+              unselectedLabelColor: textMuted,
+              dividerColor: Colors.transparent,
+              indicatorSize: TabBarIndicatorSize.tab,
+              tabs: const [
+                Tab(
+                  icon: Icon(LucideIcons.bookmark, size: 16),
+                  text: 'المرجعيات',
+                ),
+                Tab(
+                  icon: Icon(LucideIcons.calculator, size: 16),
+                  text: 'حاسبة',
+                ),
+                Tab(
+                  icon: Icon(LucideIcons.bot, size: 16),
+                  text: 'الذكاء الذكي',
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: TabBarView(
+              children: [
+                // Bookmarks Tab
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                  child: activePdf != null
+                      ? SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (activePdf!.bookmarks.isNotEmpty)
+                                ...activePdf!.bookmarks.map((bookmark) {
+                                  return Card(
+                                    margin: const EdgeInsets.only(bottom: 8),
+                                    elevation: 1,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                      side: BorderSide(color: panelBorder),
+                                    ),
+                                    color: surfaceAlt,
+                                    child: InkWell(
+                                      onTap: () {
+                                        if (pdfController.isReady) {
+                                          pdfController.goToPage(
+                                            pageNumber: bookmark.page,
+                                          );
+                                        }
+                                      },
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(12),
+                                        child: Row(
+                                          children: [
+                                            const Icon(
+                                              LucideIcons.bookmark,
+                                              size: 16,
+                                              color: Color(0xFF3B82F6),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    bookmark.name,
+                                                    style: TextStyle(
+                                                      fontSize: 14,
+                                                      fontWeight:
+                                                          FontWeight.w500,
+                                                      color: textPrimary,
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    'الصفحة ${bookmark.page}',
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: textMuted,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            IconButton(
+                                              icon: const Icon(
+                                                LucideIcons.trash2,
+                                                size: 16,
+                                                color: Color(0xFFDC2626),
+                                              ),
+                                              onPressed: () {
+                                                context
+                                                    .read<AppProvider>()
+                                                    .deleteBookmark(
+                                                      activePdf!.id,
+                                                      bookmark.id,
+                                                    );
+                                              },
+                                              tooltip: 'حذف العلامة المرجعية',
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                })
+                              else
+                                Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(top: 32),
+                                    child: Text(
+                                      'لا توجد علامات مرجعية بعد\n\nاستخدم Ctrl+S لإضافة علامة مرجعية',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: textMuted,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        )
+                      : Center(
+                          child: Text(
+                            'لا يوجد مستند مفتوح',
+                            style: TextStyle(color: textMuted, fontSize: 14),
+                          ),
+                        ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                  child: const MiniCalculatorWidget(),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                  child: _AiChatWidget(
+                    isDarkMode: isDarkMode,
+                    pdfId: activePdf?.id,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1211,6 +1670,12 @@ class StudyFlowRightPanel extends StatelessWidget {
         ),
       );
     }
+  }
+
+  Future<void> _clearAiConversationForPdf(String pdfId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('$_aiConversationKeyPrefix$pdfId');
+    _aiConversationRevision.value++;
   }
 
   // Helper method for shape selector buttons in right panel
@@ -1486,5 +1951,496 @@ class StudyFlowRightPanel extends StatelessWidget {
       default:
         return 'الأداة';
     }
+  }
+}
+
+class _AiChatWidget extends StatefulWidget {
+  final bool isDarkMode;
+  final String? pdfId;
+
+  const _AiChatWidget({required this.isDarkMode, this.pdfId});
+
+  @override
+  State<_AiChatWidget> createState() => _AiChatWidgetState();
+}
+
+class _AiChatWidgetState extends State<_AiChatWidget> {
+  static const List<String> _geminiModels = [
+    'gemini-2.5-flash',
+    'gemini-2.0-flash',
+  ];
+  static const List<String> _groqModels = [
+    'llama-3.3-70b-versatile',
+    'llama-3.1-8b-instant',
+    'mixtral-8x7b-32768',
+  ];
+
+  final List<Map<String, String>> _messages = [
+    {
+      'role': 'ai',
+      'content':
+          'مرحباً بك! أنا مساعدك الذكي في StudyFlow. كيف يمكنني مساعدتك في فهم هذه الملزمة؟',
+    },
+  ];
+  final TextEditingController _controller = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  bool _isLoading = false;
+
+  void _onConversationRevisionChanged() {
+    _loadConversationForCurrentPdf();
+  }
+
+  String get _conversationKey =>
+      '$_aiConversationKeyPrefix${widget.pdfId ?? '__global__'}';
+
+  List<Map<String, String>> _defaultMessages() => [
+    {
+      'role': 'ai',
+      'content':
+          'مرحباً بك! أنا مساعدك الذكي في StudyFlow. كيف يمكنني مساعدتك في فهم هذه الملزمة؟',
+    },
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _aiConversationRevision.addListener(_onConversationRevisionChanged);
+    _loadConversationForCurrentPdf();
+  }
+
+  @override
+  void didUpdateWidget(covariant _AiChatWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.pdfId != widget.pdfId) {
+      _loadConversationForCurrentPdf();
+    }
+  }
+
+  Future<void> _loadConversationForCurrentPdf() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_conversationKey);
+    if (!mounted) return;
+
+    if (raw == null || raw.isEmpty) {
+      setState(() {
+        _messages
+          ..clear()
+          ..addAll(_defaultMessages());
+      });
+      _scrollToBottom();
+      return;
+    }
+
+    try {
+      final decoded = jsonDecode(raw) as List<dynamic>;
+      final restored = decoded
+          .whereType<Map>()
+          .map(
+            (e) => {
+              'role': (e['role'] ?? 'ai').toString(),
+              'content': (e['content'] ?? '').toString(),
+            },
+          )
+          .toList();
+
+      setState(() {
+        _messages
+          ..clear()
+          ..addAll(restored.isEmpty ? _defaultMessages() : restored);
+      });
+      _scrollToBottom();
+    } catch (_) {
+      setState(() {
+        _messages
+          ..clear()
+          ..addAll(_defaultMessages());
+      });
+    }
+  }
+
+  Future<void> _saveConversationForCurrentPdf() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_conversationKey, jsonEncode(_messages));
+  }
+
+  Future<String> _generateGeminiReply(String prompt, String modelName) async {
+    final app = context.read<AppProvider>();
+    final apiKey = app.geminiApiKey.isNotEmpty
+        ? app.geminiApiKey
+        : (dotenv.env['GEMINI_API_KEY'] ?? '');
+    if (apiKey.isEmpty) {
+      throw Exception('GEMINI_API_KEY missing in .env');
+    }
+    final model = GenerativeModel(model: modelName, apiKey: apiKey);
+    final response = await model.generateContent([Content.text(prompt)]);
+    final aiText = (response.text ?? '').trim();
+    return aiText.isEmpty ? 'لم أتمكن من توليد إجابة.' : aiText;
+  }
+
+  Future<String> _generateGroqReply(String prompt, String modelName) async {
+    final app = context.read<AppProvider>();
+    final apiKey = app.groqApiKey.isNotEmpty
+        ? app.groqApiKey
+        : (dotenv.env['GROQ_API_KEY'] ?? '');
+
+    if (apiKey.isEmpty) {
+      throw Exception('GROQ_API_KEY missing in settings/.env');
+    }
+
+    final uri = Uri.parse('https://api.groq.com/openai/v1/chat/completions');
+    final response = await http
+        .post(
+          uri,
+          headers: {
+            'Authorization': 'Bearer $apiKey',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'model': modelName,
+            'messages': [
+              {
+                'role': 'system',
+                'content': 'You are a helpful study assistant for PDF notes.',
+              },
+              {'role': 'user', 'content': prompt},
+            ],
+            'temperature': 0.3,
+          }),
+        )
+        .timeout(const Duration(seconds: 45));
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Groq HTTP ${response.statusCode}: ${response.body}');
+    }
+
+    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+    final choices = decoded['choices'] as List<dynamic>?;
+    if (choices == null || choices.isEmpty) {
+      throw Exception('Groq empty response');
+    }
+
+    final message =
+        (choices.first as Map<String, dynamic>)['message']
+            as Map<String, dynamic>?;
+    final content = (message?['content'] ?? '').toString().trim();
+    return content.isEmpty ? 'لم أتمكن من توليد إجابة.' : content;
+  }
+
+  Future<String> _generateAiReply(String prompt) async {
+    final app = context.read<AppProvider>();
+
+    if (app.aiProvider == 'groq') {
+      final model = _groqModels.contains(app.groqModel)
+          ? app.groqModel
+          : _groqModels.first;
+      return _generateGroqReply(prompt, model);
+    }
+
+    final preferredModel = _geminiModels.contains(app.geminiModel)
+        ? app.geminiModel
+        : _geminiModels.first;
+    final fallbacks = [
+      preferredModel,
+      ..._geminiModels.where((m) => m != preferredModel),
+    ];
+
+    Object? lastError;
+    for (final modelName in fallbacks) {
+      try {
+        return await _generateGeminiReply(prompt, modelName);
+      } catch (e) {
+        lastError = e;
+      }
+    }
+
+    throw Exception(lastError?.toString() ?? 'Unknown Gemini API error');
+  }
+
+  @override
+  void dispose() {
+    _aiConversationRevision.removeListener(_onConversationRevisionChanged);
+    _controller.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) return;
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  Future<void> _sendMessage([String? quickText]) async {
+    if (_isLoading) return;
+    final text = (quickText ?? _controller.text).trim();
+    if (text.isEmpty) return;
+    final provider = context.read<AppProvider>().aiProvider;
+
+    setState(() {
+      _messages.add({'role': 'user', 'content': text});
+      _isLoading = true;
+    });
+    _saveConversationForCurrentPdf();
+    _controller.clear();
+    _scrollToBottom();
+
+    try {
+      final aiText = await _generateAiReply(text);
+
+      if (!mounted) return;
+      setState(() {
+        _messages.add({
+          'role': 'ai',
+          'content': aiText.isEmpty ? 'لم أتمكن من توليد إجابة.' : aiText,
+        });
+        _isLoading = false;
+      });
+      _saveConversationForCurrentPdf();
+      _scrollToBottom();
+    } catch (e, st) {
+      if (!mounted) return;
+      final errorText = e.toString();
+      debugPrint('[AI] Request failed in _sendMessage');
+      debugPrint('[AI] Error: $errorText');
+      debugPrint('[AI] StackTrace:\n$st');
+
+      final isAuthIssue =
+          errorText.contains('API key not valid') ||
+          errorText.contains('PERMISSION_DENIED') ||
+          errorText.contains('API_KEY_INVALID') ||
+          errorText.contains('401') ||
+          errorText.contains('403');
+
+      final isQuotaIssue =
+          errorText.contains('429') ||
+          errorText.contains('quota') ||
+          errorText.contains('RESOURCE_EXHAUSTED') ||
+          errorText.contains('limit: 0') ||
+          errorText.contains('billing');
+
+      final isModelIssue =
+          errorText.contains('not found') ||
+          errorText.contains('not supported') ||
+          errorText.contains('404');
+
+      setState(() {
+        _messages.add({
+          'role': 'ai',
+          'content': isAuthIssue
+              ? (provider == 'groq'
+                    ? 'فشل التحقق من مفتاح Groq. تأكد أن المفتاح صحيح.'
+                    : 'فشل التحقق من مفتاح Gemini. تأكد أن المفتاح صحيح ومفعّل على مشروع Google AI Studio.')
+              : isQuotaIssue
+              ? 'تم تجاوز حد الطلبات (Quota). جرب لاحقاً أو راجع حدود الاستخدام في حسابك.'
+              : isModelIssue
+              ? 'الموديل غير متاح حالياً لهذا المزود. اختر موديل آخر من الإعدادات.'
+              : 'تعذر الاتصال بمزود الذكاء (${provider.toUpperCase()}). السبب: $errorText',
+        });
+        _isLoading = false;
+      });
+      _saveConversationForCurrentPdf();
+      _scrollToBottom();
+    }
+  }
+
+  Widget _buildChatBubble(Map<String, String> message) {
+    final role = message['role'] ?? 'ai';
+    final content = message['content'] ?? '';
+    final isUser = role == 'user';
+
+    final userColor = const Color(0xFF3B82F6);
+    final aiBubbleColor = widget.isDarkMode
+        ? const Color(0xFF1E293B)
+        : const Color(0xFFF1F5F9);
+    final textColor = isUser
+        ? Colors.white
+        : (widget.isDarkMode ? Colors.white : const Color(0xFF0F172A));
+
+    final bubble = Container(
+      constraints: const BoxConstraints(maxWidth: 220),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: isUser ? userColor : aiBubbleColor,
+        borderRadius: BorderRadius.only(
+          topLeft: const Radius.circular(14),
+          topRight: const Radius.circular(14),
+          bottomLeft: Radius.circular(isUser ? 14 : 0),
+          bottomRight: Radius.circular(isUser ? 0 : 14),
+        ),
+      ),
+      child: Text(
+        content,
+        style: TextStyle(color: textColor, fontSize: 14, height: 1.35),
+        textDirection: TextDirection.rtl,
+      ),
+    );
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: isUser
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (!isUser) ...[
+            Container(
+              margin: const EdgeInsets.only(right: 6, bottom: 2),
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF3B82F6).withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                LucideIcons.bot,
+                size: 14,
+                color: Color(0xFF3B82F6),
+              ),
+            ),
+          ],
+          bubble,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTypingIndicator() {
+    final bg = widget.isDarkMode
+        ? const Color(0xFF1E293B)
+        : const Color(0xFFF1F5F9);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Container(
+            margin: const EdgeInsets.only(right: 6, bottom: 2),
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: const Color(0xFF3B82F6).withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(
+              LucideIcons.bot,
+              size: 14,
+              color: Color(0xFF3B82F6),
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: bg,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(14),
+                topRight: Radius.circular(14),
+                bottomLeft: Radius.circular(0),
+                bottomRight: Radius.circular(14),
+              ),
+            ),
+            child: const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF3B82F6)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final panelBg = widget.isDarkMode
+        ? const Color(0xFF0B1220)
+        : scheme.surfaceContainerLowest;
+    final panelBorder = widget.isDarkMode
+        ? const Color(0xFF334155)
+        : scheme.outlineVariant;
+    final inputBg = widget.isDarkMode
+        ? const Color(0xFF111827)
+        : scheme.surface;
+    final hintColor = widget.isDarkMode
+        ? const Color(0xFF94A3B8)
+        : scheme.onSurfaceVariant;
+    final inputTextColor = widget.isDarkMode
+        ? const Color(0xFFF8FAFC)
+        : const Color(0xFF0F172A);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: panelBg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: panelBorder),
+      ),
+      child: Column(
+        children: [
+          Expanded(
+            child: ListView.builder(
+              controller: _scrollController,
+              padding: const EdgeInsets.fromLTRB(10, 12, 10, 8),
+              itemCount: _messages.length + (_isLoading ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (_isLoading && index == _messages.length) {
+                  return _buildTypingIndicator();
+                }
+                return _buildChatBubble(_messages[index]);
+              },
+            ),
+          ),
+          Container(
+            margin: const EdgeInsets.all(10),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: inputBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: panelBorder),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _controller,
+                    enabled: !_isLoading,
+                    style: TextStyle(color: inputTextColor, fontSize: 14),
+                    cursorColor: inputTextColor,
+                    minLines: 1,
+                    maxLines: 3,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => _sendMessage(),
+                    decoration: InputDecoration(
+                      hintText: 'اسأل عن أي شيء في الملزمة...',
+                      hintStyle: TextStyle(color: hintColor, fontSize: 13),
+                      border: InputBorder.none,
+                      isDense: true,
+                    ),
+                    textDirection: TextDirection.rtl,
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'إرسال',
+                  onPressed: _isLoading ? null : _sendMessage,
+                  icon: const Icon(
+                    LucideIcons.send,
+                    size: 18,
+                    color: Color(0xFF3B82F6),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

@@ -54,7 +54,6 @@ extension _PDFViewerWidgetStateStyle on _PDFViewerWidgetState {
         final shapeToolType = _highlightTypeToToolType(shape.type);
         _toolStrokeWidths[shapeToolType] = shape.strokeWidth;
       });
-      if (!_isRightPanelOpen) setState(() => _isRightPanelOpen = true);
     } else {
       setState(() => _selectedHighlightId = null);
     }

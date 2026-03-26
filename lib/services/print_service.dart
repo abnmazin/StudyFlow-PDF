@@ -1,7 +1,8 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' show Offset, Size;
-
+import 'dart:convert';
+import 'package:pdf/pdf.dart'; // هذا السطر سيحل مشكلة الـ Undefined class
 import 'package:flutter/foundation.dart';
 import 'package:printing/printing.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart' as sf;
@@ -10,6 +11,56 @@ import '../models/print_settings.dart';
 import '../utils/print_utils.dart';
 
 class PrintService {
+  static Directory get _diagnosticsDir => Directory(
+    '${Directory.systemTemp.path}${Platform.pathSeparator}studyflow_print_diagnostics',
+  );
+
+  static File get _diagnosticsLog =>
+      File('${_diagnosticsDir.path}${Platform.pathSeparator}print.log');
+
+  static File get _pendingMarker => File(
+    '${_diagnosticsDir.path}${Platform.pathSeparator}pending_print.json',
+  );
+
+  static Future<void> _diagWrite(String line, {required bool enabled}) async {
+    if (!enabled) return;
+    await _diagnosticsDir.create(recursive: true);
+    final ts = DateTime.now().toIso8601String();
+    await _diagnosticsLog.writeAsString(
+      '[$ts] $line\n',
+      mode: FileMode.append,
+      flush: true,
+    );
+  }
+
+  static Future<void> _writePendingMarker(Map<String, dynamic> data) async {
+    await _diagnosticsDir.create(recursive: true);
+    await _pendingMarker.writeAsString(jsonEncode(data), flush: true);
+  }
+
+  static Future<void> _clearPendingMarker() async {
+    if (await _pendingMarker.exists()) {
+      await _pendingMarker.delete();
+    }
+  }
+
+  static Future<bool> _tryWindowsShellPrint(String filePath) async {
+    final escapedPath = filePath.replaceAll("'", "''");
+    final result = await Process.run('powershell', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      "Start-Process -FilePath '$escapedPath' -Verb Print",
+    ]);
+    return result.exitCode == 0;
+  }
+
+  static Future<void> _openFileInWindowsDefaultApp(String filePath) async {
+    await Process.start('explorer.exe', [filePath]);
+  }
+
+  static String get diagnosticsLogPath => _diagnosticsLog.path;
+
   /// Single entry point for the print pipeline.
   ///
   /// 1. Loads [sourcePdfPath].
@@ -21,12 +72,43 @@ class PrintService {
     int currentPage = 1,
     String printJobName = 'Document',
   }) async {
+    final sw = Stopwatch()..start();
+    Future<void> logTiming(String stage) async {
+      final msg = '[PrintServiceTiming] +${sw.elapsedMilliseconds}ms $stage';
+      debugPrint(msg);
+      await _diagWrite(msg, enabled: settings.enableDiagnostics);
+    }
+
+    await _diagWrite(
+      'START executePrint source=$sourcePdfPath destination=${settings.destination.name} runMode=${settings.runMode.name} copies=${settings.copies} range=${settings.pageRange} parity=${settings.parity} reverse=${settings.reverse} orientation=${settings.orientation.name} color=${settings.colorMode.name}',
+      enabled: settings.enableDiagnostics,
+    );
+    await logTiming('start executePrint');
+
+    if (await _pendingMarker.exists()) {
+      final marker = await _pendingMarker.readAsString();
+      await _diagWrite(
+        'WARNING previous print ended unexpectedly. Pending marker=$marker',
+        enabled: settings.enableDiagnostics,
+      );
+    }
+
     final file = File(sourcePdfPath);
     if (!await file.exists()) {
+      await _diagWrite(
+        'ERROR source PDF missing at $sourcePdfPath',
+        enabled: settings.enableDiagnostics,
+      );
       throw Exception('Source PDF not found: $sourcePdfPath');
     }
 
     final sourceBytes = await file.readAsBytes();
+    await logTiming('source bytes loaded (${sourceBytes.length})');
+    await _diagWrite(
+      'Loaded source bytes=${sourceBytes.length}',
+      enabled: settings.enableDiagnostics,
+    );
+
     final processedBytes = await compute(
       _processPdfIsolate,
       _ProcessArgs(
@@ -42,18 +124,158 @@ class PrintService {
         colorModeIndex: settings.colorMode.index,
       ),
     );
+    await logTiming('pdf processed in isolate (${processedBytes.length})');
+
+    await _diagWrite(
+      'PDF processed bytes=${processedBytes.length} elapsedMs=${sw.elapsedMilliseconds}',
+      enabled: settings.enableDiagnostics,
+    );
+
+    if (settings.runMode == PrintRunMode.preprocessOnly) {
+      await _diagWrite(
+        'RUNMODE preprocessOnly completed successfully. No OS print dialog opened.',
+        enabled: settings.enableDiagnostics,
+      );
+      return;
+    }
+
+    if (settings.runMode == PrintRunMode.preprocessAndSaveDebugPdf) {
+      final outputPath =
+          settings.debugOutputPath ??
+          '${_diagnosticsDir.path}${Platform.pathSeparator}debug_print_${DateTime.now().millisecondsSinceEpoch}.pdf';
+      await File(outputPath).writeAsBytes(processedBytes);
+      await _diagWrite(
+        'RUNMODE preprocessAndSaveDebugPdf wrote file=$outputPath',
+        enabled: settings.enableDiagnostics,
+      );
+      return;
+    }
 
     if (settings.destination == PrintDestination.pdfFile) {
       if (settings.outputPath == null || settings.outputPath!.isEmpty) {
+        await _diagWrite(
+          'ERROR output path missing for Save as PDF',
+          enabled: settings.enableDiagnostics,
+        );
         throw Exception('Output path is required for Save as PDF');
       }
       await File(settings.outputPath!).writeAsBytes(processedBytes);
-    } else {
-      await Printing.layoutPdf(
-        onLayout: (_) async => processedBytes,
-        name: printJobName,
+      await logTiming('saved as PDF file');
+      await _diagWrite(
+        'Saved PDF file to ${settings.outputPath!}',
+        enabled: settings.enableDiagnostics,
       );
+    } else {
+      if (Platform.isWindows) {
+        await logTiming('windows safe-print path selected');
+
+        final tempPath =
+            '${_diagnosticsDir.path}${Platform.pathSeparator}print_job_${DateTime.now().millisecondsSinceEpoch}.pdf';
+        await File(tempPath).writeAsBytes(processedBytes, flush: true);
+        await logTiming('windows temp PDF written: $tempPath');
+
+        final printed = await _tryWindowsShellPrint(tempPath);
+        if (printed) {
+          await _diagWrite(
+            'Windows shell print dispatched successfully for $tempPath',
+            enabled: settings.enableDiagnostics,
+          );
+          await logTiming('windows shell print dispatched');
+        } else {
+          await _diagWrite(
+            'Windows shell print verb failed, opening file in default viewer: $tempPath',
+            enabled: settings.enableDiagnostics,
+          );
+          await logTiming('windows shell print failed; opening file');
+          await _openFileInWindowsDefaultApp(tempPath);
+        }
+
+        await _clearPendingMarker();
+        sw.stop();
+        await logTiming('end executePrint total=${sw.elapsedMilliseconds}ms');
+        await _diagWrite(
+          'END executePrint totalElapsedMs=${sw.elapsedMilliseconds}',
+          enabled: settings.enableDiagnostics,
+        );
+        return;
+      }
+
+      // 1. تسجيل العملية في سجل التشخيص
+      await _writePendingMarker({
+        'createdAt': DateTime.now().toIso8601String(),
+        'sourcePdfPath': sourcePdfPath,
+        'printJobName': printJobName,
+        'destination': settings.destination.name,
+        'runMode': settings.runMode.name,
+      });
+
+      await _diagWrite(
+        'Attempting Direct Printing to avoid OS Dialog Crash',
+        enabled: settings.enableDiagnostics,
+      );
+
+      try {
+        // 2. جلب قائمة الطابعات المتاحة في النظام
+        final printers = await Printing.listPrinters();
+        await logTiming('printers listed (${printers.length})');
+        
+        // 3. البحث عن الطابعة الافتراضية
+        Printer? targetPrinter;
+        if (printers.isNotEmpty) {
+          try {
+            targetPrinter = printers.firstWhere((p) => p.isDefault);
+          } catch (_) {
+            targetPrinter = printers.first; // إذا لم توجد افتراضية، خذ الأولى
+          }
+        }
+
+        if (targetPrinter != null) {
+          await _diagWrite(
+            'Sending directly to printer: ${targetPrinter.name}',
+            enabled: settings.enableDiagnostics,
+          );
+
+          // 4. الطباعة الصامتة (Direct Print) - بدون نافذة ويندوز
+          await Printing.directPrintPdf(
+            printer: targetPrinter,
+            // نمرر البيانات مباشرة بشكل متزامن (بدون async)
+            onLayout: (PdfPageFormat format) => processedBytes,
+            name: printJobName,
+            dynamicLayout: false,
+          );
+          await logTiming('directPrintPdf completed');
+          
+          await _clearPendingMarker();
+          await _diagWrite(
+            'Direct print job sent successfully',
+            enabled: settings.enableDiagnostics,
+          );
+        } else {
+          throw Exception('لم يتم العثور على طابعة متصلة بالنظام');
+        }
+      } catch (e) {
+        await logTiming('directPrintPdf failed, fallback to layoutPdf');
+        await _diagWrite(
+          'Direct Print Failed: $e. Falling back to layoutPdf...',
+          enabled: settings.enableDiagnostics,
+        );
+        
+        // Fallback: إذا فشلت الطباعة المباشرة، نعود للطريقة التقليدية كخيار أخير
+        await Printing.layoutPdf(
+          onLayout: (_) => processedBytes, // بدون async
+          name: printJobName,
+          dynamicLayout: false,
+        );
+        await logTiming('layoutPdf completed');
+      }
     }
+
+    sw.stop();
+    await logTiming('end executePrint total=${sw.elapsedMilliseconds}ms');
+    await _diagWrite(
+      'END executePrint totalElapsedMs=${sw.elapsedMilliseconds}',
+      enabled: settings.enableDiagnostics,
+    );
   }
 
   // ── Isolate entry point ────────────────────────────────────────────────────

@@ -502,9 +502,6 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                               if (!isSelectedShapeTool) {
                                 widget.onToolChanged(ToolType.arrow);
                               }
-                              if (!widget.isRightPanelOpen) {
-                                widget.onToggleRightPanel();
-                              }
                               if (!widget.isShapesPaletteVisible) {
                                 widget.onToggleShapesPalette();
                               }
@@ -522,9 +519,6 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                               // Keep selection in select mode while opening highlight controls.
                               if (!isSelectedHighlightTool) {
                                 widget.onToolChanged(ToolType.highlight);
-                              }
-                              if (!widget.isRightPanelOpen) {
-                                widget.onToggleRightPanel();
                               }
                             },
                             tooltip: 'هايلايت (H)',
@@ -560,21 +554,29 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                       ),
                     ),
                     // Bookmark (Hand tool only)
-                    if (widget.activeTool == ToolType.cursor) ...[
-                      const SizedBox(width: 8),
+                                          const SizedBox(width: 8),
                       Container(width: 1, height: 28, color: separatorColor),
-                      _buildToolButton(
-                        icon: LucideIcons.bookmark,
-                        isActive: false,
-                        onTap: () {
-                          if (pdf != null && widget.pdfController.isReady) {
-                            widget.onAddBookmark(pdf);
-                          }
-                        },
-                        tooltip: 'إضافة علامة مرجعية',
-                        iconMuted: iconMuted,
-                      ),
-                    ],
+                    _buildToolButton(
+  icon: LucideIcons.bookmark,
+  isActive: false, // يبقى الزر بلون هادئ لأنه إجراء (Action) وليس أداة رسم
+  onTap: () {
+    // سيعمل الزر ويحفظ الصفحة حتى لو كان القلم أو النص هو المفعل حالياً
+    if (widget.activePdf != null && widget.pdfController.isReady) {
+      widget.onAddBookmark(widget.activePdf!);
+      
+      // إضافة إشعار لطيف يؤكد للطالب أنه تم الحفظ (اختياري لتحسين الـ UX)
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('تم حفظ الصفحة كعلامة مرجعية 📑', style: TextStyle(fontFamily: 'Cairo')),
+          duration: Duration(seconds: 2),
+          backgroundColor: Color(0xFF3B82F6),
+        ),
+      );
+    }
+  },
+  tooltip: 'حفظ كعلامة مرجعية',
+  iconMuted: iconMuted, // المتغير الخاص باللون الباهت في الثيم الخاص بك
+),
                     const SizedBox(width: 350),
 
                     // ─── Divider ──

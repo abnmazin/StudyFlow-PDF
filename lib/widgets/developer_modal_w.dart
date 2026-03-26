@@ -175,7 +175,7 @@ class _DeveloperModalState extends State<DeveloperModal>
           ),
           const SizedBox(height: 4),
           const Text(
-            'مطور برمجيات',
+            'التطبيق مصمم خصيصا للبيت ',
             style: TextStyle(
               fontSize: 16,
               color: Color(0xFF94A3B8), // Slate 400
