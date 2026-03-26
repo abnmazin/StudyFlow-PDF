@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../models/print_settings.dart';
-import '../../services/print_service.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 // PrintDialog — Phase 1: destination, page range, copies, orientation, color
 // ─────────────────────────────────────────────────────────────────────────────
@@ -36,9 +35,6 @@ class _PrintDialogState extends State<PrintDialog> {
   int _copies = 1;
   PrintOrientation _orientation = PrintOrientation.portrait;
   PrintColorMode _colorMode = PrintColorMode.color;
-  bool _enableDiagnostics = true;
-  PrintRunMode _runMode = PrintRunMode.normal;
-  String? _debugOutputPath;
   String? _outputPath;
   bool _isPrinting = false;
 
@@ -46,9 +42,27 @@ class _PrintDialogState extends State<PrintDialog> {
 
   // ── Colours ────────────────────────────────────────────────────────────────
   static const Color _accent = Color(0xFF3B82F6); // blue-500
-  static const Color _surface = Color(0xFFF8FAFC);
-  static const Color _border = Color(0xFFE2E8F0);
-  static const Color _labelColor = Color(0xFF374151);
+  bool get _isDark => Theme.of(context).brightness == Brightness.dark;
+
+  Color get _surface => _isDark
+      ? const Color(0xFF0F172A)
+      : const Color(0xFFE2E8F0);
+
+  Color get _cardBg => _isDark
+      ? const Color(0xFF1E293B)
+      : const Color(0xFFF1F5F9);
+
+  Color get _border => _isDark
+      ? const Color(0xFF334155)
+      : const Color(0xFFCBD5E1);
+
+  Color get _labelColor => _isDark
+      ? const Color(0xFFE2E8F0)
+      : const Color(0xFF1F2937);
+
+  Color get _sectionLabelColor => _isDark
+      ? const Color(0xFF94A3B8)
+      : const Color(0xFF475569);
 
   // ── Build ──────────────────────────────────────────────────────────────────
 
@@ -78,8 +92,6 @@ class _PrintDialogState extends State<PrintDialog> {
                     _buildOrientationSection(),
                     _buildDivider(),
                     _buildColorSection(),
-                    _buildDivider(),
-                    _buildDiagnosticsSection(),
                     const SizedBox(height: 8),
                   ],
                 ),
@@ -97,14 +109,14 @@ class _PrintDialogState extends State<PrintDialog> {
   Widget _buildHeader() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: _border)),
       ),
       child: Row(
         children: [
           const Icon(LucideIcons.printer, size: 20, color: _accent),
           const SizedBox(width: 10),
-          const Expanded(
+          Expanded(
             child: Text(
               'Print',
               style: TextStyle(
@@ -127,16 +139,16 @@ class _PrintDialogState extends State<PrintDialog> {
   }
 
   Widget _buildDivider() =>
-      const Divider(height: 24, thickness: 1, color: _border);
+      Divider(height: 24, thickness: 1, color: _border);
 
   Widget _buildSectionLabel(String label) => Padding(
     padding: const EdgeInsets.only(bottom: 10),
     child: Text(
       label,
-      style: const TextStyle(
+      style: TextStyle(
         fontSize: 12,
         fontWeight: FontWeight.w600,
-        color: Color(0xFF6B7280),
+        color: _sectionLabelColor,
         letterSpacing: 0.5,
       ),
     ),
@@ -183,7 +195,7 @@ class _PrintDialogState extends State<PrintDialog> {
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
         decoration: BoxDecoration(
-          color: selected ? _accent.withOpacity(0.08) : Colors.white,
+          color: selected ? _accent.withOpacity(0.08) : _cardBg,
           border: Border.all(
             color: selected ? _accent : _border,
             width: selected ? 1.5 : 1,
@@ -219,7 +231,7 @@ class _PrintDialogState extends State<PrintDialog> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: _cardBg,
               border: Border.all(color: _border),
               borderRadius: BorderRadius.circular(6),
             ),
@@ -362,7 +374,7 @@ class _PrintDialogState extends State<PrintDialog> {
             const SizedBox(width: 8),
             Text(
               label,
-              style: const TextStyle(fontSize: 13, color: _labelColor),
+              style: TextStyle(fontSize: 13, color: _labelColor),
             ),
           ],
         ),
@@ -390,7 +402,7 @@ class _PrintDialogState extends State<PrintDialog> {
             ),
             Text(
               label,
-              style: const TextStyle(fontSize: 13, color: _labelColor),
+              style: TextStyle(fontSize: 13, color: _labelColor),
             ),
           ],
         ),
@@ -410,8 +422,8 @@ class _PrintDialogState extends State<PrintDialog> {
               icon: const Icon(LucideIcons.minus, size: 16),
               onPressed: _copies > 1 ? () => setState(() => _copies--) : null,
               style: IconButton.styleFrom(
-                backgroundColor: Colors.white,
-                side: const BorderSide(color: _border),
+                backgroundColor: _cardBg,
+                side: BorderSide(color: _border),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(6),
                 ),
@@ -433,8 +445,8 @@ class _PrintDialogState extends State<PrintDialog> {
               icon: const Icon(LucideIcons.plus, size: 16),
               onPressed: _copies < 99 ? () => setState(() => _copies++) : null,
               style: IconButton.styleFrom(
-                backgroundColor: Colors.white,
-                side: const BorderSide(color: _border),
+                backgroundColor: _cardBg,
+                side: BorderSide(color: _border),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(6),
                 ),
@@ -448,7 +460,7 @@ class _PrintDialogState extends State<PrintDialog> {
               child: Text(
                 '$_copies',
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: _labelColor,
@@ -461,7 +473,7 @@ class _PrintDialogState extends State<PrintDialog> {
         CheckboxListTile(
           contentPadding: EdgeInsets.zero,
           dense: true,
-          title: const Text(
+          title: Text(
             'عكس الترتيب',
             style: TextStyle(fontSize: 13, color: _labelColor),
           ),
@@ -511,7 +523,7 @@ class _PrintDialogState extends State<PrintDialog> {
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
         decoration: BoxDecoration(
-          color: selected ? _accent.withOpacity(0.08) : Colors.white,
+          color: selected ? _accent.withOpacity(0.08) : _cardBg,
           border: Border.all(
             color: selected ? _accent : _border,
             width: selected ? 1.5 : 1,
@@ -578,7 +590,7 @@ class _PrintDialogState extends State<PrintDialog> {
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
         decoration: BoxDecoration(
-          color: selected ? _accent.withOpacity(0.08) : Colors.white,
+          color: selected ? _accent.withOpacity(0.08) : _cardBg,
           border: Border.all(
             color: selected ? _accent : _border,
             width: selected ? 1.5 : 1,
@@ -608,122 +620,11 @@ class _PrintDialogState extends State<PrintDialog> {
     );
   }
 
-  Widget _buildDiagnosticsSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildSectionLabel('DIAGNOSTICS'),
-        SwitchListTile.adaptive(
-          contentPadding: EdgeInsets.zero,
-          dense: true,
-          value: _enableDiagnostics,
-          activeColor: _accent,
-          title: const Text(
-            'تفعيل سجل تشخيص الطباعة',
-            style: TextStyle(fontSize: 13, color: _labelColor),
-          ),
-          subtitle: Text(
-            'المسار: ${PrintService.diagnosticsLogPath}',
-            style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280)),
-          ),
-          onChanged: (v) => setState(() => _enableDiagnostics = v),
-        ),
-        const SizedBox(height: 6),
-        DropdownButtonFormField<PrintRunMode>(
-          value: _runMode,
-          decoration: InputDecoration(
-            labelText: 'وضع التنفيذ',
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 10,
-            ),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-            isDense: true,
-          ),
-          items: const [
-            DropdownMenuItem(
-              value: PrintRunMode.normal,
-              child: Text('عادي (يفتح نافذة طباعة ويندوز)'),
-            ),
-            DropdownMenuItem(
-              value: PrintRunMode.preprocessOnly,
-              child: Text('تشخيص: تجهيز فقط بدون نافذة الطباعة'),
-            ),
-            DropdownMenuItem(
-              value: PrintRunMode.preprocessAndSaveDebugPdf,
-              child: Text('تشخيص: تجهيز + حفظ ملف PDF تحليلي'),
-            ),
-          ],
-          onChanged: (v) {
-            if (v != null) {
-              setState(() => _runMode = v);
-            }
-          },
-        ),
-        if (_runMode == PrintRunMode.preprocessAndSaveDebugPdf) ...[
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    border: Border.all(color: _border),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    _debugOutputPath ?? 'اختياري: حدد مسار ملف التشخيص',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: _debugOutputPath != null
-                          ? _labelColor
-                          : const Color(0xFF9CA3AF),
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              OutlinedButton.icon(
-                onPressed: _pickDebugOutputPath,
-                icon: const Icon(LucideIcons.folderOpen, size: 14),
-                label: const Text('مسار'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: _accent,
-                  side: const BorderSide(color: _accent),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  textStyle: const TextStyle(fontSize: 13),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ],
-    );
-  }
-
-  Future<void> _pickDebugOutputPath() async {
-    final result = await FilePicker.platform.saveFile(
-      dialogTitle: 'حفظ ملف تشخيص الطباعة باسم…',
-      fileName: '${widget.pdfName.replaceAll('.pdf', '')}_debug_print.pdf',
-      type: FileType.custom,
-      allowedExtensions: ['pdf'],
-    );
-    if (result != null) setState(() => _debugOutputPath = result);
-  }
-
   // FOOTER ────────────────────────────────────────────────────────────────────
   Widget _buildFooter() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         border: Border(top: BorderSide(color: _border)),
       ),
       child: Row(
@@ -801,9 +702,9 @@ class _PrintDialogState extends State<PrintDialog> {
       copies: _copies,
       orientation: _orientation,
       colorMode: _colorMode,
-      enableDiagnostics: _enableDiagnostics,
-      runMode: _runMode,
-      debugOutputPath: _debugOutputPath,
+      enableDiagnostics: false,
+      runMode: PrintRunMode.normal,
+      debugOutputPath: null,
     );
 
     // Close dialog first so OS printing runs after modal teardown.

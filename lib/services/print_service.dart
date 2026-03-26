@@ -71,6 +71,7 @@ class PrintService {
     PrintSettings settings, {
     int currentPage = 1,
     String printJobName = 'Document',
+    List<Map<String, dynamic>> annotationsJson = const [],
   }) async {
     final sw = Stopwatch()..start();
     Future<void> logTiming(String stage) async {
@@ -122,6 +123,7 @@ class PrintService {
         copies: settings.copies,
         orientationIndex: settings.orientation.index,
         colorModeIndex: settings.colorMode.index,
+        annotationsJson: annotationsJson,
       ),
     );
     await logTiming('pdf processed in isolate (${processedBytes.length})');
@@ -314,12 +316,17 @@ class PrintService {
       settings.reverse,
     );
 
+    final List<Map<String, dynamic>> annotations = args.annotationsJson;
+
     // ── Build output document ─────────────────────────────────────────────────
     final sf.PdfDocument output = sf.PdfDocument();
 
     for (final pageNum in pageNums) {
       final sf.PdfPage srcPage = source.pages[pageNum - 1];
       final Size srcSize = srcPage.size; // dart:ui Size
+      final List<Map<String, dynamic>> pageAnnotations = annotations
+        .where((a) => (a['page'] as num?)?.toInt() == pageNum)
+        .toList();
       final bool srcIsPortrait = srcSize.height >= srcSize.width;
       final bool wantLandscape =
           settings.orientation == PrintOrientation.landscape;
@@ -352,6 +359,7 @@ class PrintService {
           origin,
           Size(srcSize.width, srcSize.height),
         );
+        _drawFlattenedAnnotations(g, pageAnnotations);
       } else if (!wantLandscape && !srcIsPortrait) {
         // Landscape → Portrait: rotate +90° with compensating translation
         g.translateTransform(srcSize.width, 0);
@@ -361,6 +369,7 @@ class PrintService {
           origin,
           Size(srcSize.width, srcSize.height),
         );
+        _drawFlattenedAnnotations(g, pageAnnotations);
       } else {
         // No rotation — same orientation, just blit the template
         g.drawPdfTemplate(
@@ -368,6 +377,7 @@ class PrintService {
           origin,
           Size(srcSize.width, srcSize.height),
         );
+        _drawFlattenedAnnotations(g, pageAnnotations);
       }
 
       g.restore();
@@ -378,6 +388,182 @@ class PrintService {
     output.dispose();
 
     return Uint8List.fromList(outBytes);
+  }
+
+  static void _drawFlattenedAnnotations(
+    sf.PdfGraphics g,
+    List<Map<String, dynamic>> pageAnnotations,
+  ) {
+    for (final a in pageAnnotations) {
+      final kind = (a['annotationKind'] ?? '').toString();
+      if (kind == 'comment') {
+        _drawCommentAnnotation(g, a);
+      } else {
+        _drawHighlightAnnotation(g, a);
+      }
+    }
+  }
+
+  static void _drawHighlightAnnotation(
+    sf.PdfGraphics g,
+    Map<String, dynamic> a,
+  ) {
+    final type = (a['type'] ?? '').toString().toLowerCase();
+    final strokeWidth = _toDouble(a['strokeWidth'], 2.0).clamp(0.5, 64.0);
+    final strokeColor = _pdfColorFromArgb(
+      a['color'] as int? ?? 0xFF000000,
+      opacity: 1.0,
+    );
+    final fillColor = _pdfColorFromArgb(
+      (a['backgroundColor'] as int?) ?? (a['color'] as int? ?? 0xFF000000),
+      opacity: 0.12,
+    );
+    final pen = sf.PdfPen(strokeColor, width: strokeWidth);
+    final fillBrush = sf.PdfSolidBrush(fillColor);
+
+    final rects = (a['rects'] as List?)?.cast<Map>();
+    if ((type.contains('highlight') || type.contains('text')) &&
+        rects != null &&
+        rects.isNotEmpty) {
+      for (final r in rects) {
+        final left = _toDouble(r['L']);
+        final top = _toDouble(r['T']);
+        final right = _toDouble(r['R']);
+        final bottom = _toDouble(r['B']);
+        final rect = Rect.fromLTRB(left, top, right, bottom);
+        g.drawRectangle(bounds: rect, brush: sf.PdfSolidBrush(_pdfColorFromArgb(
+          a['color'] as int? ?? 0xFF000000,
+          opacity: 0.45,
+        )));
+      }
+      return;
+    }
+
+    final path = (a['path'] as List?)?.cast<Map>();
+    if (path == null || path.length < 2) return;
+
+    final points = path
+        .map((p) => Offset(_toDouble(p['dx']), _toDouble(p['dy'])))
+        .toList();
+    if (points.length < 2) return;
+
+    if (type.contains('rectangle')) {
+      final rect = Rect.fromPoints(points.first, points.last);
+      g.drawRectangle(bounds: rect, brush: fillBrush, pen: pen);
+      return;
+    }
+
+    if (type.contains('circle')) {
+      final rect = Rect.fromPoints(points.first, points.last);
+      g.drawEllipse(bounds: rect, brush: fillBrush, pen: pen);
+      return;
+    }
+
+    if (type.contains('arrow')) {
+      final p1 = points.first;
+      final p2 = points.last;
+      g.drawLine(pen, p1, p2);
+
+      final dx = p2.dx - p1.dx;
+      final dy = p2.dy - p1.dy;
+      final mag = (dx * dx + dy * dy);
+      if (mag < 0.0001) return;
+      final len = mag.sqrt();
+      final ux = dx / len;
+      final uy = dy / len;
+      final headLen = (10.0 + strokeWidth * 2).clamp(8.0, 24.0);
+      final wing = headLen * 0.4;
+
+      final bx = p2.dx - ux * headLen;
+      final by = p2.dy - uy * headLen;
+      final wx = -uy * wing;
+      final wy = ux * wing;
+
+      g.drawLine(pen, p2, Offset(bx + wx, by + wy));
+      g.drawLine(pen, p2, Offset(bx - wx, by - wy));
+      return;
+    }
+
+    final drawPen = type.contains('highlight')
+        ? sf.PdfPen(
+            _pdfColorFromArgb(a['color'] as int? ?? 0xFF000000, opacity: 0.55),
+            width: (strokeWidth * 1.4).clamp(0.5, 96.0),
+          )
+        : pen;
+    for (var i = 1; i < points.length; i++) {
+      g.drawLine(drawPen, points[i - 1], points[i]);
+    }
+  }
+
+  static void _drawCommentAnnotation(
+    sf.PdfGraphics g,
+    Map<String, dynamic> a,
+  ) {
+    final content = (a['content'] ?? '').toString();
+    if (content.trim().isEmpty) return;
+
+    final x = _toDouble(a['dx']);
+    final y = _toDouble(a['dy']);
+    final fontSize = _toDouble(a['fontSize'], 14.0).clamp(6.0, 128.0);
+    final isBold = a['isBold'] == true;
+    final showBorder = a['showBorder'] != false;
+    final textColor = _pdfColorFromArgb(a['color'] as int? ?? 0xFF000000);
+    final borderColor = _pdfColorFromArgb(a['borderColor'] as int? ?? 0xFF000000);
+    final bgColor = _pdfColorFromArgb(a['bgColor'] as int? ?? 0xFFFEF3C7);
+
+    final font = sf.PdfStandardFont(
+      sf.PdfFontFamily.helvetica,
+      fontSize,
+      style: isBold ? sf.PdfFontStyle.bold : sf.PdfFontStyle.regular,
+    );
+
+    final textSize = font.measureString(content);
+    const padding = 4.0;
+    final bounds = Rect.fromLTWH(
+      x,
+      y,
+      textSize.width + (padding * 2),
+      textSize.height + (padding * 2),
+    );
+
+    g.drawRectangle(bounds: bounds, brush: sf.PdfSolidBrush(bgColor));
+    if (showBorder) {
+      g.drawRectangle(
+        bounds: bounds,
+        pen: sf.PdfPen(borderColor, width: 1),
+      );
+    }
+
+    g.drawString(
+      content,
+      font,
+      brush: sf.PdfSolidBrush(textColor),
+      bounds: Rect.fromLTWH(
+        x + padding,
+        y + padding,
+        textSize.width,
+        textSize.height,
+      ),
+    );
+  }
+
+  static double _toDouble(dynamic v, [double fallback = 0]) {
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v) ?? fallback;
+    return fallback;
+  }
+
+  static sf.PdfColor _pdfColorFromArgb(int argb, {double opacity = 1.0}) {
+    final a = (((argb >> 24) & 0xFF) / 255.0) * opacity.clamp(0.0, 1.0);
+    final r = (argb >> 16) & 0xFF;
+    final g = (argb >> 8) & 0xFF;
+    final b = argb & 0xFF;
+
+    // PdfColor in this package path is opaque; blend alpha over white.
+    final br = (r * a + 255 * (1 - a)).round().clamp(0, 255);
+    final bg = (g * a + 255 * (1 - a)).round().clamp(0, 255);
+    final bb = (b * a + 255 * (1 - a)).round().clamp(0, 255);
+    return sf.PdfColor(br, bg, bb);
   }
 }
 
@@ -394,6 +580,7 @@ class _ProcessArgs {
   final int copies;
   final int orientationIndex;
   final int colorModeIndex;
+  final List<Map<String, dynamic>> annotationsJson;
 
   const _ProcessArgs({
     required this.sourceBytes,
@@ -406,5 +593,6 @@ class _ProcessArgs {
     required this.copies,
     required this.orientationIndex,
     required this.colorModeIndex,
+    required this.annotationsJson,
   });
 }

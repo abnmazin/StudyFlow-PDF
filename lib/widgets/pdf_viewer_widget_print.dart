@@ -113,8 +113,8 @@ extension _PDFViewerWidgetStatePrint on _PDFViewerWidgetState {
       _needsReload = true;
 
       // 1) Cool-down: let Windows spooler release native/GPU handles.
-      logStage('cool-down start (2s)');
-      await Future.delayed(const Duration(seconds: 2));
+      logStage('cool-down start (1s)');
+      await Future.delayed(const Duration(seconds: 1));
       logStage('cool-down end');
 
       if (!mounted) return;
@@ -123,8 +123,8 @@ extension _PDFViewerWidgetStatePrint on _PDFViewerWidgetState {
       logStage('printing mode disabled (UI structure restored)');
 
       // 2) Stabilization: allow Flutter to paint post-unmount UI first.
-      logStage('stabilization start (1s)');
-      await Future.delayed(const Duration(seconds: 1));
+      logStage('stabilization start (500ms)');
+      await Future.delayed(const Duration(milliseconds: 500));
       logStage('stabilization end');
 
       if (!mounted || !_needsReload) return;
