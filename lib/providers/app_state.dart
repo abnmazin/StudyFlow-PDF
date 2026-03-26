@@ -2,11 +2,23 @@ import 'dart:io';
 import 'dart:isolate';
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart' hide PdfBookmark;
 import '../models/models.dart';
+import '../models/app_user.dart';
+import '../services/sync_service.dart';
+import '../services/file_hash_service.dart';
+
+enum DrawingSyncStrategy { disabled, immediate, buffered, isolate }
+
+// Top-level function for Compute Isolate Serialization
+List<Map<String, dynamic>> _serializeHighlightsForIsolate(List<Highlight> highlights) {
+  return highlights.map((h) => {...h.toJson(), 'kind': 'highlight'}).toList();
+}
 
 // Action types for undo/redo
 class ActionRecord {
@@ -38,6 +50,115 @@ extension ActionTypes on AppProvider {
 }
 
 class AppProvider extends ChangeNotifier {
+  final SyncService _syncService = SyncService();
+
+  // ─── STATE FIELDS ──────────────────────────────────────────────────────────
+  List<ClassItem> _classes = [];
+  String? _activeClassId;
+  String? _activePdfId;
+  AppUser? _currentUser;
+  Map<String, String> _pdfSessionCodes = {}; // Key: fileHash, Value: sessionCode
+  bool _sessionLocked = false;
+  List<ActionRecord> _actionHistory = [];
+  List<ActionRecord> _redoHistory = [];
+
+  // UI State
+  bool _isMobileOpen = false;
+  bool _showDevInfo = false;
+  bool _isSidebarCollapsed = false;
+  bool _isDarkMode = false;
+  bool _isSettingsOpen = false;
+  DrawingSyncStrategy _drawingSyncStrategy = DrawingSyncStrategy.disabled;
+
+  DrawingSyncStrategy get drawingSyncStrategy => _drawingSyncStrategy;
+
+  void setDrawingSyncStrategy(DrawingSyncStrategy strategy) {
+    _drawingSyncStrategy = strategy;
+    _notify();
+  }
+
+  // AI & Models
+  String _aiProvider = 'groq';
+  String _geminiModel = 'gemini-2.5-flash';
+  String _groqModel = 'llama-3.3-70b-versatile';
+  String _geminiApiKey = '';
+  String _groqApiKey = '';
+
+  // Concurrency & Flow
+  bool _isSaving = false;
+  bool _needsSave = false;
+  bool _initialized = false;
+  final Completer<void> _initCompleter = Completer<void>();
+  Future<void>? get initialized => _initCompleter.future;
+
+  // ─── TRIGGER SYNC ──────────────────────────────────────────────────────────
+
+  final Map<String, Timer?> _syncTimers = {};
+  final Map<String, bool> _pendingSyncs = {};
+
+  // Helper to trigger sync in background safely
+  void _triggerSync(String fileHash) {
+    if (_currentUser?.role != 'lecturer') return;
+    
+    final code = _pdfSessionCodes[fileHash];
+    if (code == null) return;
+    
+    // Find a PDF with this hash to get its highlights
+    PdfItem? pdf;
+    for (var cls in _classes) {
+       for (var p in cls.pdfs) {
+         if (p.fileHash == fileHash) {
+            pdf = p;
+            break;
+         }
+       }
+       if (pdf != null) break;
+    }
+    if (pdf == null) return;
+
+    if (_drawingSyncStrategy == DrawingSyncStrategy.disabled) {
+      return;
+    } else if (_drawingSyncStrategy == DrawingSyncStrategy.immediate) {
+      // Unawaited background sync to avoid blocking UI mutation
+      _syncService.uploadDelta(
+        code,
+        fileHash,
+        pdf.highlights,
+      ).catchError((e) {
+        debugPrint('❌ Sync Error: $e');
+      });
+      debugPrint('DEBUG: Drawing captured. Size: ${pdf.highlights.isNotEmpty ? pdf.highlights.last.path.length : 0} points. Destination: sync_sessions/$code/annotations/$fileHash.');
+    } else if (_drawingSyncStrategy == DrawingSyncStrategy.buffered) {
+      _pendingSyncs[fileHash] = true;
+      if (_syncTimers[fileHash] == null || !_syncTimers[fileHash]!.isActive) {
+        _syncTimers[fileHash] = Timer(const Duration(seconds: 5), () {
+          if (_pendingSyncs[fileHash] == true) {
+            _pendingSyncs[fileHash] = false;
+            _syncService.uploadDelta(code, fileHash, pdf!.highlights).catchError((e) {
+              debugPrint('❌ Buffered Sync Error: $e');
+            });
+            debugPrint('DEBUG: Buffered Sync Triggered for $fileHash.');
+          }
+        });
+      }
+      debugPrint('DEBUG: Drawing captured (Buffered). Size: ${pdf.highlights.isNotEmpty ? pdf.highlights.last.path.length : 0} points.');
+    } else if (_drawingSyncStrategy == DrawingSyncStrategy.isolate) {
+      // Offload JSON serialization to a separate Isolate
+      compute(_serializeHighlightsForIsolate, pdf.highlights).then((serialized) {
+        _syncService.uploadSerializedDelta(code, fileHash, serialized).catchError((e) {
+          debugPrint('❌ Isolate Sync Error: $e');
+        });
+      });
+      debugPrint('DEBUG: Drawing captured (Isolate). Size: ${pdf.highlights.isNotEmpty ? pdf.highlights.last.path.length : 0} points. Destination: sync_sessions/$code/annotations/$fileHash.');
+    }
+  }
+
+  void _notify() {
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      super.notifyListeners();
+    });
+  }
+
   void updateHighlight(
     String pdfId,
     Highlight oldHighlight,
@@ -75,9 +196,10 @@ class AppProvider extends ChangeNotifier {
                 .toList(),
           },
         );
-        notifyListeners();
+        _notify();
         _saveTimer?.cancel();
         _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
+        _triggerSync(pdf.fileHash ?? '');
       }
       return;
     }
@@ -102,32 +224,8 @@ class AppProvider extends ChangeNotifier {
     _redoHistory.clear();
     _saveTimer?.cancel();
     _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
-    notifyListeners();
+    _notify();
   }
-
-  List<ClassItem> _classes = [];
-  String? _activeClassId;
-  String? _activePdfId;
-
-  // UI State
-  bool _isMobileOpen = false;
-  bool _showDevInfo = false;
-  bool _isSidebarCollapsed = false;
-  bool _isDarkMode = false; // Default light mode
-  String _aiProvider = 'groq';
-  String _geminiModel = 'gemini-2.5-flash';
-  String _groqModel = 'llama-3.3-70b-versatile';
-  String _geminiApiKey = '';
-  String _groqApiKey = '';
-
-  // Concurrency Locks
-  bool _isSaving = false;
-  bool _needsSave = false;
-
-  // ─── UNDO SYSTEM ───────────────────────────────────────────────────────────
-  /// Global action history stack. Each action (highlight, comment, update, move) is recorded.
-  final List<ActionRecord> _actionHistory = [];
-  final List<ActionRecord> _redoHistory = [];
 
   // --- Statistics Getters ---
   int get totalPdfs => _classes.fold(0, (sum, cls) => sum + cls.pdfs.length);
@@ -143,11 +241,6 @@ class AppProvider extends ChangeNotifier {
     (sum, cls) =>
         sum + cls.pdfs.fold(0, (pdfSum, pdf) => pdfSum + pdf.comments.length),
   );
-
-  final Completer<void> _initCompleter = Completer<void>();
-
-  // Use this Future to wait for app state to be fully loaded
-  Future<void> get initialized => _initCompleter.future;
 
   AppProvider() {
     _initialize();
@@ -166,11 +259,101 @@ class AppProvider extends ChangeNotifier {
   bool get showDevInfo => _showDevInfo;
   bool get isSidebarCollapsed => _isSidebarCollapsed;
   bool get isDarkMode => _isDarkMode;
+  bool get isSettingsOpen => _isSettingsOpen;
   String get aiProvider => _aiProvider;
   String get geminiModel => _geminiModel;
   String get groqModel => _groqModel;
   String get geminiApiKey => _geminiApiKey;
   String get groqApiKey => _groqApiKey;
+
+  // Session / User getters
+  AppUser? get currentUser => _currentUser;
+  String? get currentSessionCode {
+    final pdf = activePdf;
+    if (pdf == null) return null;
+    return _pdfSessionCodes[pdf.fileHash ?? ''];
+  }
+  bool get sessionLocked => _sessionLocked;
+
+  void toggleSettings(bool open) {
+    _isSettingsOpen = open;
+    _notify();
+  }
+
+  void setCurrentUser(AppUser user) {
+    _currentUser = user;
+    _notify();
+  }
+
+  void setSessionCode(String? code) {
+    final pdf = activePdf;
+    if (pdf != null && pdf.fileHash != null) {
+      final hash = pdf.fileHash!;
+      if (code == null) {
+        _pdfSessionCodes.remove(hash);
+      } else {
+        _pdfSessionCodes[hash] = code;
+      }
+      _saveState();
+      _notify();
+    }
+  }
+
+  void logout() {
+    _currentUser = null;
+    _pdfSessionCodes.clear();
+    _sessionLocked = false;
+    _saveState();
+    _notify();
+  }
+
+  void setSessionLocked(bool locked) {
+    _sessionLocked = locked;
+    _notify();
+  }
+
+  /// Updates local annotations for a PDF from Firestore sync data based on global fileHash.
+  /// Handles combined highlights and comments via the 'kind' tag.
+  void syncFromFirestore(String fileHash, List<dynamic> remoteData) {
+    bool changed = false;
+    for (var i = 0; i < _classes.length; i++) {
+      for (var j = 0; j < _classes[i].pdfs.length; j++) {
+        final pdf = _classes[i].pdfs[j];
+        if (pdf.fileHash == fileHash) {
+          final List<Highlight> newHighlights = [];
+          final List<PdfComment> newComments = [];
+          
+          for (var item in remoteData) {
+            if (item is Map) {
+              final data = Map<String, dynamic>.from(item);
+              final kind = data['kind'];
+              if (kind == 'highlight') {
+                newHighlights.add(Highlight.fromJson(data));
+              } else if (kind == 'comment') {
+                newComments.add(PdfComment.fromJson(data));
+              }
+            }
+          }
+          
+          // Absolute parity check with the host
+          _classes[i].pdfs[j] = pdf.copyWith(
+            highlights: newHighlights,
+            comments: newComments,
+          );
+          changed = true;
+        }
+      }
+    }
+
+    if (changed) {
+      _notify();
+      // We don't necessarily need to trigger a full _saveState() here 
+      // if these are fleeting session notes, but typically we want them 
+      // to survive a quick restart if sync is on.
+      _saveTimer?.cancel();
+      _saveTimer = Timer(const Duration(milliseconds: 1000), _saveState);
+    }
+  }
 
   PdfItem? get activePdf {
     if (_activeClassId == null || _activePdfId == null) return null;
@@ -191,6 +374,7 @@ class AppProvider extends ChangeNotifier {
   static const String _prefsKeyGroqModel = 'pdfreader_groq_model';
   static const String _prefsKeyGeminiApiKey = 'pdfreader_gemini_api_key';
   static const String _prefsKeyGroqApiKey = 'pdfreader_groq_api_key';
+  static const String _prefsKeyPdfSessionCodes = 'pdfreader_session_codes';
 
   Future<void> _loadState() async {
     try {
@@ -237,13 +421,53 @@ class AppProvider extends ChangeNotifier {
       _geminiApiKey = prefs.getString(_prefsKeyGeminiApiKey) ?? '';
       _groqApiKey = prefs.getString(_prefsKeyGroqApiKey) ?? '';
 
+      // Recalculate missing hashes/pageCounts for existing files
+      for (var i = 0; i < _classes.length; i++) {
+        for (var j = 0; j < _classes[i].pdfs.length; j++) {
+          final pdf = _classes[i].pdfs[j];
+          if (pdf.fileHash == null || pdf.pageCount == null) {
+            try {
+              final file = File(pdf.path);
+              if (await file.exists()) {
+                final hash = await FileHashService.calculateFileHash(pdf.path);
+                final bytes = await file.readAsBytes();
+                final doc = PdfDocument(inputBytes: bytes);
+                final pCount = doc.pages.count;
+                doc.dispose();
+                
+                _classes[i].pdfs[j] = pdf.copyWith(
+                  fileHash: hash,
+                  pageCount: pCount,
+                );
+                debugPrint('✅ Computed missing metadata for ${pdf.name}');
+              }
+            } catch (e) {
+              debugPrint('⚠️ Failed to compute hash for ${pdf.name}: $e');
+            }
+          }
+        }
+      }
+
+      // Load session codes map
+      final sessionCodesJson = prefs.getString(_prefsKeyPdfSessionCodes);
+      if (sessionCodesJson != null) {
+        try {
+          final decoded = jsonDecode(sessionCodesJson);
+          if (decoded is Map) {
+            _pdfSessionCodes = Map<String, String>.from(decoded);
+          }
+        } catch (e) {
+          debugPrint('Error loading session codes: $e');
+        }
+      }
+
       // CRITICAL SYSTEM CLEANUP: Drop orphaned temp files
       await _cleanupTempFiles();
     } catch (e) {
       debugPrint('Critical error during state initialization: $e');
     }
 
-    notifyListeners();
+    _notify();
   }
 
   Future<void> _cleanupTempFiles() async {
@@ -310,6 +534,9 @@ class AppProvider extends ChangeNotifier {
       if (activeClassSnapshot != null) {
         await prefs.setString(_prefsKeyActiveClass, activeClassSnapshot);
       }
+      
+      // Save session codes
+      await prefs.setString(_prefsKeyPdfSessionCodes, jsonEncode(_pdfSessionCodes));
     } catch (e) {
       debugPrint('Error saving state: $e');
     } finally {
@@ -324,22 +551,22 @@ class AppProvider extends ChangeNotifier {
   // Actions
   void toggleMobile() {
     _isMobileOpen = !_isMobileOpen;
-    notifyListeners();
+    _notify();
   }
 
   void toggleDevInfo(bool show) {
     _showDevInfo = show;
-    notifyListeners();
+    _notify();
   }
 
   void toggleSidebar() {
     _isSidebarCollapsed = !_isSidebarCollapsed;
-    notifyListeners();
+    _notify();
   }
 
   void toggleDarkMode() {
     _isDarkMode = !_isDarkMode;
-    notifyListeners();
+    _notify();
     SharedPreferences.getInstance().then(
       (prefs) => prefs.setBool(_prefsKeyDarkMode, _isDarkMode),
     );
@@ -348,31 +575,31 @@ class AppProvider extends ChangeNotifier {
   void setAiProvider(String provider) {
     if (provider != 'gemini' && provider != 'groq') return;
     _aiProvider = provider;
-    notifyListeners();
+    _notify();
     _persistAiSettings();
   }
 
   void setGeminiModel(String model) {
     _geminiModel = model;
-    notifyListeners();
+    _notify();
     _persistAiSettings();
   }
 
   void setGroqModel(String model) {
     _groqModel = model;
-    notifyListeners();
+    _notify();
     _persistAiSettings();
   }
 
   void setGeminiApiKey(String key) {
     _geminiApiKey = key.trim();
-    notifyListeners();
+    _notify();
     _persistAiSettings();
   }
 
   void setGroqApiKey(String key) {
     _groqApiKey = key.trim();
-    notifyListeners();
+    _notify();
     _persistAiSettings();
   }
 
@@ -406,7 +633,7 @@ class AppProvider extends ChangeNotifier {
     }
 
     _saveState();
-    notifyListeners();
+    _notify();
   }
 
   void setActivePdf(String id) {
@@ -422,7 +649,7 @@ class AppProvider extends ChangeNotifier {
     }
 
     _saveState();
-    notifyListeners();
+    _notify();
   }
 
   // WINDOWS FILE ASSOCIATION: Load PDF file from command-line path
@@ -467,11 +694,19 @@ class AppProvider extends ChangeNotifier {
         quickAccessClass.lastActivePdfId = existingPdf.id;
       } else {
         // Create new PDF entry
+        final bytes = await file.readAsBytes();
+        final hash = await FileHashService.calculateFileHash(filePath);
+        final doc = PdfDocument(inputBytes: bytes);
+        final pCount = doc.pages.count;
+        doc.dispose();
+
         final newPdf = PdfItem(
           id: DateTime.now().millisecondsSinceEpoch.toString(),
           name: fileName,
           path: filePath,
           originalPath: filePath,
+          fileHash: hash,
+          pageCount: pCount,
         );
         quickAccessClass.pdfs.add(newPdf);
 
@@ -482,7 +717,7 @@ class AppProvider extends ChangeNotifier {
       }
 
       await _saveState();
-      notifyListeners();
+      _notify();
     } catch (e) {
       debugPrint('Error loading PDF from path: $e');
     }
@@ -499,7 +734,7 @@ class AppProvider extends ChangeNotifier {
       _activeClassId = newClass.id;
     }
     _saveState();
-    notifyListeners();
+    _notify();
   }
 
   void reorderClasses(int oldIndex, int newIndex) {
@@ -516,7 +751,7 @@ class AppProvider extends ChangeNotifier {
     _classes.insert(newIndex, moved);
 
     _saveState();
-    notifyListeners();
+    _notify();
   }
 
   Future<void> uploadPdf(String classId) async {
@@ -526,11 +761,21 @@ class AppProvider extends ChangeNotifier {
     );
 
     if (result != null && result.files.single.path != null) {
-      final file = File(result.files.single.path!);
+      final filePath = result.files.single.path!;
+      final file = File(filePath);
+      
+      final bytes = await file.readAsBytes();
+      final hash = await FileHashService.calculateFileHash(filePath);
+      final doc = PdfDocument(inputBytes: bytes);
+      final pCount = doc.pages.count;
+      doc.dispose();
+
       final newPdf = PdfItem(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         name: result.files.single.name,
-        path: file.path,
+        path: filePath,
+        fileHash: hash,
+        pageCount: pCount,
         highlights: [],
       );
 
@@ -541,7 +786,7 @@ class AppProvider extends ChangeNotifier {
         _activePdfId = newPdf.id;
         _classes[classIndex].lastActivePdfId = newPdf.id; // Set as active
         _saveState();
-        notifyListeners();
+        _notify();
       }
     }
   }
@@ -563,7 +808,8 @@ class AppProvider extends ChangeNotifier {
         debugPrint('📝 Action recorded: highlight ${highlight.id}');
         _redoHistory.clear();
         _saveState();
-        notifyListeners();
+        _notify();
+        _triggerSync(cls.pdfs[pdfIndex].fileHash ?? '');
         return;
       }
     }
@@ -596,9 +842,10 @@ class AppProvider extends ChangeNotifier {
       if (pdf.id.isEmpty) continue;
 
       pdf.highlights.remove(highlight);
-      notifyListeners();
+      _notify();
       _saveTimer?.cancel();
       _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
+      _triggerSync(pdf.fileHash ?? '');
       return;
     }
   }
@@ -623,7 +870,7 @@ class AppProvider extends ChangeNotifier {
       );
       debugPrint('📝 Action recorded: comment ${comment.id}');
       _redoHistory.clear();
-      notifyListeners();
+      _notify();
       _saveTimer?.cancel();
       _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
       return;
@@ -639,9 +886,10 @@ class AppProvider extends ChangeNotifier {
       if (pdf.id.isEmpty) continue;
 
       pdf.comments.removeWhere((c) => c.id == comment.id);
-      notifyListeners();
+      _notify();
       _saveTimer?.cancel();
       _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
+      _triggerSync(pdf.fileHash ?? '');
       return;
     }
   }
@@ -660,11 +908,27 @@ class AppProvider extends ChangeNotifier {
       _actionHistory.removeWhere((a) => a.pdfId == pdfId);
       _redoHistory.removeWhere((a) => a.pdfId == pdfId);
 
-      notifyListeners();
+      _notify();
       _saveTimer?.cancel();
       _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
+      _triggerSync(pdf.fileHash ?? '');
       return;
     }
+  }
+
+  /// Wipes ALL highlights and comments across ALL documents in ALL classes.
+  void clearAllGlobalAnnotations() {
+    for (var cls in _classes) {
+      for (var pdf in cls.pdfs) {
+        pdf.highlights.clear();
+        pdf.comments.clear();
+      }
+    }
+    _actionHistory.clear();
+    _redoHistory.clear();
+    _notify();
+    _saveTimer?.cancel();
+    _saveTimer = Timer(const Duration(milliseconds: 1000), _saveState);
   }
 
   void clearAllHighlightsOnly(String pdfId) {
@@ -680,9 +944,10 @@ class AppProvider extends ChangeNotifier {
       _actionHistory.removeWhere((a) => a.pdfId == pdfId);
       _redoHistory.removeWhere((a) => a.pdfId == pdfId);
 
-      notifyListeners();
+      _notify();
       _saveTimer?.cancel();
       _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
+      _triggerSync(pdf.fileHash ?? '');
       return;
     }
   }
@@ -706,9 +971,10 @@ class AppProvider extends ChangeNotifier {
       _actionHistory.removeWhere((a) => a.pdfId == pdfId);
       _redoHistory.removeWhere((a) => a.pdfId == pdfId);
 
-      notifyListeners();
+      _notify();
       _saveTimer?.cancel();
       _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
+      _triggerSync(pdf.fileHash ?? '');
       return;
     }
   }
@@ -723,7 +989,7 @@ class AppProvider extends ChangeNotifier {
 
       pdf.bookmarks.clear();
 
-      notifyListeners();
+      _notify();
       _saveTimer?.cancel();
       _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
       return;
@@ -743,7 +1009,7 @@ class AppProvider extends ChangeNotifier {
       _actionHistory.removeWhere((a) => a.pdfId == pdfId);
       _redoHistory.removeWhere((a) => a.pdfId == pdfId);
 
-      notifyListeners();
+      _notify();
       _saveTimer?.cancel();
       _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
       return;
@@ -942,7 +1208,8 @@ class AppProvider extends ChangeNotifier {
 
     _saveTimer?.cancel();
     _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
-    notifyListeners();
+    _notify();
+    _triggerSync(pdf.fileHash ?? '');
   }
 
   void redoLastAction() {
@@ -1063,7 +1330,8 @@ class AppProvider extends ChangeNotifier {
 
     _saveTimer?.cancel();
     _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
-    notifyListeners();
+    _notify();
+    _triggerSync(pdf.fileHash ?? '');
   }
 
   void clearActionHistory() {
@@ -1117,7 +1385,7 @@ class AppProvider extends ChangeNotifier {
           bgColor: bgColor ?? old.bgColor,
           borderColor: borderColor ?? old.borderColor,
         );
-        notifyListeners();
+        _notify();
         _saveTimer?.cancel();
         _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
         return;
@@ -1147,7 +1415,7 @@ class AppProvider extends ChangeNotifier {
       'borderColor': comment.borderColor.value,
       'bgColor': comment.bgColor.value,
     };
-    notifyListeners();
+    _notify();
   }
 
   // Update style during editing (called from right panel)
@@ -1174,7 +1442,7 @@ class AppProvider extends ChangeNotifier {
     if (borderColor != null) styles['borderColor'] = borderColor.value;
     if (bgColor != null) styles['bgColor'] = bgColor.value;
 
-    notifyListeners(); // Triggers rebuild of DraggableTextWidget with new styles
+    _notify(); // Triggers rebuild of DraggableTextWidget with new styles
   }
 
   // Get current temporary styles (or null if not editing)
@@ -1218,7 +1486,7 @@ class AppProvider extends ChangeNotifier {
     if (_activeEditingCommentId == commentId) {
       _activeEditingCommentId = null;
     }
-    notifyListeners();
+    _notify();
   }
 
   // Cancel editing without saving
@@ -1227,7 +1495,7 @@ class AppProvider extends ChangeNotifier {
     if (_activeEditingCommentId == commentId) {
       _activeEditingCommentId = null;
     }
-    notifyListeners();
+    _notify();
   }
 
   // app_state.dart updates
@@ -1296,7 +1564,7 @@ class AppProvider extends ChangeNotifier {
       if (pdfIndex != -1) {
         cls.pdfs[pdfIndex] = updatedPdf;
       }
-      notifyListeners();
+      _notify();
     }
   }
 
@@ -1365,7 +1633,7 @@ class AppProvider extends ChangeNotifier {
       if (pdfIndex != -1) {
         cls.pdfs[pdfIndex] = updatedPdf;
       }
-      notifyListeners();
+      _notify();
     } catch (e) {
       debugPrint("Error adding page: $e");
     }
@@ -1422,7 +1690,7 @@ class AppProvider extends ChangeNotifier {
       }
     }
     _saveState();
-    notifyListeners();
+    _notify();
   }
 
   Future<void> deleteClass(String classId) async {
@@ -1434,7 +1702,7 @@ class AppProvider extends ChangeNotifier {
     }
 
     _saveState();
-    notifyListeners();
+    _notify();
   }
 
   Future<void> deletePdf(String classId, String pdfId) async {
@@ -1472,7 +1740,7 @@ class AppProvider extends ChangeNotifier {
     }
 
     _saveState();
-    notifyListeners();
+    _notify();
   }
 
   void addBookmark(String pdfId, String name, int pageNumber) {
@@ -1486,7 +1754,7 @@ class AppProvider extends ChangeNotifier {
         );
         cls.pdfs[pdfIndex].bookmarks.add(newBookmark);
         _saveState();
-        notifyListeners();
+        _notify();
         return;
       }
     }
@@ -1498,7 +1766,7 @@ class AppProvider extends ChangeNotifier {
       if (pdfIndex != -1) {
         cls.pdfs[pdfIndex].bookmarks.removeWhere((b) => b.id == bookmarkId);
         _saveState();
-        notifyListeners();
+        _notify();
         return;
       }
     }
@@ -1537,7 +1805,7 @@ class AppProvider extends ChangeNotifier {
     }
 
     _saveState();
-    notifyListeners();
+    _notify();
   }
 
   void reorderPdfWithinClass(
@@ -1561,7 +1829,7 @@ class AppProvider extends ChangeNotifier {
     cls.pdfs.insert(insertIndex, dragged);
 
     _saveState();
-    notifyListeners();
+    _notify();
   }
 
   @override

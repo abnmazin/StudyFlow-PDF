@@ -70,7 +70,7 @@ class _DeveloperModalState extends State<DeveloperModal>
     }
 
     final modalMaxHeight =
-        (MediaQuery.of(context).size.height - 40).clamp(320.0, 600.0) as double;
+        (MediaQuery.of(context).size.height - 40).clamp(320.0, 600.0);
 
     return AnimatedBuilder(
       animation: _controller,

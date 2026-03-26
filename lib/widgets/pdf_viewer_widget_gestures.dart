@@ -1,9 +1,21 @@
-﻿part of 'pdf_viewer_widget_w.dart';
+part of 'pdf_viewer_widget_w.dart';
 
 extension _PDFViewerWidgetStateGestures on _PDFViewerWidgetState {
   void _handlePanStart(Offset position, PdfPage page, double scale) {
     // Guard: only drawing tools reach here (Listener in overlay enforces this)
     if (!_tool.isDrawingTool()) return;
+
+    // SESSION LOCK: If lecturer locked student drawing, block it for members
+    final app = context.read<AppProvider>();
+    if (app.currentSessionCode != null &&
+        app.currentUser?.role == 'member' &&
+        app.sessionLocked) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('الرسم مقفل حالياً من قبل المحاضر')),
+      );
+      return;
+    }
+
     if (_tool == ToolType.eraser) {
       _eraseAt(position / scale, page.pageNumber);
       return;
@@ -85,6 +97,7 @@ extension _PDFViewerWidgetStateGestures on _PDFViewerWidgetState {
 
       context.read<AppProvider>().addHighlight(pdf.id, highlight);
 
+      // DELTA SYNC: Handled by AppProvider.addHighlight/removeHighlight
       setState(() {
         _currentPath = null;
         _currentPage = -1;

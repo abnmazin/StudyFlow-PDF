@@ -42,27 +42,22 @@ class _PrintDialogState extends State<PrintDialog> {
 
   // ── Colours ────────────────────────────────────────────────────────────────
   static const Color _accent = Color(0xFF3B82F6); // blue-500
+    ThemeData get _theme => Theme.of(context);
   bool get _isDark => Theme.of(context).brightness == Brightness.dark;
 
-  Color get _surface => _isDark
-      ? const Color(0xFF0F172A)
-      : const Color(0xFFE2E8F0);
+    Color get _surface =>
+      _theme.dialogTheme.backgroundColor ?? _theme.colorScheme.surface;
 
-  Color get _cardBg => _isDark
-      ? const Color(0xFF1E293B)
-      : const Color(0xFFF1F5F9);
+    Color get _cardBg => _theme.cardColor;
 
-  Color get _border => _isDark
-      ? const Color(0xFF334155)
-      : const Color(0xFFCBD5E1);
+    Color get _border =>
+      _theme.dividerColor.withValues(alpha: _isDark ? 0.45 : 0.8);
 
-  Color get _labelColor => _isDark
-      ? const Color(0xFFE2E8F0)
-      : const Color(0xFF1F2937);
+    Color get _labelColor =>
+      _theme.textTheme.bodyMedium?.color ?? (_isDark ? Colors.white : Colors.black87);
 
-  Color get _sectionLabelColor => _isDark
-      ? const Color(0xFF94A3B8)
-      : const Color(0xFF475569);
+    Color get _sectionLabelColor =>
+      (_theme.textTheme.bodySmall?.color ?? _labelColor).withValues(alpha: 0.9);
 
   // ── Build ──────────────────────────────────────────────────────────────────
 
@@ -632,9 +627,9 @@ class _PrintDialogState extends State<PrintDialog> {
         children: [
           TextButton(
             onPressed: _isPrinting ? null : () => Navigator.of(context).pop(),
-            child: const Text(
+            child: Text(
               'إلغاء',
-              style: TextStyle(color: Color(0xFF6B7280)),
+              style: TextStyle(color: _sectionLabelColor),
             ),
           ),
           const SizedBox(width: 10),

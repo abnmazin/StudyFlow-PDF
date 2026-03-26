@@ -36,13 +36,14 @@ class Highlight {
     return p;
   }
 
-  Map<String, dynamic> toJson() => {
+  Map<String, dynamic> toJson({bool isExisting = false}) => {
     'id': id,
     'path': path.map((o) => {'dx': o.dx, 'dy': o.dy}).toList(),
     'color': color.value,
     'page': page,
     'strokeWidth': strokeWidth,
     'type': type.toString(),
+    if (isExisting) 'isExisting': true,
     if (backgroundColor != null) 'backgroundColor': backgroundColor,
     if (rects != null)
       'rects': rects!
@@ -127,7 +128,7 @@ class PdfComment {
     this.bgColor = const Color(0xFFFEF3C7),  // Light yellow background default
   });
 
-  Map<String, dynamic> toJson() => {
+  Map<String, dynamic> toJson({bool isExisting = false}) => {
     'id': id,
     'page': page,
     'dx': position.dx,
@@ -137,11 +138,12 @@ class PdfComment {
     'color': color.value,
     'fontSize': fontSize,
     'isBold': isBold,
-    'isLatex': isLatex, // NEW
+    'isLatex': isLatex,
     'fontFamily': fontFamily,
     'showBorder': showBorder,
     'borderColor': borderColor.value,
     'bgColor': bgColor.value,
+    if (isExisting) 'isExisting': true,
   };
 
   factory PdfComment.fromJson(Map<String, dynamic> json) {

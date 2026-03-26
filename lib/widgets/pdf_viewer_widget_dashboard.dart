@@ -599,70 +599,6 @@ Widget _buildStatItem(
   );
 }
 
-Widget _buildTipsSection(bool isDarkMode) {
-  final tips = [
-    'استخدم Ctrl+F للبحث',
-    'جرّب وضع LaTeX للمعادلات',
-    'انقر مرتين على النص لعمل هايلايت',
-    'انقر بالزر الأيمن لإضافة تعليق',
-  ];
-
-  return Container(
-    padding: const EdgeInsets.all(24),
-    decoration: BoxDecoration(
-      color: isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFEFF6FF),
-      borderRadius: BorderRadius.circular(16),
-      border: Border.all(
-        color: isDarkMode ? const Color(0xFF334155) : const Color(0xFFBFDBFE),
-      ),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(
-              LucideIcons.lightbulb,
-              color: isDarkMode ? Colors.yellow[700] : const Color(0xFF3B82F6),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              'نصائح سريعة',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: isDarkMode ? Colors.white : const Color(0xFF1E4ED8),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Wrap(
-          spacing: 16,
-          runSpacing: 12,
-          children: tips.map((tip) {
-            return Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: isDarkMode ? const Color(0xFF0F172A) : Colors.white,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                tip,
-                style: TextStyle(
-                  color: isDarkMode
-                      ? Colors.grey[300]
-                      : const Color(0xFF1E293B),
-                ),
-              ),
-            );
-          }).toList(),
-        ),
-      ],
-    ),
-  );
-}
-
 void _showCreateFolderDialog(BuildContext context) {
   final controller = TextEditingController();
   showDialog(
@@ -694,7 +630,6 @@ void _showCreateFolderDialog(BuildContext context) {
     ),
   );
 }
-
 void _showTopSnack(BuildContext context, String msg) {
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(

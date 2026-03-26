@@ -3,7 +3,9 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  cloud_firestore
   desktop_drop
+  firebase_core
   isar_flutter_libs
   printing
   url_launcher_windows

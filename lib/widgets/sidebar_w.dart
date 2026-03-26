@@ -351,32 +351,72 @@ class _SidebarState extends State<Sidebar> {
             decoration: BoxDecoration(
               border: Border(top: BorderSide(color: separatorColor, width: 1)),
             ),
-            child: InkWell(
-              onTap: () => app.toggleDevInfo(true),
-              borderRadius: BorderRadius.circular(8),
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E293B),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFF334155)),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: const [
-                    Icon(LucideIcons.info, size: 16, color: Color(0xFF60A5FA)),
-                    SizedBox(width: 8),
-                    Text(
-                      'حقوق المطور',
-                      style: TextStyle(
-                        color: Color(0xFFCBD5E1), // slate-300
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
+            child: Row(
+              children: [
+                Expanded(
+                  child: InkWell(
+                    onTap: () => app.toggleDevInfo(!app.showDevInfo),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: app.isDarkMode ? const Color(0xFF1E293B) : scheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: separatorColor),
+                      ),
+                      child: Center(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(LucideIcons.info, size: 16, color: app.isDarkMode ? const Color(0xFF60A5FA) : scheme.primary),
+                            const SizedBox(width: 8),
+                            Text(
+                              'الحقوق',
+                              style: TextStyle(
+                                color: textPrimary,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ],
+                  ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: InkWell(
+                    onTap: () => app.toggleSettings(true),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: app.isDarkMode ? const Color(0xFF1E293B) : scheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: separatorColor),
+                      ),
+                      child: Center(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(LucideIcons.settings, size: 16, color: app.isDarkMode ? const Color(0xFF60A5FA) : scheme.primary),
+                            const SizedBox(width: 8),
+                            Text(
+                              'الإعدادات',
+                              style: TextStyle(
+                                color: textPrimary,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:isar/isar.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -19,6 +20,12 @@ class FileManagerService extends ChangeNotifier {
   static final FileManagerService _instance = FileManagerService._internal();
   factory FileManagerService() => _instance;
   FileManagerService._internal();
+
+  void _notify() {
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      notifyListeners();
+    });
+  }
 
   // ── State ──────────────────────────────────────────────────────────────────
 
@@ -64,7 +71,7 @@ class FileManagerService extends ChangeNotifier {
       ], directory: dbDir.path);
 
       _isInitialized = true;
-      notifyListeners();
+      _notify();
     } catch (e) {
       debugPrint('[FileManagerService] init error: $e');
       rethrow;
@@ -131,7 +138,7 @@ class FileManagerService extends ChangeNotifier {
       await _isar.pdfDocuments.put(newDoc);
     });
 
-    notifyListeners();
+    _notify();
     return newDoc;
   }
 
@@ -170,7 +177,7 @@ class FileManagerService extends ChangeNotifier {
       doc.workingModifiedAt = DateTime.now();
       await _isar.pdfDocuments.put(doc);
     });
-    notifyListeners();
+    _notify();
   }
 
   Future<void> updateReadingState({
@@ -236,7 +243,7 @@ class FileManagerService extends ChangeNotifier {
       await _isar.pdfSnapshots.put(snapshot);
     });
 
-    notifyListeners();
+    _notify();
     return snapshot;
   }
 
@@ -261,7 +268,7 @@ class FileManagerService extends ChangeNotifier {
       doc.hasUnsavedChanges = true;
       await _isar.pdfDocuments.put(doc);
     });
-    notifyListeners();
+    _notify();
   }
 
   Future<List<PdfSnapshot>> getSnapshots(String pdfUuid) async {
@@ -313,7 +320,7 @@ class FileManagerService extends ChangeNotifier {
       await _isar.trashItems.put(trashItem);
       await _isar.pdfDocuments.delete(doc.id);
     });
-    notifyListeners();
+    _notify();
   }
 
   Future<PdfDocument?> restoreFromTrash(String trashUuid) async {
@@ -353,7 +360,7 @@ class FileManagerService extends ChangeNotifier {
       await _isar.pdfDocuments.put(doc);
       await _isar.trashItems.delete(item.id);
     });
-    notifyListeners();
+    _notify();
     return doc;
   }
 
@@ -371,7 +378,7 @@ class FileManagerService extends ChangeNotifier {
     await _isar.writeTxn(() async {
       await _isar.trashItems.delete(item.id);
     });
-    notifyListeners();
+    _notify();
   }
 
   // ── 5. Cleanup ─────────────────────────────────────────────────────────────
@@ -397,7 +404,7 @@ class FileManagerService extends ChangeNotifier {
       }
     }
     await _cleanOrphanedSessions();
-    notifyListeners();
+    _notify();
   }
 
   Future<void> _cleanOrphanedSessions() async {
@@ -439,7 +446,7 @@ class FileManagerService extends ChangeNotifier {
     await _isar.writeTxn(() async {
       await _isar.classFolders.put(folder);
     });
-    notifyListeners();
+    _notify();
     return folder;
   }
 
@@ -458,7 +465,7 @@ class FileManagerService extends ChangeNotifier {
     await _isar.writeTxn(() async {
       await _isar.classFolders.delete(folder.id);
     });
-    notifyListeners();
+    _notify();
   }
 
   // ── 7. Documents ───────────────────────────────────────────────────────────

@@ -5,16 +5,71 @@
 // Has full access to mutable state fields and setState via 	his.
 
 extension _PDFViewerWidgetStatePrint on _PDFViewerWidgetState {
+  List<Map<String, dynamic>> _collectAnnotationsForPrint(
+    PdfItem pdf,
+    AppProvider appProvider,
+  ) {
+    final highlights = pdf.highlights
+        .map((h) => <String, dynamic>{
+              'annotationKind': 'highlight',
+              'coordSpace': 'pdf',
+              ...h.toJson(),
+            })
+        .toList();
+
+    final comments = pdf.comments.map((c) {
+      final liveStyles = appProvider.getEditingStyles(c.id);
+      final effectiveColor = liveStyles != null
+          ? (liveStyles['color'] as int)
+          : c.color.value;
+      final effectiveFontSize = liveStyles != null
+          ? (liveStyles['fontSize'] as num).toDouble()
+          : c.fontSize;
+      final effectiveIsBold = liveStyles != null
+          ? (liveStyles['isBold'] as bool)
+          : c.isBold;
+      final effectiveShowBorder = liveStyles != null
+          ? (liveStyles['showBorder'] as bool)
+          : c.showBorder;
+      final effectiveBorderColor = liveStyles != null
+          ? (liveStyles['borderColor'] as int)
+          : c.borderColor.value;
+      final effectiveBgColor = liveStyles != null
+          ? (liveStyles['bgColor'] as int)
+          : c.bgColor.value;
+
+      return <String, dynamic>{
+        'annotationKind': 'comment',
+        'coordSpace': 'pdf',
+        'id': c.id,
+        'page': c.page,
+        'dx': c.position.dx,
+        'dy': c.position.dy,
+        'content': c.content,
+        'color': effectiveColor,
+        'fontSize': effectiveFontSize,
+        'isBold': effectiveIsBold,
+        'showBorder': effectiveShowBorder,
+        'borderColor': effectiveBorderColor,
+        'bgColor': effectiveBgColor,
+      };
+    }).toList();
+
+    return <Map<String, dynamic>>[...highlights, ...comments];
+  }
+
   Widget _buildPrintLoadingScreen() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Center(
       child: Container(
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
+              color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.1),
               blurRadius: 20,
               offset: const Offset(0, 10),
             ),
@@ -30,13 +85,16 @@ extension _PDFViewerWidgetStatePrint on _PDFViewerWidgetState {
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w500,
-                color: Colors.grey[800],
+                color: isDark ? Colors.white : Colors.grey[800],
               ),
             ),
             const SizedBox(height: 8),
             Text(
               'سيتم استئناف العرض تلقائيًا بعد الطباعة',
-              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+              style: TextStyle(
+                fontSize: 12,
+                color: isDark ? Colors.grey[400] : Colors.grey[600],
+              ),
             ),
           ],
         ),
@@ -83,12 +141,15 @@ extension _PDFViewerWidgetStatePrint on _PDFViewerWidgetState {
     logStage('controller detached and replaced before print');
 
     try {
+      final appProvider = context.read<AppProvider>();
+      final annotationsJson = _collectAnnotationsForPrint(pdf, appProvider);
       logStage('before PrintService.executePrint');
       await PrintService.executePrint(
         pdf.path,
         settings,
         currentPage: currentPage,
         printJobName: pdf.name,
+        annotationsJson: annotationsJson,
       );
       logStage('after PrintService.executePrint (success)');
     } catch (e) {

@@ -4,14 +4,19 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:cross_file/cross_file.dart';
+
 import 'providers/app_state.dart';
 import 'services/file_manager_service.dart';
 import 'widgets/sidebar_w.dart';
 import 'widgets/pdf_viewer_widget_w.dart';
 import 'widgets/developer_modal_w.dart';
+import 'widgets/global_settings_modal.dart'; // NEW
+import 'screens/auth/login_screen.dart';
+import 'firebase_options.dart';
 
 const int _kSingleInstancePort = 45678;
 final StreamController<String> _incomingPdfPaths =
@@ -133,7 +138,19 @@ Future<void> _startSingleInstanceServer() async {
 
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(fileName: '.env');
+  
+  // Load .env file if it exists (graceful error handling)
+  try {
+    await dotenv.load(fileName: '.env');
+  } catch (e) {
+    print('Warning: .env file not found. Using defaults or environment variables.');
+  }
+
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+
 
   // 🚀 OPTIMIZATION: منع استهلاك الرام العالي (ت    حديد الذاكرة بـ 50 ميجا)
   PaintingBinding.instance.imageCache.maximumSizeBytes = 10 * 1024 * 1024;
@@ -181,14 +198,13 @@ class MyApp extends StatelessWidget {
           GlobalWidgetsLocalizations.delegate,
           GlobalCupertinoLocalizations.delegate,
         ],
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFF3B82F6),
-          ), // blue-500
-          useMaterial3: true,
-          scaffoldBackgroundColor: const Color(0xFFF8FAFC), // slate-50
+        theme: ThemeData.dark().copyWith(
+          colorScheme: ThemeData.dark().colorScheme.copyWith(
+            primary: Colors.blueAccent,
+          ),
+          scaffoldBackgroundColor: const Color(0xFF121212),
         ),
-        home: MainLayout(initialPdfPath: initialPdfPath),
+        home: const LoginScreen(),
       ),
     );
   }
@@ -332,6 +348,23 @@ class _MainLayoutState extends State<MainLayout> {
               isOpen: app.showDevInfo,
               onClose: () => app.toggleDevInfo(false),
             ),
+
+            // Global Settings Modal (Drawer style from right)
+            if (app.isSettingsOpen)
+              Positioned.fill(
+                child: Stack(
+                  children: [
+                    GestureDetector(
+                      onTap: () => app.toggleSettings(false),
+                      child: Container(color: Colors.black.withOpacity(0.4)),
+                    ),
+                    const Align(
+                      alignment: Alignment.centerRight,
+                      child: GlobalSettingsModal(),
+                    ),
+                  ],
+                ),
+              ),
           ],
         ),
       ),

@@ -1,5 +1,6 @@
-﻿import 'package:pdfrx/pdfrx.dart' hide PdfDocument;
+import 'package:pdfrx/pdfrx.dart' hide PdfDocument;
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/gestures.dart';
 
 import 'package:provider/provider.dart';
@@ -22,6 +23,7 @@ import '../models/isar_models.dart'; // NEW: for PdfDocument
 import '../services/file_manager_service.dart'; // NEW: for getRecentDocuments
 import 'dialogs/merge_pdf_dialog.dart'; // NEW
 import 'dialogs/images_to_pdf_dialog.dart'; // NEW
+import '../services/sync_service.dart';
 
 part 'pdf_viewer_widget_dashboard.dart';
 part 'pdf_viewer_widget_actions.dart';
@@ -48,6 +50,8 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   bool _isShapesPaletteVisible = false;
   bool _isSettingsMode = false;
   int _rightPanelTabIndex = 0; // 0: Tools, 1: AI, 2: Translate
+  String? _currentListeningCode; 
+  String? _currentListeningFileHash; // NEW: Track which PDF hash we are listening for
 
   ToolType _tool =
       ToolType.cursor; // 'cursor', 'highlight', 'eraser', 'pen', 'comment'
@@ -143,6 +147,9 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   int? _activeResizeHandleIndex;
   MouseCursor _shapeHoverCursor = SystemMouseCursors.basic;
 
+  StreamSubscription? _sessionSub;
+  StreamSubscription? _annotationsSub;
+
   Future<void> _handleTextSelectionChange(PdfTextSelection? selection) async {
     if (!mounted) return;
 
@@ -191,6 +198,98 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     _pdfController.addListener(_onControllerChanged);
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _setupSessionListener();
+  }
+
+  void _setupSessionListener() {
+    final app = context.watch<AppProvider>();
+    final code = app.currentSessionCode;
+    final user = app.currentUser;
+    final pdf = app.activePdf;
+    final fileHash = pdf?.fileHash;
+
+    // 1. If session code changed, user logged out, or not a member, reset
+    if (code == null || user == null || user.role != 'member' || fileHash == null) {
+      if (_sessionSub != null || _annotationsSub != null) {
+        _sessionSub?.cancel();
+        _sessionSub = null;
+        _annotationsSub?.cancel();
+        _annotationsSub = null;
+        _currentListeningCode = null;
+        _currentListeningFileHash = null;
+      }
+      return;
+    }
+
+    // 2. If we are already listening to a different code OR different PDF hash, cancel and restart
+    if ((_sessionSub != null || _annotationsSub != null) && 
+        (_currentListeningCode != code || _currentListeningFileHash != fileHash)) {
+      _sessionSub?.cancel();
+      _sessionSub = null;
+      _annotationsSub?.cancel();
+      _annotationsSub = null;
+    }
+
+    // 3. Start listener if not active
+    if (_sessionSub == null) {
+      _currentListeningCode = code;
+      _currentListeningFileHash = fileHash;
+      
+      _sessionSub = SyncService().watchSession(code).listen((snap) {
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || !snap.exists) return;
+          final data = snap.data()!;
+
+          // 1. Kick Check
+          final kicked = (data['kicked_uuids'] as List?)?.cast<String>() ?? [];
+          if (kicked.contains(user.hardwareId)) {
+            _sessionSub?.cancel();
+            _sessionSub = null;
+            _annotationsSub?.cancel();
+            _annotationsSub = null;
+            _currentListeningCode = null;
+            app.setSessionCode(null);
+
+            showDialog(
+              context: context,
+              barrierDismissible: false,
+              builder: (context) => AlertDialog(
+                title: const Text('تم طردك'),
+                content: const Text('لقد تم طردك من هذه الجلسة من قبل المحاضر.'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('حسناً'),
+                  ),
+                ],
+              ),
+            );
+            return;
+          }
+        });
+      });
+
+      _annotationsSub = SyncService().streamAnnotations(code).listen((snap) {
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          
+          for (var doc in snap.docs) {
+            if (doc.id == fileHash) {
+              final pdfData = doc.data()['data'] as List?;
+              if (pdfData != null) {
+                app.syncFromFirestore(fileHash, pdfData);
+                debugPrint('DEBUG: Received ${pdfData.length} annotations from Firestore for $fileHash');
+              }
+            }
+          }
+        });
+      });
+    }
+  }
+
   void _onControllerChanged() {
     // MEMORY FIX: Removed blind setState(() {}).
     // Firing setState on every scroll pixel causes a 1.5GB native memory leak.
@@ -206,6 +305,8 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     _autoFitDebounce?.cancel();
     _searchFocusNode.dispose(); // Dispose node
     _textSearcher?.dispose();
+    _sessionSub?.cancel();
+    _annotationsSub?.cancel();
     super.dispose();
   }
 

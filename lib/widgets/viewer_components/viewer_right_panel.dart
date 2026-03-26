@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:provider/provider.dart';
@@ -10,7 +10,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../../models/models.dart';
 import '../../providers/app_state.dart';
+import '../../services/sync_service.dart';
 import 'mini_calculator_widget.dart';
+import 'session_cards.dart';
 
 /// Which color slot the picker is editing.
 enum _ColorTarget { stroke, bg, border }
@@ -1059,25 +1061,6 @@ class StudyFlowRightPanel extends StatelessWidget {
                       ),
                       _buildSettingsDivider(panelBorder),
                       _buildSettingsTile(
-                        icon: LucideIcons.trash2,
-                        label: 'حذف جميع التعليقات والتظليلات',
-                        onTap: () =>
-                            _showClearAllAnnotationsDialog(context, activePdf!),
-                        isDanger: true,
-                        textPrimary: textPrimary,
-                        textMuted: textMuted,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  _buildSettingsCard(
-                    context,
-                    surfaceAlt,
-                    panelBorder,
-                    textPrimary,
-                    textMuted,
-                    [
-                      _buildSettingsTile(
                         icon: LucideIcons.printer,
                         label: 'طباعة المستند',
                         onTap: () => onPrint(activePdf!),
@@ -1088,24 +1071,7 @@ class StudyFlowRightPanel extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                 ],
-                _buildSettingsCard(
-                  context,
-                  surfaceAlt,
-                  panelBorder,
-                  textPrimary,
-                  textMuted,
-                  [
-                    _buildSettingsTile(
-                      icon: isDarkMode ? LucideIcons.sun : LucideIcons.moon,
-                      label: isDarkMode ? 'الوضع الفاتح' : 'الوضع الداكن',
-                      onTap: onToggleDarkMode,
-                      textPrimary: textPrimary,
-                      textMuted: textMuted,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                _buildAiSettingsCard(
+                _buildSessionCard(
                   context,
                   app,
                   surfaceAlt,
@@ -1121,220 +1087,9 @@ class StudyFlowRightPanel extends StatelessWidget {
     );
   }
 
-  Widget _buildAiSettingsCard(
-    BuildContext context,
-    AppProvider app,
-    Color surfaceAlt,
-    Color panelBorder,
-    Color textPrimary,
-    Color textMuted,
-  ) {
-    final isDark = app.isDarkMode;
-    const geminiModels = ['gemini-2.5-flash', 'gemini-2.0-flash'];
-    const groqModels = [
-      'llama-3.3-70b-versatile',
-      'llama-3.1-8b-instant',
-      'mixtral-8x7b-32768',
-    ];
 
-    final providerItems = const [
-      DropdownMenuItem(value: 'gemini', child: Text('Google Gemini')),
-      DropdownMenuItem(value: 'groq', child: Text('Groq')),
-    ];
 
-    final modelItems = (app.aiProvider == 'groq' ? groqModels : geminiModels)
-        .map((m) => DropdownMenuItem(value: m, child: Text(m)))
-        .toList();
 
-    final selectedModel = app.aiProvider == 'groq'
-        ? app.groqModel
-        : app.geminiModel;
-    final inputFill = isDark ? const Color(0xFF0B1220) : Colors.white;
-    final borderColor = isDark
-        ? const Color(0xFF334155)
-        : const Color(0xFFCBD5E1);
-
-    InputDecoration _decoration(String label) {
-      return InputDecoration(
-        labelText: label,
-        isDense: true,
-        filled: true,
-        fillColor: inputFill,
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: borderColor),
-        ),
-        focusedBorder: const OutlineInputBorder(
-          borderRadius: BorderRadius.all(Radius.circular(10)),
-          borderSide: BorderSide(color: Color(0xFF3B82F6), width: 1.4),
-        ),
-      );
-    }
-
-    return Container(
-      decoration: BoxDecoration(
-        color: surfaceAlt,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: panelBorder),
-      ),
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(LucideIcons.bot, size: 18, color: textPrimary),
-              const SizedBox(width: 8),
-              Text(
-                'إعدادات الذكاء الاصطناعي',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: textPrimary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            value: app.aiProvider,
-            dropdownColor: inputFill,
-            style: TextStyle(color: textPrimary, fontSize: 13),
-            decoration: _decoration('مزود الذكاء'),
-            items: providerItems,
-            onChanged: (value) {
-              if (value != null) {
-                app.setAiProvider(value);
-              }
-            },
-          ),
-          const SizedBox(height: 10),
-          DropdownButtonFormField<String>(
-            value: selectedModel,
-            dropdownColor: inputFill,
-            style: TextStyle(color: textPrimary, fontSize: 13),
-            decoration: _decoration('النموذج'),
-            items: modelItems,
-            onChanged: (value) {
-              if (value == null) return;
-              if (app.aiProvider == 'groq') {
-                app.setGroqModel(value);
-              } else {
-                app.setGeminiModel(value);
-              }
-            },
-          ),
-          if (app.aiProvider == 'gemini') ...[
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    app.geminiApiKey.isEmpty
-                        ? 'Gemini API key غير مضبوط'
-                        : 'Gemini API key مضبوط',
-                    style: TextStyle(color: textMuted, fontSize: 12),
-                  ),
-                ),
-                TextButton.icon(
-                  onPressed: () => _showAiKeyDialog(
-                    context: context,
-                    title: 'Gemini API Key',
-                    initialValue: app.geminiApiKey,
-                    hint: 'AIza...',
-                    onSave: app.setGeminiApiKey,
-                  ),
-                  icon: const Icon(LucideIcons.keyRound, size: 14),
-                  label: const Text('تعديل المفتاح'),
-                ),
-              ],
-            ),
-          ],
-          if (app.aiProvider == 'groq') ...[
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    app.groqApiKey.isEmpty
-                        ? 'Groq API key غير مضبوط'
-                        : 'Groq API key مضبوط',
-                    style: TextStyle(color: textMuted, fontSize: 12),
-                  ),
-                ),
-                TextButton.icon(
-                  onPressed: () => _showAiKeyDialog(
-                    context: context,
-                    title: 'Groq API Key',
-                    initialValue: app.groqApiKey,
-                    hint: 'gsk_...',
-                    onSave: app.setGroqApiKey,
-                  ),
-                  icon: const Icon(LucideIcons.keyRound, size: 14),
-                  label: const Text('تعديل المفتاح'),
-                ),
-              ],
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Future<void> _showAiKeyDialog({
-    required BuildContext context,
-    required String title,
-    required String initialValue,
-    required String hint,
-    required ValueChanged<String> onSave,
-  }) async {
-    final app = context.read<AppProvider>();
-    final isDark = app.isDarkMode;
-    final controller = TextEditingController(text: initialValue);
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) {
-        final bg = isDark ? const Color(0xFF0F172A) : Colors.white;
-        final border = isDark
-            ? const Color(0xFF334155)
-            : const Color(0xFFCBD5E1);
-        return AlertDialog(
-          backgroundColor: bg,
-          title: Text(title),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            obscureText: true,
-            decoration: InputDecoration(
-              hintText: hint,
-              filled: true,
-              fillColor: isDark ? const Color(0xFF0B1220) : Colors.white,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(color: border),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(color: border),
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('إلغاء'),
-            ),
-            FilledButton(
-              onPressed: () {
-                onSave(controller.text);
-                Navigator.of(ctx).pop();
-              },
-              child: const Text('حفظ'),
-            ),
-          ],
-        );
-      },
-    );
-  }
 
   Widget _buildCursorUtilitiesHub(
     BuildContext context,
@@ -1574,57 +1329,7 @@ class StudyFlowRightPanel extends StatelessWidget {
     return Divider(height: 1, thickness: 1, color: panelBorder, indent: 48);
   }
 
-  Future<void> _showClearAllAnnotationsDialog(
-    BuildContext context,
-    PdfItem pdf,
-  ) async {
-    final scheme = Theme.of(context).colorScheme;
-    final dialogBg = isDarkMode ? const Color(0xFF1E293B) : scheme.surface;
-    final dialogText = isDarkMode ? Colors.white : scheme.onSurface;
 
-    final shouldClear = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          backgroundColor: dialogBg,
-          title: Text(
-            'حذف جميع التعليقات؟',
-            style: TextStyle(color: dialogText),
-          ),
-          content: Text(
-            'سيتم حذف كل الهايلايت والرسومات والملاحظات النصية في هذا المستند نهائيًا.',
-            style: TextStyle(color: dialogText),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('إلغاء'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFDC2626),
-              ),
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text(
-                'حذف الكل',
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (shouldClear == true && context.mounted) {
-      context.read<AppProvider>().clearAllAnnotations(pdf.id);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('تم حذف جميع التعليقات.'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
-  }
 
   Future<void> _showBulkCleanupDialog(
     BuildContext context, {
@@ -1948,9 +1653,85 @@ class StudyFlowRightPanel extends StatelessWidget {
         return 'النص';
       case ToolType.eraser:
         return 'الممحاة';
-      default:
-        return 'الأداة';
     }
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  // SESSION MANAGEMENT CARD
+  // ──────────────────────────────────────────────────────────────
+
+  Widget _buildSessionCard(
+    BuildContext context,
+    AppProvider app,
+    Color surfaceAlt,
+    Color panelBorder,
+    Color textPrimary,
+    Color textMuted,
+  ) {
+    final role = app.currentUser?.role ?? 'member';
+    final isPrivileged = role == 'lecturer' || role == 'developer';
+
+    return Container(
+      decoration: BoxDecoration(
+        color: surfaceAlt,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: panelBorder),
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(LucideIcons.radio, size: 18, color: textPrimary),
+              const SizedBox(width: 8),
+              Text(
+                'Sync / Synchronization',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: textPrimary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (app.currentUser == null)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 20),
+                child: Column(
+                  children: [
+                    Icon(LucideIcons.userX, size: 24, color: textMuted),
+                    const SizedBox(height: 8),
+                    Text(
+                      "يرجى تسجيل الدخول أولاً",
+                      style: TextStyle(color: textMuted, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else if (isPrivileged)
+            LecturerSessionCard(
+              app: app,
+              surfaceAlt: surfaceAlt,
+              panelBorder: panelBorder,
+              textPrimary: textPrimary,
+              textMuted: textMuted,
+              syncService: SyncService(),
+            )
+          else
+            MemberSessionCard(
+              app: app,
+              surfaceAlt: surfaceAlt,
+              panelBorder: panelBorder,
+              textPrimary: textPrimary,
+              textMuted: textMuted,
+              syncService: SyncService(),
+            ),
+        ],
+      ),
+    );
   }
 }
 

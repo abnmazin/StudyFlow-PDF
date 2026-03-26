@@ -1,7 +1,8 @@
 import 'dart:io';
 import 'dart:typed_data';
-import 'dart:ui' show Offset, Size;
+import 'dart:ui' show Offset, Rect, Size;
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:pdf/pdf.dart'; // هذا السطر سيحل مشكلة الـ Undefined class
 import 'package:flutter/foundation.dart';
 import 'package:printing/printing.dart';
@@ -359,7 +360,7 @@ class PrintService {
           origin,
           Size(srcSize.width, srcSize.height),
         );
-        _drawFlattenedAnnotations(g, pageAnnotations);
+        _drawFlattenedAnnotations(g, pageAnnotations, srcSize);
       } else if (!wantLandscape && !srcIsPortrait) {
         // Landscape → Portrait: rotate +90° with compensating translation
         g.translateTransform(srcSize.width, 0);
@@ -369,7 +370,7 @@ class PrintService {
           origin,
           Size(srcSize.width, srcSize.height),
         );
-        _drawFlattenedAnnotations(g, pageAnnotations);
+        _drawFlattenedAnnotations(g, pageAnnotations, srcSize);
       } else {
         // No rotation — same orientation, just blit the template
         g.drawPdfTemplate(
@@ -377,7 +378,7 @@ class PrintService {
           origin,
           Size(srcSize.width, srcSize.height),
         );
-        _drawFlattenedAnnotations(g, pageAnnotations);
+        _drawFlattenedAnnotations(g, pageAnnotations, srcSize);
       }
 
       g.restore();
@@ -393,13 +394,14 @@ class PrintService {
   static void _drawFlattenedAnnotations(
     sf.PdfGraphics g,
     List<Map<String, dynamic>> pageAnnotations,
+    Size pageSize,
   ) {
     for (final a in pageAnnotations) {
       final kind = (a['annotationKind'] ?? '').toString();
       if (kind == 'comment') {
-        _drawCommentAnnotation(g, a);
+        _drawCommentAnnotation(g, a, pageSize);
       } else {
-        _drawHighlightAnnotation(g, a);
+        _drawHighlightAnnotation(g, a, pageSize);
       }
     }
   }
@@ -407,6 +409,7 @@ class PrintService {
   static void _drawHighlightAnnotation(
     sf.PdfGraphics g,
     Map<String, dynamic> a,
+    Size pageSize,
   ) {
     final type = (a['type'] ?? '').toString().toLowerCase();
     final strokeWidth = _toDouble(a['strokeWidth'], 2.0).clamp(0.5, 64.0);
@@ -430,7 +433,12 @@ class PrintService {
         final top = _toDouble(r['T']);
         final right = _toDouble(r['R']);
         final bottom = _toDouble(r['B']);
-        final rect = Rect.fromLTRB(left, top, right, bottom);
+        final rect = Rect.fromLTRB(
+          _mapX(left, a, pageSize),
+          _mapY(top, a, pageSize),
+          _mapX(right, a, pageSize),
+          _mapY(bottom, a, pageSize),
+        );
         g.drawRectangle(bounds: rect, brush: sf.PdfSolidBrush(_pdfColorFromArgb(
           a['color'] as int? ?? 0xFF000000,
           opacity: 0.45,
@@ -443,7 +451,12 @@ class PrintService {
     if (path == null || path.length < 2) return;
 
     final points = path
-        .map((p) => Offset(_toDouble(p['dx']), _toDouble(p['dy'])))
+        .map(
+          (p) => Offset(
+            _mapX(_toDouble(p['dx']), a, pageSize),
+            _mapY(_toDouble(p['dy']), a, pageSize),
+          ),
+        )
         .toList();
     if (points.length < 2) return;
 
@@ -455,7 +468,7 @@ class PrintService {
 
     if (type.contains('circle')) {
       final rect = Rect.fromPoints(points.first, points.last);
-      g.drawEllipse(bounds: rect, brush: fillBrush, pen: pen);
+      g.drawEllipse(rect, pen: pen, brush: fillBrush);
       return;
     }
 
@@ -468,7 +481,7 @@ class PrintService {
       final dy = p2.dy - p1.dy;
       final mag = (dx * dx + dy * dy);
       if (mag < 0.0001) return;
-      final len = mag.sqrt();
+      final len = math.sqrt(mag);
       final ux = dx / len;
       final uy = dy / len;
       final headLen = (10.0 + strokeWidth * 2).clamp(8.0, 24.0);
@@ -498,12 +511,13 @@ class PrintService {
   static void _drawCommentAnnotation(
     sf.PdfGraphics g,
     Map<String, dynamic> a,
+    Size pageSize,
   ) {
     final content = (a['content'] ?? '').toString();
     if (content.trim().isEmpty) return;
 
-    final x = _toDouble(a['dx']);
-    final y = _toDouble(a['dy']);
+    final x = _mapX(_toDouble(a['dx']), a, pageSize);
+    final y = _mapY(_toDouble(a['dy']), a, pageSize);
     final fontSize = _toDouble(a['fontSize'], 14.0).clamp(6.0, 128.0);
     final isBold = a['isBold'] == true;
     final showBorder = a['showBorder'] != false;
@@ -551,6 +565,22 @@ class PrintService {
     if (v is num) return v.toDouble();
     if (v is String) return double.tryParse(v) ?? fallback;
     return fallback;
+  }
+
+  static double _mapX(double x, Map<String, dynamic> a, Size pageSize) {
+    final coordSpace = (a['coordSpace'] ?? 'pdf').toString().toLowerCase();
+    if (coordSpace == 'pdf') return x;
+    final uiWidth = _toDouble(a['uiRenderWidth'], 0);
+    if (uiWidth <= 0) return x;
+    return x * (pageSize.width / uiWidth);
+  }
+
+  static double _mapY(double y, Map<String, dynamic> a, Size pageSize) {
+    final coordSpace = (a['coordSpace'] ?? 'pdf').toString().toLowerCase();
+    if (coordSpace == 'pdf') return y;
+    final uiHeight = _toDouble(a['uiRenderHeight'], 0);
+    if (uiHeight <= 0) return y;
+    return y * (pageSize.height / uiHeight);
   }
 
   static sf.PdfColor _pdfColorFromArgb(int argb, {double opacity = 1.0}) {

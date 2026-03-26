@@ -8,6 +8,8 @@ class PdfItem {
   final List<Highlight> highlights;
   final List<PdfComment> comments;
   final List<PdfBookmark> bookmarks;
+  final String? fileHash; // SHA-256 hash of the content
+  final int? pageCount; // Total number of pages
   double scrollTop; // Store scroll position
   int? lastPage; // Store last viewed page
   int? lastModified; // Timestamp of last modification to force reload
@@ -17,6 +19,8 @@ class PdfItem {
     required this.name,
     required this.path,
     this.originalPath,
+    this.fileHash,
+    this.pageCount,
     List<Highlight>? highlights,
     List<PdfComment>? comments,
     List<PdfBookmark>? bookmarks,
@@ -32,6 +36,8 @@ class PdfItem {
     String? name,
     String? path,
     String? originalPath,
+    String? fileHash,
+    int? pageCount,
     List<Highlight>? highlights,
     List<PdfComment>? comments,
     List<PdfBookmark>? bookmarks,
@@ -44,6 +50,8 @@ class PdfItem {
       name: name ?? this.name,
       path: path ?? this.path,
       originalPath: originalPath ?? this.originalPath,
+      fileHash: fileHash ?? this.fileHash,
+      pageCount: pageCount ?? this.pageCount,
       highlights: highlights ?? this.highlights,
       comments: comments ?? this.comments,
       bookmarks: bookmarks ?? this.bookmarks,
@@ -58,6 +66,8 @@ class PdfItem {
     'name': name,
     'path': path,
     'originalPath': originalPath,
+    'fileHash': fileHash,
+    'pageCount': pageCount,
     'highlights': highlights.map((h) => h.toJson()).toList(),
     'comments': comments.map((c) => c.toJson()).toList(),
     'bookmarks': bookmarks.map((b) => b.toJson()).toList(),
@@ -72,6 +82,8 @@ class PdfItem {
       name: json['name'],
       path: json['path'],
       originalPath: json['originalPath'],
+      fileHash: json['fileHash'],
+      pageCount: json['pageCount'],
       highlights: (json['highlights'] as List?)
           ?.map((h) => Highlight.fromJson(h))
           .toList(),

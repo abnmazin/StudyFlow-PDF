@@ -1,0 +1,23 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // 1. USERS COLLECTION: 
+    // Allow anyone to register/update their own device binding.
+    // In production, consider adding more specific checks if needed.
+    match /users/{userId} {
+      allow read, write: if true;
+    }
+    
+    // 2. SYNC SESSIONS COLLECTION:
+    // Allow host (lecturer) to create/update the session.
+    // Allow participants to join and sync drawings.
+    match /sync_sessions/{sessionCode} {
+      allow read, write: if true;
+      
+      // Optional: More restrictive rules if using partial Auth
+      // allow create: if request.resource.data.createdBy != null;
+      // allow update: if true; 
+    }
+  }
+}
