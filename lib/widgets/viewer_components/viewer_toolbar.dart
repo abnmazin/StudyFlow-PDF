@@ -437,212 +437,218 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
             ),
 
             // ─── RIGHT: Tools + Utility Buttons ────────────────────
+            // ─── MIDDLE: Tools (Centered) ──────────────────────────
             Expanded(
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                reverse: true,
-                child: Row(
-                  children: [
-                    // Search
-                    _buildToolButton(
-                      icon: LucideIcons.search,
-                      isActive: widget.isSearchVisible,
-                      onTap: widget.onToggleSearch,
-                      tooltip: 'بحث (Ctrl+F)',
-                      iconMuted: iconMuted,
-                    ),
-
-                    // ─── Divider ──
-                    Container(width: 1, height: 28, color: separatorColor),
-                    const SizedBox(width: 8),
-
-                    // ─── Drawing Tools Group ──
-                    Container(
-                      decoration: BoxDecoration(
-                        color: chipBg,
-                        borderRadius: BorderRadius.circular(10),
+              child: Center(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Search
+                      _buildToolButton(
+                        icon: LucideIcons.search,
+                        isActive: widget.isSearchVisible,
+                        onTap: widget.onToggleSearch,
+                        tooltip: 'بحث (Ctrl+F)',
+                        iconMuted: iconMuted,
                       ),
-                      padding: const EdgeInsets.all(4),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _buildToolButton(
-                            icon: LucideIcons.hand,
-                            isActive: widget.activeTool == ToolType.cursor,
-                            onTap: () {
-                              widget.onToolChanged(ToolType.cursor);
-                            },
-                            tooltip: 'تحريك/تمرير (Esc)',
-                            iconMuted: iconMuted,
-                          ),
-                          const SizedBox(width: 2),
-                          _buildToolButton(
-                            icon: LucideIcons.mousePointer2,
-                            isActive: widget.activeTool == ToolType.select,
-                            onTap: () {
-                              // Selection mode: move/select items without opening shape UI.
-                              widget.onToolChanged(ToolType.select);
-                            },
-                            tooltip: 'تحديد / تحريك العناصر',
-                            iconMuted: iconMuted,
-                          ),
-                          const SizedBox(width: 2),
-                          _buildToolButton(
-                            icon: LucideIcons.shapes,
-                            isActive:
-                                widget.isShapesPaletteVisible ||
-                                [
-                                  ToolType.arrow,
-                                  ToolType.rectangle,
-                                  ToolType.circle,
-                                ].contains(widget.activeTool) ||
-                                isSelectedShapeTool,
-                            onTap: () {
-                              // Keep selection in select mode while opening shape controls.
-                              if (!isSelectedShapeTool) {
-                                widget.onToolChanged(ToolType.arrow);
-                              }
-                              if (!widget.isShapesPaletteVisible) {
-                                widget.onToggleShapesPalette();
-                              }
-                            },
-                            tooltip: 'أدوات الأشكال',
-                            iconMuted: iconMuted,
-                          ),
-                          const SizedBox(width: 2),
-                          _buildToolButton(
-                            icon: LucideIcons.highlighter,
-                            isActive:
-                                widget.activeTool == ToolType.highlight ||
-                                isSelectedHighlightTool,
-                            onTap: () {
-                              // Keep selection in select mode while opening highlight controls.
-                              if (!isSelectedHighlightTool) {
-                                widget.onToolChanged(ToolType.highlight);
-                              }
-                            },
-                            tooltip: 'هايلايت (H)',
-                            activeColor: const Color(0xFFEAB308),
-                            iconMuted: iconMuted,
-                          ),
-                          const SizedBox(width: 2),
-                          _buildToolButton(
-                            icon: LucideIcons.penTool,
-                            isActive: widget.activeTool == ToolType.pen,
-                            onTap: () => widget.onToolChanged(ToolType.pen),
-                            tooltip: 'قلم (P)',
-                            iconMuted: iconMuted,
-                          ),
-                          const SizedBox(width: 2),
-                          _buildToolButton(
-                            icon: LucideIcons.type,
-                            isActive: widget.activeTool == ToolType.text,
-                            onTap: () => widget.onToolChanged(ToolType.text),
-                            tooltip: 'نص (T)',
-                            iconMuted: iconMuted,
-                          ),
-                          const SizedBox(width: 2),
-                          _buildToolButton(
-                            icon: LucideIcons.eraser,
-                            isActive: widget.activeTool == ToolType.eraser,
-                            onTap: () => widget.onToolChanged(ToolType.eraser),
-                            tooltip: 'ممحاة (E)',
-                            activeColor: const Color(0xFFEF4444),
-                            iconMuted: iconMuted,
-                          ),
-                        ],
-                      ),
-                    ),
-                    // Bookmark (Hand tool only)
-                                          const SizedBox(width: 8),
+
+                      // ─── Divider ──
+                      const SizedBox(width: 8),
                       Container(width: 1, height: 28, color: separatorColor),
-                    _buildToolButton(
-  icon: LucideIcons.bookmark,
-  isActive: false, // يبقى الزر بلون هادئ لأنه إجراء (Action) وليس أداة رسم
-  onTap: () {
-    // سيعمل الزر ويحفظ الصفحة حتى لو كان القلم أو النص هو المفعل حالياً
-    if (widget.activePdf != null && widget.pdfController.isReady) {
-      widget.onAddBookmark(widget.activePdf!);
-      
-      // إضافة إشعار لطيف يؤكد للطالب أنه تم الحفظ (اختياري لتحسين الـ UX)
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('تم حفظ الصفحة كعلامة مرجعية 📑', style: TextStyle(fontFamily: 'Cairo')),
-          duration: Duration(seconds: 2),
-          backgroundColor: Color(0xFF3B82F6),
-        ),
-      );
-    }
-  },
-  tooltip: 'حفظ كعلامة مرجعية',
-  iconMuted: iconMuted, // المتغير الخاص باللون الباهت في الثيم الخاص بك
-),
-                    // Sync Status Indicator
-                    if (app.isSyncing) ...[
-                      const SizedBox(width: 12),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF3B82F6)),
+                      const SizedBox(width: 8),
+
+                      // ─── Drawing Tools Group ──
+                      Container(
+                        decoration: BoxDecoration(
+                          color: chipBg,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        padding: const EdgeInsets.all(4),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _buildToolButton(
+                              icon: LucideIcons.hand,
+                              isActive: widget.activeTool == ToolType.cursor,
+                              onTap: () {
+                                widget.onToolChanged(ToolType.cursor);
+                              },
+                              tooltip: 'تحريك/تمرير (Esc)',
+                              iconMuted: iconMuted,
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'جاري تحديث البيانات...',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                              color: textPrimary.withOpacity(0.8),
-                              fontFamily: 'Cairo',
+                            const SizedBox(width: 2),
+                            _buildToolButton(
+                              icon: LucideIcons.mousePointer2,
+                              isActive: widget.activeTool == ToolType.select,
+                              onTap: () {
+                                widget.onToolChanged(ToolType.select);
+                              },
+                              tooltip: 'تحديد / تحريك العناصر',
+                              iconMuted: iconMuted,
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 2),
+                            _buildToolButton(
+                              icon: LucideIcons.shapes,
+                              isActive:
+                                  widget.isShapesPaletteVisible ||
+                                  [
+                                    ToolType.arrow,
+                                    ToolType.rectangle,
+                                    ToolType.circle,
+                                  ].contains(widget.activeTool) ||
+                                  isSelectedShapeTool,
+                              onTap: () {
+                                if (!isSelectedShapeTool) {
+                                  widget.onToolChanged(ToolType.arrow);
+                                }
+                                if (!widget.isShapesPaletteVisible) {
+                                  widget.onToggleShapesPalette();
+                                }
+                              },
+                              tooltip: 'أدوات الأشكال',
+                              iconMuted: iconMuted,
+                            ),
+                            const SizedBox(width: 2),
+                            _buildToolButton(
+                              icon: LucideIcons.highlighter,
+                              isActive:
+                                  widget.activeTool == ToolType.highlight ||
+                                  isSelectedHighlightTool,
+                              onTap: () {
+                                if (!isSelectedHighlightTool) {
+                                  widget.onToolChanged(ToolType.highlight);
+                                }
+                              },
+                              tooltip: 'هايلايت (H)',
+                              activeColor: const Color(0xFFEAB308),
+                              iconMuted: iconMuted,
+                            ),
+                            const SizedBox(width: 2),
+                            _buildToolButton(
+                              icon: LucideIcons.penTool,
+                              isActive: widget.activeTool == ToolType.pen,
+                              onTap: () => widget.onToolChanged(ToolType.pen),
+                              tooltip: 'قلم (P)',
+                              iconMuted: iconMuted,
+                            ),
+                            const SizedBox(width: 2),
+                            _buildToolButton(
+                              icon: LucideIcons.type,
+                              isActive: widget.activeTool == ToolType.text,
+                              onTap: () => widget.onToolChanged(ToolType.text),
+                              tooltip: 'نص (T)',
+                              iconMuted: iconMuted,
+                            ),
+                            const SizedBox(width: 2),
+                            _buildToolButton(
+                              icon: LucideIcons.eraser,
+                              isActive: widget.activeTool == ToolType.eraser,
+                              onTap: () => widget.onToolChanged(ToolType.eraser),
+                              tooltip: 'ممحاة (E)',
+                              activeColor: const Color(0xFFEF4444),
+                              iconMuted: iconMuted,
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(width: 8),
+                      Container(width: 1, height: 28, color: separatorColor),
+                      const SizedBox(width: 8),
+
+                      // Bookmark
+                      _buildToolButton(
+                        icon: LucideIcons.bookmark,
+                        isActive: false,
+                        onTap: () {
+                          if (widget.activePdf != null && widget.pdfController.isReady) {
+                            widget.onAddBookmark(widget.activePdf!);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('تم حفظ الصفحة كعلامة مرجعية 📑', style: TextStyle(fontFamily: 'Cairo')),
+                                duration: Duration(seconds: 2),
+                                backgroundColor: Color(0xFF3B82F6),
+                              ),
+                            );
+                          }
+                        },
+                        tooltip: 'حفظ كعلامة مرجعية',
+                        iconMuted: iconMuted,
                       ),
                     ],
-
-                    const SizedBox(width: 8),
-                    // ─── Divider ──
-                    Container(width: 1, height: 28, color: separatorColor),
-                    const SizedBox(width: 8),
-
-                    // Close File
-                    _buildToolButton(
-                      icon: LucideIcons.x,
-                      isActive: false,
-                      onTap: () => app.closeActivePdf(),
-                      tooltip: 'إغلاق الملف',
-                      iconMuted: iconMuted,
-                    ),
-                    const SizedBox(width: 4),
-
-                    // Settings
-                    _buildToolButton(
-                      icon: LucideIcons.settings,
-                      isActive: false,
-                      onTap: widget.onToggleSettings,
-                      tooltip: 'إعدادات المستند',
-                      iconMuted: iconMuted,
-                    ),
-                    const SizedBox(width: 4),
-
-                    // Right Panel Toggle
-                    _buildToolButton(
-                      icon: widget.isRightPanelOpen
-                          ? LucideIcons.panelRightClose
-                          : LucideIcons.panelRightOpen,
-                      isActive: widget.isRightPanelOpen,
-                      onTap: widget.onToggleRightPanel,
-                      tooltip: 'إظهار/إخفاء لوحة الخصائص (Ctrl+R)',
-                      iconMuted: iconMuted,
-                    ),
-                  ],
+                  ),
                 ),
               ),
+            ),
+
+            // ─── RIGHT: Utility Buttons ─────────────────────────────
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Sync Status Indicator
+                if (app.isSyncing) ...[
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF3B82F6)),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'جاري...',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: textPrimary.withOpacity(0.8),
+                          fontFamily: 'Cairo',
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 12),
+                ],
+
+                Container(width: 1, height: 28, color: separatorColor),
+                const SizedBox(width: 8),
+
+                // Close File
+                _buildToolButton(
+                  icon: LucideIcons.x,
+                  isActive: false,
+                  onTap: () => app.closeActivePdf(),
+                  tooltip: 'إغلاق الملف',
+                  iconMuted: iconMuted,
+                ),
+                const SizedBox(width: 4),
+
+                // Settings
+                _buildToolButton(
+                  icon: LucideIcons.settings,
+                  isActive: false,
+                  onTap: widget.onToggleSettings,
+                  tooltip: 'إعدادات المستند',
+                  iconMuted: iconMuted,
+                ),
+                const SizedBox(width: 4),
+
+                // Right Panel Toggle
+                _buildToolButton(
+                  icon: widget.isRightPanelOpen
+                      ? LucideIcons.panelRightClose
+                      : LucideIcons.panelRightOpen,
+                  isActive: widget.isRightPanelOpen,
+                  onTap: widget.onToggleRightPanel,
+                  tooltip: 'إظهار/إخفاء لوحة الخصائص (Ctrl+R)',
+                  iconMuted: iconMuted,
+                ),
+              ],
             ),
           ],
         ),
