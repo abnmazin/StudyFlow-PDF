@@ -56,15 +56,19 @@ class _DevDashboardState extends State<DevDashboard> {
       body: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
-          // 1. قسم الملخص (تصميم القائمة المستطيلة الجديد)
+          // 1. قسم الملخص (Stats)
           _buildSectionHeader('ملخص حالة النظام', LucideIcons.barChart3),
           _buildSliverStats(surface, isDark),
 
-          // 2. مراقبة الدروس (هيكلية منسدلة)
+          // 2. مراقبة الدروس
           _buildSectionHeader('الدروس والنشاط اللحظي', LucideIcons.radio),
           _buildSessionsHierarchy(scheme, surface, isDark),
 
-          // 3. قاعدة بيانات المستخدمين
+          // 3. مراقبة الحزم
+          _buildSectionHeader('الحزم الدراسية (Master Bundles)', LucideIcons.layers),
+          _buildMasterBundlesHierarchy(scheme, surface, isDark),
+
+          // 4. قاعدة بيانات المستخدمين
           _buildSectionHeader('إدارة أعضاء المنصة', LucideIcons.database),
           _buildUsersList(scheme, surface, isDark),
 
@@ -82,60 +86,52 @@ class _DevDashboardState extends State<DevDashboard> {
         return StreamBuilder<QuerySnapshot>(
           stream: _firestore.collection('sync_sessions').snapshots(),
           builder: (context, sessionSnapshot) {
-            int totalUsers = 0, admins = 0, lecturers = 0;
-            int sessions = sessionSnapshot.data?.docs.length ?? 0;
+            return StreamBuilder<QuerySnapshot>(
+              stream: _firestore.collection('master_sessions').snapshots(),
+              builder: (context, masterSnapshot) {
+                int totalUsers = 0;
+                int sessions = sessionSnapshot.data?.docs.length ?? 0;
+                int bundles = masterSnapshot.data?.docs.length ?? 0;
 
-            if (userSnapshot.hasData) {
-              for (var doc in userSnapshot.data!.docs) {
-                totalUsers++;
-                final role = doc['role'] as String? ?? 'member';
-                if (role == 'developer') admins++;
-                if (role == 'lecturer') lecturers++;
-              }
-            }
+                if (userSnapshot.hasData) {
+                  totalUsers = userSnapshot.data!.docs.length;
+                }
 
-            return SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              sliver: SliverList(
-                delegate: SliverChildListDelegate([
-                  _buildStatRectCard(
-                    'إجمالي الأعضاء',
-                    totalUsers.toString(),
-                    LucideIcons.users,
-                    Colors.blue,
-                    surface,
-                    isDark,
-                    null,
+                return SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  sliver: SliverList(
+                    delegate: SliverChildListDelegate([
+                      _buildStatRectCard(
+                        'إجمالي الأعضاء',
+                        totalUsers.toString(),
+                        LucideIcons.users,
+                        Colors.blue,
+                        surface,
+                        isDark,
+                        null,
+                      ),
+                      _buildStatRectCard(
+                        'الدروس النشطة',
+                        sessions.toString(),
+                        LucideIcons.activity,
+                        Colors.green,
+                        surface,
+                        isDark,
+                        () => _confirmWipe(context, 'جلسات المزامنة', () => _syncService.deleteAllSessions()),
+                      ),
+                      _buildStatRectCard(
+                        'الحزم الدراسية',
+                        bundles.toString(),
+                        LucideIcons.layers,
+                        Colors.orange,
+                        surface,
+                        isDark,
+                        () => _confirmWipe(context, 'الحزم الدراسية', () => _syncService.deleteAllMasterBundles()),
+                      ),
+                    ]),
                   ),
-                  _buildStatRectCard(
-                    'المشرفين (Developers)',
-                    admins.toString(),
-                    LucideIcons.shieldAlert,
-                    Colors.amber.shade700,
-                    surface,
-                    isDark,
-                    null,
-                  ),
-                  _buildStatRectCard(
-                    'المحاضرين (Lecturers)',
-                    lecturers.toString(),
-                    LucideIcons.graduationCap,
-                    Colors.purple,
-                    surface,
-                    isDark,
-                    null,
-                  ),
-                  _buildStatRectCard(
-                    'الدروس النشطة حالياً',
-                    sessions.toString(),
-                    LucideIcons.activity,
-                    Colors.green,
-                    surface,
-                    isDark,
-                    null,
-                  ),
-                ]),
-              ),
+                );
+              },
             );
           },
         );
@@ -322,6 +318,62 @@ class _DevDashboardState extends State<DevDashboard> {
     );
   }
 
+  // --- هيكلية الحزم المنسدلة ---
+  Widget _buildMasterBundlesHierarchy(
+    ColorScheme scheme,
+    Color surface,
+    bool isDark,
+  ) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _firestore.collection('master_sessions').orderBy('createdAt', descending: true).snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const SliverToBoxAdapter(child: SizedBox());
+        final bundles = snapshot.data!.docs;
+        if (bundles.isEmpty) return const SliverToBoxAdapter(child: Center(child: Padding(padding: EdgeInsets.all(20), child: Text('لا توجد حزم نشطة'))));
+
+        return SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate((context, index) {
+              final bundleDoc = bundles[index];
+              final data = bundleDoc.data() as Map<String, dynamic>;
+              final files = data['bundle'] as List? ?? [];
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                decoration: BoxDecoration(
+                  color: surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05)),
+                ),
+                child: ExpansionTile(
+                  leading: const Icon(LucideIcons.package, color: Colors.orange),
+                  title: Text('كود الحزمة: ${data['masterCode']}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text('المنشئ: ${data['ownerName']} • عدد الملفات: ${files.length}', style: const TextStyle(fontSize: 11)),
+                  trailing: IconButton(
+                    icon: const Icon(LucideIcons.trash2, color: Colors.red, size: 18),
+                    onPressed: () => _deleteMasterBundle(bundleDoc.id),
+                  ),
+                  children: [
+                    const Divider(height: 1),
+                    ...files.map((f) {
+                      return ListTile(
+                        dense: true,
+                        leading: const Icon(LucideIcons.fileText, size: 14),
+                        title: Text(f['name'] ?? 'Unknown File', style: const TextStyle(fontSize: 12)),
+                        subtitle: Text('Session: ${f['sessionCode']}', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                      );
+                    }),
+                  ],
+                ),
+              );
+            }, childCount: bundles.length),
+          ),
+        );
+      },
+    );
+  }
+
   // --- قائمة المستخدمين ---
   Widget _buildUsersList(ColorScheme scheme, Color surface, bool isDark) {
     return StreamBuilder<QuerySnapshot>(
@@ -425,11 +477,36 @@ class _DevDashboardState extends State<DevDashboard> {
   // --- العمليات والمنطق (Logic) ---
 
   Future<void> _terminateSession(String id) async {
-    final confirm = await _showConfirm(
-      'إلغاء الدرس؟',
-      'هل تريد إغلاق هذه الجلسة نهائياً؟',
+    final confirm = await _showConfirm('إلغاء الدرس؟', 'هل تريد إغلاق هذه الجلسة نهائياً؟');
+    if (confirm) await _syncService.deleteSession(id);
+  }
+
+  Future<void> _deleteMasterBundle(String id) async {
+    if (await _showConfirm('حذف الحزمة؟', 'سيتم حذف الحزمة الرئيسية نهائياً من النظام.')) {
+      await _firestore.collection('master_sessions').doc(id).delete();
+    }
+  }
+
+  Future<void> _confirmWipe(BuildContext context, String title, Future<void> Function() action) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('مسح شامل: $title'),
+        content: Text('هل أنت متأكد من مسح جميع $title نهائياً من قاعدة البيانات؟ لا يمكن التراجع!'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true), 
+            child: const Text('مسح نهائي'),
+          ),
+        ],
+      ),
     );
-    if (confirm) await _firestore.collection('sync_sessions').doc(id).delete();
+    if (confirm == true) {
+      await action();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم مسح $title بنجاح.')));
+    }
   }
 
   Future<void> _kickParticipant(String sId, String pUid) async {
@@ -477,31 +554,34 @@ class _DevDashboardState extends State<DevDashboard> {
                 borderRadius: BorderRadius.circular(24),
               ),
               title: Text(isEdit ? 'تعديل مستخدم' : 'مستخدم جديد'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: nameCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'الاسم الكامل',
-                      border: OutlineInputBorder(),
+              content: SizedBox(
+                width: 320,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: nameCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'الاسم الكامل',
+                        border: OutlineInputBorder(),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<String>(
-                    value: selectedRole,
-                    items: const [
-                      DropdownMenuItem(value: 'member', child: Text('طالب')),
-                      DropdownMenuItem(value: 'lecturer', child: Text('محاضر')),
-                      DropdownMenuItem(value: 'developer', child: Text('مشرف')),
-                    ],
-                    onChanged: (v) => selectedRole = v!,
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      labelText: 'الصلاحية',
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      value: selectedRole,
+                      items: const [
+                        DropdownMenuItem(value: 'member', child: Text('طالب')),
+                        DropdownMenuItem(value: 'lecturer', child: Text('محاضر')),
+                        DropdownMenuItem(value: 'developer', child: Text('مشرف')),
+                      ],
+                      onChanged: (v) => selectedRole = v!,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        labelText: 'الصلاحية',
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               actions: [
                 TextButton(

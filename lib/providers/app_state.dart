@@ -394,6 +394,7 @@ class AppProvider extends ChangeNotifier {
   }
 
   // Getters
+  SyncService get syncService => _syncService;
   List<ClassItem> get classes => _classes;
   String? get activeClassId => _activeClassId;
   String? get activePdfId => _activePdfId;
@@ -472,6 +473,49 @@ class AppProvider extends ChangeNotifier {
       _saveState();
       _notify();
     }
+  }
+
+  // ─── PHASE 13: MASTER BUNDLE INTEGRATION ──────────────────────────────────
+  Map<String, dynamic> linkMasterBundle(List<dynamic> bundle) {
+    int successCount = 0;
+    List<String> missingFiles = [];
+
+    // Collect all local PDF hashes for quick lookup
+    final localHashes = <String>{};
+    for (var cls in _classes) {
+      for (var pdf in cls.pdfs) {
+        if (pdf.fileHash != null) {
+          localHashes.add(pdf.fileHash!);
+        }
+      }
+    }
+
+    for (var item in bundle) {
+      if (item is Map) {
+        final hash = item['hash']?.toString();
+        final sessionCode = item['sessionCode']?.toString();
+        final name = item['name']?.toString() ?? 'ملف غير معروف';
+
+        if (hash != null && sessionCode != null) {
+          if (localHashes.contains(hash)) {
+            // Passive Link
+            _pdfSessionCodes[hash] = sessionCode;
+            successCount++;
+          } else {
+            // Missing File
+            missingFiles.add(name);
+          }
+        }
+      }
+    }
+
+    _saveState();
+    _notify();
+
+    return {
+      'successCount': successCount,
+      'missingFiles': missingFiles,
+    };
   }
 
   void logout() {
@@ -975,6 +1019,30 @@ class AppProvider extends ChangeNotifier {
           }
         });
       });
+    }
+
+    // PHASE 13: STUDENT AUTO-CONNECT (Master Bundle)
+    if (_currentUser?.role != 'lecturer' && hash != null && username != null && _currentUser?.uid != null) {
+      final savedCode = _pdfSessionCodes[hash];
+      if (savedCode != null && savedCode.isNotEmpty) {
+        // Only trigger if we aren't already actively in this session
+        Future.delayed(const Duration(milliseconds: 1500), () {
+          _syncService.joinSession(
+            code: savedCode,
+            uid: _currentUser!.uid,
+            username: username,
+            studentFileHash: hash,
+            studentPageCount: activePdf?.pageCount ?? 0,
+          ).then((error) {
+            if (error == null) {
+              setSessionCode(savedCode);
+              debugPrint('DEBUG: Passive Master Bundle Auto-Join Success ($savedCode) for $hash.');
+            } else {
+              debugPrint('DEBUG: Passive Auto-Join Failed: $error');
+            }
+          });
+        });
+      }
     }
   }
 

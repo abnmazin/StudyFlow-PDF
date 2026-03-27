@@ -16,6 +16,43 @@ class SyncService {
 
   SyncService({FirebaseFirestore? firestore})
       : _db = firestore ?? FirebaseFirestore.instance;
+  // ─────────────────────────────────────────────
+  // MASTER BUNDLE OPERATIONS (Phase 13)
+  // ─────────────────────────────────────────────
+
+  /// Stream of all master sessions for the developer dashboard.
+  Stream<List<Map<String, dynamic>>> watchAllMasterBundles() {
+    return _db.collection('master_sessions').orderBy('createdAt', descending: true).snapshots().map((snap) {
+      return snap.docs.map((doc) => doc.data()).toList();
+    });
+  }
+
+  /// Creates a master session bundle and returns the generated 8-character code.
+  Future<String> createMasterBundle(String ownerName, List<Map<String, dynamic>> bundle) async {
+    final code = _randomCode(8); // Master codes are 8 chars to distinguish
+    await _db.collection('master_sessions').doc(code).set({
+      'masterCode': code,
+      'ownerName': ownerName,
+      'bundle': bundle,
+      'isLocked': false,
+      'bannedUids': <String>[],
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    return code;
+  }
+
+  /// Retrieves a master bundle by its code.
+  Future<Map<String, dynamic>?> getMasterBundle(String code) async {
+    try {
+      final snap = await _db.collection('master_sessions').doc(code).get();
+      if (snap.exists) {
+        return snap.data();
+      }
+    } catch (e) {
+      debugPrint('Error fetching master bundle: $e');
+    }
+    return null;
+  }
 
   // ─────────────────────────────────────────────
   // LECTURER OPERATIONS
@@ -163,14 +200,86 @@ class SyncService {
     }
   }
 
-  /// Bans a UID AND removes them from the active participants list.
-  Future<void> kickParticipant(String code, String uid) async {
-    assert(uid.isNotEmpty, 'UID cannot be empty');
-    if (uid.isEmpty) return;
+  /// Wipe All Sessions (Admin Only)
+  Future<void> deleteAllSessions() async {
+    final snap = await _db.collection('sync_sessions').get();
+    for (var doc in snap.docs) {
+      await deleteSession(doc.id);
+    }
+  }
+
+  /// Wipe All Master Bundles (Admin Only)
+  Future<void> deleteAllMasterBundles() async {
+    final snap = await _db.collection('master_sessions').get();
+    for (var doc in snap.docs) {
+      await doc.reference.delete();
+    }
+  }
+
+  /// Toggle Master Bundle Lock (Prevents new joins/passive syncs)
+  Future<void> toggleMasterBundleLock(String bundleId, bool isLocked) async {
+    await _db.collection('master_sessions').doc(bundleId).update({
+      'isLocked': isLocked,
+    });
+  }
+
+  /// Global Ban: Bans a Username from ALL sessions in a master bundle
+  Future<void> banUserFromMasterBundle(String bundleId, String username) async {
+    final bundleDoc = await _db.collection('master_sessions').doc(bundleId).get();
+    if (!bundleDoc.exists) return;
+
+    final data = bundleDoc.data()!;
+    final List bundleItems = data['bundle'] as List? ?? [];
+    
+    // 1. Add to bundle's own banned list (Username)
+    await _db.collection('master_sessions').doc(bundleId).update({
+      'bannedUsernames': FieldValue.arrayUnion([username]),
+    });
+
+    // 2. Propagate to all sub-sessions
+    for (var item in bundleItems) {
+      if (item is Map && item.containsKey('sessionCode')) {
+        await kickParticipant(item['sessionCode'], username);
+      }
+    }
+  }
+
+  /// Unban from all files in a bundle
+  Future<void> unbanUserFromMasterBundle(String bundleId, String username) async {
+     final bundleDoc = await _db.collection('master_sessions').doc(bundleId).get();
+    if (!bundleDoc.exists) return;
+
+    final data = bundleDoc.data()!;
+    final List bundleItems = data['bundle'] as List? ?? [];
+    
+    // 1. Remove from bundle's own banned list
+    await _db.collection('master_sessions').doc(bundleId).update({
+      'bannedUsernames': FieldValue.arrayRemove([username]),
+    });
+
+    // 2. Propagate to all sub-sessions
+    for (var item in bundleItems) {
+      if (item is Map && item.containsKey('sessionCode')) {
+        await unkickParticipant(item['sessionCode'], username);
+      }
+    }
+  }
+
+  /// Registers a student as having activated this bundle
+  Future<void> registerMasterBundleActivation(String bundleId, String username) async {
+    await _db.collection('master_sessions').doc(bundleId).update({
+      'activators': FieldValue.arrayUnion([username]),
+    });
+  }
+
+  /// Bans a Username AND removes them from the active participants list.
+  Future<void> kickParticipant(String code, String username) async {
+    assert(username.isNotEmpty, 'Username cannot be empty');
+    if (username.isEmpty) return;
 
     // 1. Add to banned list
     await _db.collection('sync_sessions').doc(code).update({
-      'kicked_uids': FieldValue.arrayUnion([uid]),
+      'kicked_usernames': FieldValue.arrayUnion([username]),
     });
 
     // 2. Surgically remove from participants list
@@ -180,8 +289,8 @@ class SyncService {
       if (raw is List) {
         final updated = raw.where((p) {
           if (p is Map) {
-            final pUid = (p['uid'] ?? p['id'] ?? '')?.toString();
-            return pUid != uid;
+            final pName = (p['username'] ?? '')?.toString();
+            return pName != username;
           }
           return true;
         }).toList();
@@ -190,19 +299,18 @@ class SyncService {
     }
   }
 
-  /// Removes a UID from the kicked_uids array, allowing them to rejoin.
-  Future<void> unkickParticipant(String code, String uid) async {
+  /// Removes a Username from the kicked_usernames array, allowing them to rejoin.
+  Future<void> unkickParticipant(String code, String username) async {
     await _db.collection('sync_sessions').doc(code).update({
-      'kicked_uids': FieldValue.arrayRemove([uid]),
+      'kicked_usernames': FieldValue.arrayRemove([username]),
     });
-    // Mark as unkicked in the participants list (if they rejoin, they'll be added back anyway, 
-    // but this handles the case where they are still in the list but marked isKicked).
+    // Mark as unkicked in the participants list (if they rejoin, they'll be added back anyway)
     final snap = await _db.collection('sync_sessions').doc(code).get();
     if (snap.exists) {
       final raw = snap.data()?['participants'];
       if (raw is List) {
         final updated = raw.map((p) {
-          if (p is Map && (p['uid'] == uid || p['id'] == uid)) {
+          if (p is Map && p['username'] == username) {
             return {...p, 'isKicked': false};
           }
           return p;
@@ -439,5 +547,23 @@ class SyncService {
     final rng = Random.secure();
     return List.generate(length, (_) => _chars[rng.nextInt(_chars.length)])
         .join();
+  }
+  /// Watch all master bundles created by a specific owner
+  Stream<List<Map<String, dynamic>>> watchMasterBundlesByOwner(String username) {
+    return _db
+        .collection('master_sessions')
+        .where('ownerName', isEqualTo: username)
+        .snapshots()
+        .map((snap) {
+          // Sort in memory to avoid requiring complex Firestore indexes
+          final docs = snap.docs.map((doc) => {...doc.data(), 'id': doc.id}).toList();
+          docs.sort((a, b) {
+            final aTime = a['createdAt'] as Timestamp?;
+            final bTime = b['createdAt'] as Timestamp?;
+            if (aTime == null || bTime == null) return 0;
+            return bTime.compareTo(aTime);
+          });
+          return docs;
+        });
   }
 }

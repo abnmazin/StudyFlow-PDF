@@ -1,12 +1,76 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../screens/admin/dev_dashboard.dart';
 import '../screens/auth/login_screen.dart';
+import 'viewer_components/join_master_modal.dart';
 
-class GlobalSettingsModal extends StatelessWidget {
+class GlobalSettingsModal extends StatefulWidget {
   const GlobalSettingsModal({super.key});
+
+  @override
+  State<GlobalSettingsModal> createState() => _GlobalSettingsModalState();
+}
+
+class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
+  final Set<String> _selectedHashes = {};
+  bool _isGenerating = false;
+  String? _generatedMasterCode;
+
+  Future<void> _generateMasterBundle(AppProvider app) async {
+    if (_selectedHashes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('الرجاء تحديد ملف واحد على الأقل.')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isGenerating = true;
+      _generatedMasterCode = null;
+    });
+
+    try {
+      final user = app.currentUser;
+      if (user == null) throw Exception('Unauthorized');
+
+      final List<Map<String, dynamic>> bundle = [];
+
+      for (var cls in app.classes) {
+        for (var pdf in cls.pdfs) {
+          if (pdf.fileHash != null && _selectedHashes.contains(pdf.fileHash)) {
+            final sessionCode = await app.syncService.generateSessionCode(
+              pdf.fileHash!,
+              pdf.pageCount ?? 0,
+              user.hardwareId,
+              user.username,
+              user.uid,
+            );
+
+            if (sessionCode != null) {
+              bundle.add({
+                'hash': pdf.fileHash,
+                'sessionCode': sessionCode,
+                'name': pdf.name,
+              });
+            }
+          }
+        }
+      }
+
+      final masterCode = await app.syncService.createMasterBundle(user.username, bundle);
+      setState(() => _generatedMasterCode = masterCode);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('خطأ: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isGenerating = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -80,46 +144,41 @@ class GlobalSettingsModal extends StatelessWidget {
                 const SizedBox(height: 12),
                 _buildAiSettingsContent(context, app, surfaceAlt, panelBorder, textPrimary, textMuted),
 
-                if (app.currentUser?.role == 'developer') ...[
+                // Phase 13.1: Inline Master Bundle Creator
+                if (app.currentUser?.role == 'lecturer' || app.currentUser?.role == 'developer') ...[
                   const SizedBox(height: 24),
-                  _buildSectionHeader('المزامنة اللحظية (للمطورين)', LucideIcons.radio, textMuted),
+                  _buildSectionHeader('أدوات المحاضر: إنشاء حزمة', LucideIcons.graduationCap, textMuted),
+                  const SizedBox(height: 12),
+                  _buildMasterBundleCreator(app, surfaceAlt, panelBorder, textPrimary, textMuted, isDark),
+                  
+                  const SizedBox(height: 24),
+                  _buildSectionHeader('سجل الحزم السابقة', LucideIcons.history, textMuted),
+                  const SizedBox(height: 12),
+                  _buildMasterBundleHistory(app, surfaceAlt, panelBorder, textPrimary, textMuted),
+                ],
+
+                // Student Tools (Join Master Bundle)
+                if (app.currentUser?.role != 'lecturer') ...[
+                  const SizedBox(height: 24),
+                  _buildSectionHeader('أدوات الطالب', LucideIcons.userCheck, textMuted),
                   const SizedBox(height: 12),
                   _buildSettingsCard(surfaceAlt, panelBorder, [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      child: Row(
-                        children: [
-                          Icon(LucideIcons.activity, size: 18, color: textPrimary),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('طريقة مزامنة الرسم', style: TextStyle(color: textPrimary, fontSize: 13, fontWeight: FontWeight.w500)),
-                                Text('اختبر أداء مسار المزامنة (Stress Test)', style: TextStyle(color: textMuted, fontSize: 11)),
-                              ],
-                            ),
-                          ),
-                          DropdownButton<DrawingSyncStrategy>(
-                            value: app.drawingSyncStrategy,
-                            dropdownColor: surfaceAlt,
-                            underline: const SizedBox(),
-                            icon: Icon(LucideIcons.chevronDown, size: 16, color: textMuted),
-                            style: TextStyle(color: textPrimary),
-                            items: const [
-                              DropdownMenuItem(value: DrawingSyncStrategy.disabled, child: Text('متوقف (مزامنة يدوية)', style: TextStyle(fontSize: 13))),
-                              DropdownMenuItem(value: DrawingSyncStrategy.immediate, child: Text('فوري (مزامنة لحظية)', style: TextStyle(fontSize: 13))),
-                              DropdownMenuItem(value: DrawingSyncStrategy.buffered, child: Text('مؤجل (موفر للبيانات - كل 5 ثوانٍ)', style: TextStyle(fontSize: 13))),
-                              DropdownMenuItem(value: DrawingSyncStrategy.isolate, child: Text('أداء عالي (معالجة في الخلفية)', style: TextStyle(fontSize: 13))),
-                            ],
-                            onChanged: (val) {
-                              if (val != null) app.setDrawingSyncStrategy(val);
-                            },
-                          ),
-                        ],
-                      ),
+                    _buildActionTile(
+                      icon: LucideIcons.link2,
+                      label: 'ربط حزمة دراسية (Master Bundle)',
+                      onTap: () {
+                        app.toggleSettings(false);
+                        showDialog(
+                          context: context,
+                          builder: (context) => const JoinMasterModal(),
+                        );
+                      },
+                      textPrimary: textPrimary,
                     ),
                   ]),
+                ],
+
+                if (app.currentUser?.role == 'developer') ...[
                   const SizedBox(height: 24),
                   _buildSectionHeader('خيارات المطور', LucideIcons.code, textMuted),
                   const SizedBox(height: 12),
@@ -133,14 +192,6 @@ class GlobalSettingsModal extends StatelessWidget {
                           MaterialPageRoute(builder: (_) => const DevDashboard()),
                         );
                       },
-                      textPrimary: textPrimary,
-                    ),
-                    _buildDivider(panelBorder),
-                    _buildToggleTile(
-                      icon: LucideIcons.bug,
-                      label: 'إظهار معلومات المطور في الواجهة',
-                      value: app.showDevInfo,
-                      onChanged: (val) => app.toggleDevInfo(val),
                       textPrimary: textPrimary,
                     ),
                   ]),
@@ -200,6 +251,251 @@ class GlobalSettingsModal extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  void _manageBannedUsers(BuildContext context, AppProvider app, String bundleId, List<String> activators, List<String> bannedUsernames) {
+    final controller = TextEditingController();
+    final allStudents = <String>{...activators, ...bannedUsernames}.toList()..sort();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('إدارة مستخدمي الحزمة'),
+          content: SizedBox(
+            width: 320,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: controller,
+                        decoration: const InputDecoration(hintText: 'حظر مستخدم يدوي (اسم المستخدم)...', isDense: true),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(LucideIcons.userPlus, color: Colors.blue),
+                      onPressed: () async {
+                        final username = controller.text.trim();
+                        if (username.isNotEmpty) {
+                          await app.syncService.banUserFromMasterBundle(bundleId, username);
+                          controller.clear();
+                          Navigator.pop(ctx);
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت إضافة الحظر')));
+                        }
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                const Text('قائمة الطلاب المتفاعلين والمحظورين:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                if (allStudents.isEmpty)
+                  const Text('لا يوجد طلاب مسجلون حالياً.', style: TextStyle(color: Colors.grey, fontSize: 11))
+                else
+                  Flexible(
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: allStudents.length,
+                      itemBuilder: (context, index) {
+                        final username = allStudents[index];
+                        final isBanned = bannedUsernames.contains(username);
+                        return ListTile(
+                          dense: true,
+                          title: Text(username, style: TextStyle(fontSize: 13, color: isBanned ? Colors.red : null, decoration: isBanned ? TextDecoration.lineThrough : null)),
+                          trailing: IconButton(
+                            icon: Icon(isBanned ? LucideIcons.userCheck : LucideIcons.userX, color: isBanned ? Colors.green : Colors.red, size: 18),
+                            onPressed: () async {
+                               if (isBanned) {
+                                 await app.syncService.unbanUserFromMasterBundle(bundleId, username);
+                               } else {
+                                 await app.syncService.banUserFromMasterBundle(bundleId, username);
+                               }
+                               Navigator.pop(ctx);
+                               ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(isBanned ? 'تم فك الحظر' : 'تم الحظر شمولياً')));
+                            },
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إغلاق')),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMasterBundleHistory(AppProvider app, Color surface, Color border, Color text, Color muted) {
+    return _buildSettingsCard(surface, border, [
+      StreamBuilder<List<Map<String, dynamic>>>(
+        stream: app.syncService.watchMasterBundlesByOwner(app.currentUser?.username ?? ''),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) return const Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator());
+          final bundles = snapshot.data!;
+          if (bundles.isEmpty) return Padding(padding: const EdgeInsets.all(16), child: Text('لا توجد حزم سابقة.', style: TextStyle(color: muted, fontSize: 13)));
+
+          return Column(
+            children: bundles.map((data) {
+              final files = data['bundle'] as List? ?? [];
+              final bool isLocked = data['isLocked'] as bool? ?? false;
+
+              return ExpansionTile(
+                title: Row(
+                  children: [
+                    Text(data['masterCode'], style: TextStyle(color: isLocked ? Colors.red : text, fontWeight: FontWeight.w900, letterSpacing: 2)),
+                    if (isLocked) ...[
+                      const SizedBox(width: 8),
+                      const Icon(LucideIcons.lock, size: 14, color: Colors.red),
+                    ],
+                  ],
+                ),
+                subtitle: Text('عدد الملفات: ${files.length} • المحظورين: ${(data['bannedUsernames'] as List? ?? []).length}', style: TextStyle(color: muted, fontSize: 11)),
+                leading: Icon(LucideIcons.package, size: 18, color: isLocked ? Colors.red : Colors.orange),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: Icon(isLocked ? LucideIcons.unlock : LucideIcons.lock, size: 16, color: isLocked ? Colors.green : Colors.red),
+                      tooltip: isLocked ? 'فتح الاستخدام' : 'قفل الاستخدام',
+                      onPressed: () => app.syncService.toggleMasterBundleLock(data['id'], !isLocked),
+                    ),
+                    IconButton(
+                        icon: const Icon(LucideIcons.userX, size: 16, color: Colors.amber),
+                        tooltip: 'إدارة المحظورين',
+                        onPressed: () => _manageBannedUsers(
+                              context,
+                              app,
+                              data['id'],
+                              List<String>.from(data['activators'] ?? []),
+                              List<String>.from(data['bannedUsernames'] ?? []),
+                            )),
+                    IconButton(
+                      icon: const Icon(LucideIcons.copy, size: 16, color: Colors.blue),
+                      onPressed: () {
+                         Clipboard.setData(ClipboardData(text: data['masterCode']));
+                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم نسخ الكود')));
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(LucideIcons.trash2, size: 16, color: Colors.red),
+                      onPressed: () async {
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text('حذف الحزمة؟'),
+                            content: const Text('هل تريد حذف هذه الحزمة نهائياً؟'),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+                              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('حذف')),
+                            ],
+                          ),
+                        );
+                        if (confirm == true) {
+                          await FirebaseFirestore.instance.collection('master_sessions').doc(data['id']).delete();
+                        }
+                      },
+                    ),
+                  ],
+                ),
+                children: files.map((f) => ListTile(
+                  dense: true,
+                  title: Text(f['name'] ?? 'Unnamed', style: TextStyle(color: text, fontSize: 11)),
+                  leading: const Icon(LucideIcons.fileText, size: 14),
+                )).toList(),
+              );
+            }).toList(),
+          );
+        },
+      ),
+    ]);
+  }
+
+  Widget _buildMasterBundleCreator(AppProvider app, Color surface, Color border, Color text, Color muted, bool isDark) {
+    return _buildSettingsCard(surface, border, [
+      Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            ...app.classes.map((cls) {
+               final bool allSelected = cls.pdfs.isNotEmpty && cls.pdfs.every((p) => p.fileHash != null && _selectedHashes.contains(p.fileHash));
+               return ExpansionTile(
+                 title: Text(cls.name, style: TextStyle(color: text, fontSize: 14, fontWeight: FontWeight.bold)),
+                 leading: const Icon(LucideIcons.folder, size: 18, color: Colors.blue),
+                 trailing: Checkbox(
+                   value: allSelected,
+                   onChanged: (val) {
+                     setState(() {
+                       for (var p in cls.pdfs) {
+                         if (p.fileHash != null && p.fileHash!.isNotEmpty) {
+                           if (val == true) _selectedHashes.add(p.fileHash!);
+                           else _selectedHashes.remove(p.fileHash!);
+                         }
+                       }
+                     });
+                   },
+                 ),
+                 children: cls.pdfs.map((pdf) {
+                   final bool hasHash = pdf.fileHash != null && pdf.fileHash!.isNotEmpty;
+                   final bool isSel = hasHash && _selectedHashes.contains(pdf.fileHash);
+                   return CheckboxListTile(
+                     value: isSel,
+                     onChanged: !hasHash ? null : (val) {
+                       setState(() {
+                         if (val == true) _selectedHashes.add(pdf.fileHash!);
+                         else _selectedHashes.remove(pdf.fileHash!);
+                       });
+                     },
+                     title: Text(pdf.name, style: TextStyle(color: hasHash ? text : muted, fontSize: 12)),
+                     subtitle: !hasHash ? const Text('بانتظار حساب المعرف...', style: TextStyle(fontSize: 10, color: Colors.red)) : null,
+                     controlAffinity: ListTileControlAffinity.leading,
+                   );
+                 }).toList(),
+               );
+            }).toList(),
+
+            const SizedBox(height: 16),
+            if (_generatedMasterCode != null) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text('كود الحزمة: ', style: TextStyle(color: text, fontSize: 13)),
+                    Text(_generatedMasterCode!, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.green, letterSpacing: 2)),
+                    IconButton(
+                      icon: const Icon(LucideIcons.copy, size: 16, color: Colors.green),
+                      onPressed: () {
+                         Clipboard.setData(ClipboardData(text: _generatedMasterCode!));
+                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم نسخ الكود')));
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _isGenerating ? null : () => _generateMasterBundle(app),
+                icon: _isGenerating ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(LucideIcons.plus, size: 18),
+                label: Text(_isGenerating ? 'جاري الإنشاء...' : 'إنشاء حزمة دراسية', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                style: FilledButton.styleFrom(backgroundColor: Colors.blue, padding: const EdgeInsets.symmetric(vertical: 12)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ]);
   }
 
   Widget _buildSectionHeader(String title, IconData icon, Color color) {
@@ -267,7 +563,6 @@ class GlobalSettingsModal extends StatelessWidget {
     );
   }
 
-  Widget _buildDivider(Color border) => Divider(height: 1, color: border, indent: 48);
 
   Widget _buildAiSettingsContent(
     BuildContext context,
@@ -376,6 +671,4 @@ class GlobalSettingsModal extends StatelessWidget {
       ),
     );
   }
-
-
 }
