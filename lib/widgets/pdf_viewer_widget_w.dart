@@ -53,8 +53,8 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   String? _currentListeningCode; 
   String? _currentListeningFileHash; // NEW: Track which PDF hash we are listening for
 
-  ToolType _tool =
-      ToolType.cursor; // 'cursor', 'highlight', 'eraser', 'pen', 'comment'
+  // _tool is now managed by AppProvider.currentTool
+  ToolType get _tool => context.read<AppProvider>().currentTool;
 
   // â”€â”€ Per-tool colors: changing one never affects another â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Color _penColor = const Color(0xFF000000);
@@ -113,6 +113,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   int _currentPage = -1;
   bool _isProcessing = false; // Processing lock
   Timer? _scrollDebounce;
+  Timer? _gestureSyncTimer;
   Timer? _scrollMaintenanceDebounce;
   Timer? _autoFitDebounce;
   int _lastTimestamp = 0;
@@ -346,8 +347,8 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   }
 
   void _activateTool(ToolType nextTool) {
+    final app = context.read<AppProvider>();
     setState(() {
-      _tool = nextTool;
       _isSettingsMode = false;
 
       // Leaving selection mode should clear selected shape visuals/state.
@@ -357,6 +358,9 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
         _shapeHoverCursor = SystemMouseCursors.basic;
       }
     });
+
+    // Delegate to Provider for global tool state & sync triggering
+    app.setCurrentTool(nextTool);
   }
 
   void _maybeTrimWindowsMemory({bool force = false, int minIntervalMs = 1800}) {
@@ -418,6 +422,9 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     // Only rebuild when activePdf changes using Selector
     final app = context.read<AppProvider>();
     final pdf = context.select<AppProvider, PdfItem?>((app) => app.activePdf);
+    // React to tool changes
+    context.select<AppProvider, ToolType>((app) => app.currentTool);
+    
     final selectedAnnotationTool = _selectedAnnotationTool(pdf);
     final panelTool = _panelTool(pdf);
     final isDarkMode = context.select<AppProvider, bool>(
@@ -736,7 +743,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                                         )),
                                             onPressed: () {
                                               setState(() {
-                                                _tool = ToolType.rectangle;
+                                                _activateTool(ToolType.rectangle);
                                               });
                                             },
                                           ),
@@ -754,7 +761,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                                         )),
                                             onPressed: () {
                                               setState(() {
-                                                _tool = ToolType.circle;
+                                                _activateTool(ToolType.circle);
                                               });
                                             },
                                           ),
@@ -772,7 +779,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                                         )),
                                             onPressed: () {
                                               setState(() {
-                                                _tool = ToolType.arrow;
+                                                _activateTool(ToolType.arrow);
                                               });
                                             },
                                           ),
@@ -1028,24 +1035,25 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   }
 
   Widget _buildPdfViewerCore(PdfItem pdf) {
+    final app = context.read<AppProvider>();
     return Listener(
       // Auto-switch to Hand tool when the user scrolls while a drawing tool
       // is active, so pdfrx handles navigation naturally.
       onPointerSignal: (pointerSignal) {
         if (pointerSignal is PointerScrollEvent && _tool != ToolType.cursor) {
-          setState(() => _tool = ToolType.cursor);
+          _activateTool(ToolType.cursor);
         }
       },
       // Windows/macOS touchpads emit pan/zoom pointer events for two-finger
       // scrolling. Handle them the same way as mouse wheel scrolling.
       onPointerPanZoomStart: (_) {
         if (_tool != ToolType.cursor) {
-          setState(() => _tool = ToolType.cursor);
+          _activateTool(ToolType.cursor);
         }
       },
       onPointerPanZoomUpdate: (_) {
         if (_tool != ToolType.cursor) {
-          setState(() => _tool = ToolType.cursor);
+          _activateTool(ToolType.cursor);
         }
       },
       child: PdfViewer.file(
@@ -1075,6 +1083,27 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
               _handleTextSelectionChange(selection);
             },
           ),
+          onInteractionStart: (details) {
+            _gestureSyncTimer?.cancel();
+          },
+          onInteractionUpdate: (details) {
+            // Auto-switch to Hand tool during multi-touch gestures
+            if (_tool != ToolType.cursor && (details.scale != 1.0 || details.pointerCount > 1)) {
+              _activateTool(ToolType.cursor);
+            }
+          },
+          onInteractionEnd: (details) {
+            // Trigger bidirectional sync after pan/zoom ends (with debounce)
+            if (_tool == ToolType.cursor && app.currentSessionCode != null) {
+              _gestureSyncTimer?.cancel();
+              _gestureSyncTimer = Timer(const Duration(milliseconds: 200), () {
+                if (mounted && !app.isSyncing) {
+                  debugPrint('DEBUG: Interaction ended. Triggering Gesture-based Sync.');
+                  app.performBidirectionalSync();
+                }
+              });
+            }
+          },
           onViewerReady: (document, controller) {
             if (mounted) {
               setState(() {

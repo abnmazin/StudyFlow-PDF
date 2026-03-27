@@ -222,11 +222,12 @@ class MainLayout extends StatefulWidget {
 class _MainLayoutState extends State<MainLayout> {
   bool _isDragOver = false;
   StreamSubscription<String>? _incomingPdfSubscription;
+  late AppProvider _appProvider;
 
   Future<void> _handleDroppedFiles(List<XFile> files) async {
     if (files.isEmpty) return;
 
-    final app = context.read<AppProvider>();
+    final app = _appProvider;
     await app.initialized;
 
     for (final file in files) {
@@ -241,9 +242,14 @@ class _MainLayoutState extends State<MainLayout> {
   @override
   void initState() {
     super.initState();
+    
+    // Phase 11: Real-time Security Listener
+    _appProvider = context.read<AppProvider>();
+    _appProvider.addListener(_securityListener);
+
     _incomingPdfSubscription = _incomingPdfPaths.stream.listen((path) async {
       if (!mounted) return;
-      final app = context.read<AppProvider>();
+      final app = _appProvider;
       await app.initialized;
       await app.loadPdfFromPath(path);
     });
@@ -251,7 +257,7 @@ class _MainLayoutState extends State<MainLayout> {
     // Load initial PDF file if provided via command-line
     if (widget.initialPdfPath != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
-        final app = context.read<AppProvider>();
+        final app = _appProvider;
         await app.initialized; // Wait for state to load
         app.loadPdfFromPath(widget.initialPdfPath!);
       });
@@ -260,8 +266,46 @@ class _MainLayoutState extends State<MainLayout> {
 
   @override
   void dispose() {
+    _appProvider.removeListener(_securityListener);
     _incomingPdfSubscription?.cancel();
     super.dispose();
+  }
+
+  void _securityListener() {
+    if (!mounted) return;
+    final app = _appProvider;
+    final reason = app.forcedLogoutReason;
+    final isGlobal = app.isGlobalLogout;
+    final isKicked = app.isKicked;
+
+    if (reason != null || isKicked) {
+      // Clear immediately to prevent UI loop
+      app.clearForcedLogoutReason();
+
+      // Notify user via Toast/Snackbar
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            reason ?? 'لقد تم إنهاء وصولك لهذه الجلسة',
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+          backgroundColor: const Color(0xFFEF4444), // Intense Red
+          duration: const Duration(seconds: 6),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
+
+      // Force Redirect to Login ONLY if account is deleted from system (Global)
+      if (isGlobal) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (route) => false,
+        );
+      }
+      // Note: If session-only kick, we stay on the current screen (Viewer) 
+      // but it will automatically show the "Join" UI because currentSessionCode is cleared.
+    }
   }
 
   @override

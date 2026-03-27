@@ -10,6 +10,7 @@ class Highlight {
   final HighlightType type;
   final List<Rect>? rects;
   final int? backgroundColor;  // Fill color for shapes (nullable, stored as int)
+  final bool isSynced;
 
   Highlight({
     required this.id,
@@ -20,6 +21,7 @@ class Highlight {
     this.type = HighlightType.highlight,
     this.rects,
     this.backgroundColor,  // Optional background color
+    this.isSynced = false,
   });
 
   Path? _cachedPath;
@@ -44,6 +46,7 @@ class Highlight {
     'strokeWidth': strokeWidth,
     'type': type.toString(),
     if (isExisting) 'isExisting': true,
+    'isSynced': isSynced,
     if (backgroundColor != null) 'backgroundColor': backgroundColor,
     if (rects != null)
       'rects': rects!
@@ -67,6 +70,7 @@ class Highlight {
             )
           : HighlightType.highlight,
       backgroundColor: json['backgroundColor'],  // Load background color if present
+      isSynced: json['isSynced'] ?? false,
       rects: (json['rects'] as List?)?.map((r) {
         return Rect.fromLTRB(r['L'], r['T'], r['R'], r['B']);
       }).toList(),
@@ -81,6 +85,7 @@ class Highlight {
     HighlightType? type,
     List<Rect>? rects,
     int? backgroundColor,
+    bool? isSynced,
   }) {
     return Highlight(
       id: id ?? this.id,
@@ -91,6 +96,7 @@ class Highlight {
       type: type ?? this.type,
       rects: rects ?? this.rects,
       backgroundColor: backgroundColor ?? this.backgroundColor,
+      isSynced: isSynced ?? this.isSynced,
     );
   }
 }
@@ -104,13 +110,12 @@ class PdfComment {
   final Color color;
   final double fontSize;
   final bool isBold;
-  final bool isLatex; // NEW: LaTeX rendering mode flag
+  final bool isLatex;
   final String fontFamily;
-
-  // Border & Background
-  final bool showBorder; // toggle border on/off
-  final Color borderColor; // border colour when showBorder is true
-  final Color bgColor; // background colour (independent)
+  final bool showBorder;
+  final Color borderColor;
+  final Color bgColor;
+  final bool isSynced;
 
   PdfComment({
     required this.id,
@@ -124,8 +129,9 @@ class PdfComment {
     this.isLatex = false,
     this.fontFamily = 'Segoe UI',
     this.showBorder = true,
-    this.borderColor = const Color(0xFF000000),  // Black border default
-    this.bgColor = const Color(0xFFFEF3C7),  // Light yellow background default
+    this.borderColor = const Color(0xFF000000),
+    this.bgColor = const Color(0xFFFEF3C7),
+    this.isSynced = false,
   });
 
   Map<String, dynamic> toJson({bool isExisting = false}) => {
@@ -144,6 +150,7 @@ class PdfComment {
     'borderColor': borderColor.value,
     'bgColor': bgColor.value,
     if (isExisting) 'isExisting': true,
+    'isSynced': isSynced,
   };
 
   factory PdfComment.fromJson(Map<String, dynamic> json) {
@@ -159,10 +166,12 @@ class PdfComment {
       isLatex: json['isLatex'] ?? false,
       fontFamily: json['fontFamily'] ?? 'Segoe UI',
       showBorder: json['showBorder'] ?? true,
-      borderColor: Color(json['borderColor'] ?? 0xFF000000),  // Black border default
-      bgColor: Color(json['bgColor'] ?? 0xFFFEF3C7),  // Light yellow background default
+      borderColor: Color(json['borderColor'] ?? 0xFF000000),
+      bgColor: Color(json['bgColor'] ?? 0xFFFEF3C7),
+      isSynced: json['isSynced'] ?? false,
     );
   }
+
   PdfComment copyWith({
     String? id,
     int? page,
@@ -172,11 +181,12 @@ class PdfComment {
     Color? color,
     double? fontSize,
     bool? isBold,
-    bool? isLatex, // NEW
+    bool? isLatex,
     String? fontFamily,
     bool? showBorder,
     Color? borderColor,
     Color? bgColor,
+    bool? isSynced,
   }) {
     return PdfComment(
       id: id ?? this.id,
@@ -187,11 +197,12 @@ class PdfComment {
       color: color ?? this.color,
       fontSize: fontSize ?? this.fontSize,
       isBold: isBold ?? this.isBold,
-      isLatex: isLatex ?? this.isLatex, // NEW
+      isLatex: isLatex ?? this.isLatex,
       fontFamily: fontFamily ?? this.fontFamily,
       showBorder: showBorder ?? this.showBorder,
       borderColor: borderColor ?? this.borderColor,
       bgColor: bgColor ?? this.bgColor,
+      isSynced: isSynced ?? this.isSynced,
     );
   }
 }

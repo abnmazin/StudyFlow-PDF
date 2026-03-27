@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
-import '../models/models.dart';
 import '../screens/admin/dev_dashboard.dart';
 import '../screens/auth/login_screen.dart';
 
@@ -80,32 +79,7 @@ class GlobalSettingsModal extends StatelessWidget {
                 _buildSectionHeader('إعدادات الذكاء الاصطناعي', LucideIcons.bot, textMuted),
                 const SizedBox(height: 12),
                 _buildAiSettingsContent(context, app, surfaceAlt, panelBorder, textPrimary, textMuted),
-                const SizedBox(height: 24),
-                _buildSectionHeader('أدوات التنظيف (المستند الحالي)', LucideIcons.trash2, textMuted),
-                const SizedBox(height: 12),
-                _buildSettingsCard(surfaceAlt, panelBorder, [
-                  _buildActionTile(
-                    icon: LucideIcons.eraser,
-                    label: 'مسح كافة الملاحظات والرسومات',
-                    onTap: () {
-                      if (app.activePdf != null) {
-                        _showCleanupDialog(context, app, app.activePdf!);
-                      } else {
-                        _showNoPdfError(context);
-                      }
-                    },
-                    isDanger: true,
-                    textPrimary: textPrimary,
-                  ),
-                  _buildDivider(panelBorder),
-                  _buildActionTile(
-                    icon: LucideIcons.trash2,
-                    label: 'مسح شامل (كافة الملفات)',
-                    onTap: () => _showGlobalCleanupDialog(context, app),
-                    isDanger: true,
-                    textPrimary: textPrimary,
-                  ),
-                ]),
+
                 if (app.currentUser?.role == 'developer') ...[
                   const SizedBox(height: 24),
                   _buildSectionHeader('المزامنة اللحظية (للمطورين)', LucideIcons.radio, textMuted),
@@ -133,10 +107,10 @@ class GlobalSettingsModal extends StatelessWidget {
                             icon: Icon(LucideIcons.chevronDown, size: 16, color: textMuted),
                             style: TextStyle(color: textPrimary),
                             items: const [
-                              DropdownMenuItem(value: DrawingSyncStrategy.disabled, child: Text('متوقف (يدوي)', style: TextStyle(fontSize: 13))),
-                              DropdownMenuItem(value: DrawingSyncStrategy.immediate, child: Text('مباشر (Immediate)', style: TextStyle(fontSize: 13))),
-                              DropdownMenuItem(value: DrawingSyncStrategy.buffered, child: Text('مؤجل (Buffered 5s)', style: TextStyle(fontSize: 13))),
-                              DropdownMenuItem(value: DrawingSyncStrategy.isolate, child: Text('معزول (Compute)', style: TextStyle(fontSize: 13))),
+                              DropdownMenuItem(value: DrawingSyncStrategy.disabled, child: Text('متوقف (مزامنة يدوية)', style: TextStyle(fontSize: 13))),
+                              DropdownMenuItem(value: DrawingSyncStrategy.immediate, child: Text('فوري (مزامنة لحظية)', style: TextStyle(fontSize: 13))),
+                              DropdownMenuItem(value: DrawingSyncStrategy.buffered, child: Text('مؤجل (موفر للبيانات - كل 5 ثوانٍ)', style: TextStyle(fontSize: 13))),
+                              DropdownMenuItem(value: DrawingSyncStrategy.isolate, child: Text('أداء عالي (معالجة في الخلفية)', style: TextStyle(fontSize: 13))),
                             ],
                             onChanged: (val) {
                               if (val != null) app.setDrawingSyncStrategy(val);
@@ -247,11 +221,13 @@ class GlobalSettingsModal extends StatelessWidget {
   }
 
   Widget _buildSettingsCard(Color bg, Color border, List<Widget> children) {
-    return Container(
-      decoration: BoxDecoration(
-        color: bg,
+    return Card(
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      color: bg,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: border),
+        side: BorderSide(color: border),
       ),
       child: Column(children: children),
     );
@@ -264,20 +240,13 @@ class GlobalSettingsModal extends StatelessWidget {
     required ValueChanged<bool> onChanged,
     required Color textPrimary,
   }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: textPrimary.withOpacity(0.7)),
-          const SizedBox(width: 12),
-          Expanded(child: Text(label, style: TextStyle(color: textPrimary))),
-          Switch(
-            value: value,
-            onChanged: onChanged,
-            activeColor: const Color(0xFF3B82F6),
-          ),
-        ],
-      ),
+    return SwitchListTile(
+      value: value,
+      onChanged: onChanged,
+      activeColor: const Color(0xFF3B82F6),
+      title: Text(label, style: TextStyle(color: textPrimary, fontSize: 13, fontWeight: FontWeight.w500)),
+      secondary: Icon(icon, size: 20, color: textPrimary.withOpacity(0.7)),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
     );
   }
 
@@ -289,20 +258,12 @@ class GlobalSettingsModal extends StatelessWidget {
     required Color textPrimary,
   }) {
     final color = isDanger ? const Color(0xFFF87171) : textPrimary;
-    return InkWell(
+    return ListTile(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        child: Row(
-          children: [
-            Icon(icon, size: 20, color: color),
-            const SizedBox(width: 12),
-            Expanded(child: Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w500))),
-            Icon(LucideIcons.chevronRight, size: 16, color: color.withOpacity(0.5)),
-          ],
-        ),
-      ),
+      leading: Icon(icon, size: 20, color: color),
+      title: Text(label, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w500)),
+      trailing: Icon(LucideIcons.chevronRight, size: 16, color: color.withOpacity(0.5)),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
     );
   }
 
@@ -333,15 +294,18 @@ class GlobalSettingsModal extends StatelessWidget {
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: panelBorder)),
         );
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: surfaceAlt,
+    return Card(
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      color: surfaceAlt,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: panelBorder),
+        side: BorderSide(color: panelBorder),
       ),
-      child: Column(
-        children: [
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
           DropdownButtonFormField<String>(
             value: app.aiProvider,
             decoration: decor('مزود الخدمة'),
@@ -371,6 +335,7 @@ class GlobalSettingsModal extends StatelessWidget {
             textMuted,
           ),
         ],
+      ),
       ),
     );
   }
@@ -412,56 +377,5 @@ class GlobalSettingsModal extends StatelessWidget {
     );
   }
 
-  void _showCleanupDialog(BuildContext context, AppProvider app, PdfItem pdf) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('مسح كل الملاحظات؟'),
-        content: const Text('سيتم حذف كل الهايلايت والرسومات والملاحظات في هذا الملف نهائيًا.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () {
-              app.clearAllAnnotations(pdf.id);
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم المسح بنجاح')));
-            },
-            child: const Text('تأكيد الحذف'),
-          ),
-        ],
-      ),
-    );
-  }
 
-  void _showNoPdfError(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('يرجى فتح ملف PDF أولاً لاستخدام أدوات التنظيف.')),
-    );
-  }
-
-  void _showGlobalCleanupDialog(BuildContext context, AppProvider app) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('مسح شامل لكافة الملفات؟'),
-        content: const Text(
-            'سيتم حذف كافة الملاحظات والرسومات والهايلايت من جميع الملفات في كافة الفصول نهائيًا.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () {
-              app.clearAllGlobalAnnotations();
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('تم مسح كافة البيانات بنجاح')));
-            },
-            child: const Text('تأكيد المسح الشامل'),
-          ),
-        ],
-      ),
-    );
-  }
 }

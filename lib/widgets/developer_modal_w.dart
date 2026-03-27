@@ -173,13 +173,31 @@ class _DeveloperModalState extends State<DeveloperModal>
               letterSpacing: 0.5,
             ),
           ),
-          const SizedBox(height: 4),
-          const Text(
-            'التطبيق مصمم خصيصا للبيت ',
-            style: TextStyle(
-              fontSize: 16,
-              color: Color(0xFF94A3B8), // Slate 400
-              fontWeight: FontWeight.w500,
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E293B).withOpacity(0.8),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFF334155)),
+            ),
+            child: Directionality(
+              textDirection: TextDirection.rtl,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: const [
+                  Text(
+                    'التطبيق مصمم خصيصا للبيت',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Color(0xFFE2E8F0),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  SizedBox(width: 8),
+                  Icon(LucideIcons.sparkles, size: 16, color: Color(0xFF38BDF8)),
+                ],
+              ),
             ),
           ),
         ],
@@ -190,7 +208,7 @@ class _DeveloperModalState extends State<DeveloperModal>
   Widget _buildInfoList() {
     return Container(
       padding: const EdgeInsets.all(24),
-      color: Colors.white,
+      color: const Color(0xFFF8FAFC), // Slight off-white background
       child: Column(
         children: [
           _buildClickableRow(
@@ -215,14 +233,6 @@ class _DeveloperModalState extends State<DeveloperModal>
             label: 'الهاتف',
             value: '07710529693',
             onTap: () => _launchUrl('tel:07710529693'),
-          ),
-          const SizedBox(height: 16),
-          _buildClickableRow(
-            icon: LucideIcons.webcam,
-            color: const Color(0xFF10B981), // Emerald 500
-            label: 'الموقع الإلكتروني',
-            value: 'AbnMazin.engineer',
-            onTap: () => _launchUrl('https://AbnMazin.engineer'),
           ),
           const SizedBox(height: 32),
           SizedBox(
@@ -258,51 +268,59 @@ class _DeveloperModalState extends State<DeveloperModal>
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC), // Slate 50
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFE2E8F0)), // Slate 200
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, color: color, size: 20),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF64748B), // Slate 500
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  Text(
-                    value,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      color: Color(0xFF1E293B), // Slate 800
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'monospace',
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(LucideIcons.externalLink, size: 16, color: Colors.grey[400]),
           ],
+          border: Border.all(color: const Color(0xFFF1F5F9)), // Subtle slate 100
+        ),
+        child: Directionality(
+          textDirection: TextDirection.rtl,
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: color, size: 20),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    color: Color(0xFF334155),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              Text(
+                value,
+                textDirection: TextDirection.ltr,
+                style: const TextStyle(
+                  fontSize: 15,
+                  color: Color(0xFF0F172A),
+                  fontWeight: FontWeight.w800,
+                  fontFamily: 'monospace',
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Icon(LucideIcons.chevronLeft, size: 18, color: Colors.grey[400]),
+            ],
+          ),
         ),
       ),
     );

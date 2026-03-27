@@ -16,8 +16,13 @@ import '../services/file_hash_service.dart';
 enum DrawingSyncStrategy { disabled, immediate, buffered, isolate }
 
 // Top-level function for Compute Isolate Serialization
-List<Map<String, dynamic>> _serializeHighlightsForIsolate(List<Highlight> highlights) {
-  return highlights.map((h) => {...h.toJson(), 'kind': 'highlight'}).toList();
+List<Map<String, dynamic>> _serializeAnnotationsForIsolate(Map<String, dynamic> data) {
+  final List<Highlight> highlights = data['highlights'] as List<Highlight>;
+  final List<PdfComment> comments = data['comments'] as List<PdfComment>;
+  
+  final hJson = highlights.map((h) => {...h.toJson(), 'kind': 'highlight'}).toList();
+  final cJson = comments.map((c) => {...c.toJson(), 'kind': 'comment'}).toList();
+  return [...hJson, ...cJson];
 }
 
 // Action types for undo/redo
@@ -59,8 +64,15 @@ class AppProvider extends ChangeNotifier {
   AppUser? _currentUser;
   Map<String, String> _pdfSessionCodes = {}; // Key: fileHash, Value: sessionCode
   bool _sessionLocked = false;
+  bool _sessionJoinLocked = false;
   List<ActionRecord> _actionHistory = [];
   List<ActionRecord> _redoHistory = [];
+  StreamSubscription? _kickSub;
+  StreamSubscription? _userDocSub;
+  String? _forcedLogoutReason;
+  bool _isGlobalLogout = false;
+  bool _isKicked = false;
+  bool _isLocked = false;
 
   // UI State
   bool _isMobileOpen = false;
@@ -87,7 +99,11 @@ class AppProvider extends ChangeNotifier {
   // Concurrency & Flow
   bool _isSaving = false;
   bool _needsSave = false;
-  bool _initialized = false;
+  bool _isSyncing = false;
+  bool get isSyncing => _isSyncing;
+  ToolType _currentTool = ToolType.cursor;
+  ToolType get currentTool => _currentTool;
+
   final Completer<void> _initCompleter = Completer<void>();
   Future<void>? get initialized => _initCompleter.future;
 
@@ -97,6 +113,114 @@ class AppProvider extends ChangeNotifier {
   final Map<String, bool> _pendingSyncs = {};
 
   // Helper to trigger sync in background safely
+  void triggerSync(String fileHash) {
+    _triggerSync(fileHash);
+  }
+
+  /// Fetch → Purge orphans → Download missing → Upload new.
+  /// Has a cooldown guard so concurrent calls are silently ignored.
+  Future<void> performBidirectionalSync() async {
+    if (_isSyncing) {
+      debugPrint('DEBUG: Sync already in progress – skipping.');
+      return;
+    }
+
+    // --- STEP 0: ACCOUNT VALIDITY CHECK ---
+    if (_currentUser != null) {
+      final exists = await _syncService.checkUserExists(_currentUser!.uid);
+      if (!exists) {
+        _handleForceLogout('هذا الحساب لم يعد موجوداً في النظام (تم حذفه).');
+        return;
+      }
+    }
+
+    // --- STEP 0.1: SESSION KICK FALLBACK ---
+    final code = this.currentSessionCode;
+    if (code != null && _currentUser != null) {
+      final isKicked = await _syncService.isUserKicked(code, _currentUser!.hardwareId);
+      if (isKicked) {
+        _handleForceLogout('لقد تم إنهاء وصولك لهذه الجلسة من قبل المالك (Manual Check)');
+        return;
+      }
+    }
+
+    final activePdf = this.activePdf;
+    final sessionCode = currentSessionCode;
+    if (activePdf == null || sessionCode == null) return;
+
+    _isSyncing = true;
+    _notify();
+    debugPrint('DEBUG: performBidirectionalSync started (session: $sessionCode, hash: ${activePdf.fileHash}).');
+
+    try {
+      final result = await _syncService.syncExistingAnnotations(
+        code: sessionCode,
+        fileHash: activePdf.fileHash ?? '',
+        highlights: activePdf.highlights,
+        comments: activePdf.comments,
+      );
+
+      // ── Purge local orphans (items deleted server-side) ─────────────────
+      if (result.deletedCount > 0) {
+        final serverIds = {
+          ...result.toAddHighlights.map((e) => e['id']?.toString() ?? ''),
+          ...result.toAddComments.map((e)   => e['id']?.toString() ?? ''),
+        };
+        for (final h in List.of(activePdf.highlights)) {
+          if (h.isSynced && !serverIds.contains(h.id)) {
+            removeHighlightById(activePdf.id, h.id);
+          }
+        }
+      }
+
+      // ── Inject server-only highlights (no duplicates) ───────────────────
+      if (result.toAddHighlights.isNotEmpty) {
+        final existingIds = {for (final h in activePdf.highlights) h.id};
+        for (final json in result.toAddHighlights) {
+          try {
+            final h = Highlight.fromJson(Map<String, dynamic>.from(json));
+            if (!existingIds.contains(h.id)) {
+              addHighlight(activePdf.id, h.copyWith(isSynced: true));
+            }
+          } catch (_) {}
+        }
+      }
+
+      // ── Inject server-only comments (no duplicates) ─────────────────────
+      if (result.toAddComments.isNotEmpty) {
+        final existingIds = {for (final c in activePdf.comments) c.id};
+        for (final json in result.toAddComments) {
+          try {
+            final c = PdfComment.fromJson(Map<String, dynamic>.from(json));
+            if (!existingIds.contains(c.id)) {
+              addComment(activePdf.id, c.copyWith(isSynced: true));
+            }
+          } catch (_) {}
+        }
+      }
+
+      debugPrint('DEBUG: performBidirectionalSync done. Deleted: ${result.deletedCount}, Downloaded: ${result.downloadedCount}, Uploaded: ${result.uploadedCount}.');
+    } catch (e) {
+      debugPrint('ERROR: performBidirectionalSync failed: $e');
+    } finally {
+      _isSyncing = false;
+      _notify();
+    }
+  }
+
+  void setCurrentTool(ToolType tool) {
+    _currentTool = tool;
+    _notify();
+
+    // Trigger sync ONLY if switching to hand tool and in active session
+    if (tool == ToolType.cursor && currentSessionCode != null) {
+      debugPrint("DEBUG: AppProvider switching to Hand Tool. Triggering Manual Sync Logic...");
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        performBidirectionalSync();
+      });
+    }
+  }
+
   void _triggerSync(String fileHash) {
     if (_currentUser?.role != 'lecturer') return;
     
@@ -124,6 +248,7 @@ class AppProvider extends ChangeNotifier {
         code,
         fileHash,
         pdf.highlights,
+        pdf.comments,
       ).catchError((e) {
         debugPrint('❌ Sync Error: $e');
       });
@@ -134,7 +259,7 @@ class AppProvider extends ChangeNotifier {
         _syncTimers[fileHash] = Timer(const Duration(seconds: 5), () {
           if (_pendingSyncs[fileHash] == true) {
             _pendingSyncs[fileHash] = false;
-            _syncService.uploadDelta(code, fileHash, pdf!.highlights).catchError((e) {
+            _syncService.uploadDelta(code, fileHash, pdf!.highlights, pdf.comments).catchError((e) {
               debugPrint('❌ Buffered Sync Error: $e');
             });
             debugPrint('DEBUG: Buffered Sync Triggered for $fileHash.');
@@ -144,7 +269,10 @@ class AppProvider extends ChangeNotifier {
       debugPrint('DEBUG: Drawing captured (Buffered). Size: ${pdf.highlights.isNotEmpty ? pdf.highlights.last.path.length : 0} points.');
     } else if (_drawingSyncStrategy == DrawingSyncStrategy.isolate) {
       // Offload JSON serialization to a separate Isolate
-      compute(_serializeHighlightsForIsolate, pdf.highlights).then((serialized) {
+      compute(_serializeAnnotationsForIsolate, {
+        'highlights': pdf.highlights,
+        'comments': pdf.comments,
+      }).then((serialized) {
         _syncService.uploadSerializedDelta(code, fileHash, serialized).catchError((e) {
           debugPrint('❌ Isolate Sync Error: $e');
         });
@@ -154,9 +282,19 @@ class AppProvider extends ChangeNotifier {
   }
 
   void _notify() {
-    SchedulerBinding.instance.addPostFrameCallback((_) {
-      super.notifyListeners();
-    });
+    // Phase 11.6: Flutter Threading Shield (Fix shell.cc errors)
+    // Ensures state updates from Firestore background threads are safely 
+    // dispatched to the Main/Platform thread for UI rendering.
+    if (SchedulerBinding.instance.schedulerPhase == SchedulerPhase.persistentCallbacks) {
+      SchedulerBinding.instance.addPostFrameCallback((_) => notifyListeners());
+    } else {
+      try {
+        notifyListeners();
+      } catch (_) {
+        // Fallback for background threads
+        SchedulerBinding.instance.addPostFrameCallback((_) => notifyListeners());
+      }
+    }
   }
 
   void updateHighlight(
@@ -248,6 +386,10 @@ class AppProvider extends ChangeNotifier {
 
   Future<void> _initialize() async {
     await _loadState();
+    // Start user monitor if we have a persisted user
+    if (_currentUser != null) {
+      _startUserMonitor(_currentUser!.uid);
+    }
     _initCompleter.complete();
   }
 
@@ -274,6 +416,31 @@ class AppProvider extends ChangeNotifier {
     return _pdfSessionCodes[pdf.fileHash ?? ''];
   }
   bool get sessionLocked => _sessionLocked;
+  bool get sessionJoinLocked => _sessionJoinLocked;
+  String? get forcedLogoutReason => _forcedLogoutReason;
+  bool get isGlobalLogout => _isGlobalLogout;
+  bool get isKicked => _isKicked;
+
+  void clearForcedLogoutReason() {
+    _forcedLogoutReason = null;
+    _isGlobalLogout = false;
+    _isKicked = false;
+    _notify();
+  }
+
+  void _startUserMonitor(String uid) {
+    _userDocSub?.cancel();
+    _userDocSub = _syncService.watchUserExists(uid).listen((exists) {
+      if (!exists) {
+        _handleForceLogout('تم حذف حسابك من النظام. يرجى تسجيل الدخول مجدداً.');
+      }
+    });
+  }
+
+  void _stopUserMonitor() {
+    _userDocSub?.cancel();
+    _userDocSub = null;
+  }
 
   void toggleSettings(bool open) {
     _isSettingsOpen = open;
@@ -282,6 +449,7 @@ class AppProvider extends ChangeNotifier {
 
   void setCurrentUser(AppUser user) {
     _currentUser = user;
+    _startUserMonitor(user.uid);
     _notify();
   }
 
@@ -294,6 +462,13 @@ class AppProvider extends ChangeNotifier {
       } else {
         _pdfSessionCodes[hash] = code;
       }
+
+      // Manage Kick Listener
+      _stopKickListener();
+      if (code != null && _currentUser != null) {
+        _startKickListener(code);
+      }
+
       _saveState();
       _notify();
     }
@@ -303,12 +478,149 @@ class AppProvider extends ChangeNotifier {
     _currentUser = null;
     _pdfSessionCodes.clear();
     _sessionLocked = false;
+    _sessionJoinLocked = false;
+    _stopKickListener();
+    _stopUserMonitor();
     _saveState();
     _notify();
   }
 
   void setSessionLocked(bool locked) {
     _sessionLocked = locked;
+    _notify();
+  }
+
+  void setSessionJoinLocked(bool locked) {
+    _sessionJoinLocked = locked;
+    _notify();
+  }
+
+  // ─── SECURITY HELPERS ──────────────────────────────────────────────────────
+
+  void _startKickListener(String code) {
+    final uid = _currentUser?.uid;
+    if (uid == null) return;
+
+    _kickSub?.cancel();
+    // Phase 11.6: Race Condition Guard (Delayed Start)
+    _kickSub = Stream.fromFuture(Future.delayed(const Duration(milliseconds: 500)))
+        .asyncExpand((_) => _syncService.watchSessionSecurity(code))
+        .listen((state) {
+      if (state['exists'] == false) {
+        _handleForceLogout('تم إغلاق الجلسة من قبل المالك');
+        return;
+      }
+
+      // 0. Owner Immunity Guard (by Username)
+      final String? ownerId = state['createdBy']; // Session owner Username
+      if (ownerId != null && ownerId == _currentUser?.username) {
+        debugPrint('DEBUG: User is Session Owner. Security Immunity Granted.');
+        return;
+      }
+
+      // 1. Kick Check (by UID)
+      final kickedUids = state['kicked_uids'] as List<dynamic>? ?? [];
+
+      if (kickedUids.contains(uid)) {
+        _handleForceLogout('لقد تم حظرك من هذه الجلسة');
+        return;
+      }
+
+      // 2. Lock Check (isDrawingEnabled logic)
+      final locked = state['isLocked'] as bool;
+      if (locked != _isLocked) {
+        _isLocked = locked;
+        if (locked) {
+          // Locked: Wipe unsynced and switch to hand
+          clearUnsyncedAnnotationsForActivePdf();
+          setCurrentTool(ToolType.cursor);
+          debugPrint('DEBUG: Session LOCKED. Switching to Hand tool.');
+        } else {
+          debugPrint('DEBUG: Session UNLOCKED.');
+        }
+        _notify();
+      }
+
+      // 3. Membership Check (Phase 11.5)
+      final participants = state['participants'] as List<dynamic>? ?? [];
+      final stillMember = participants.any((p) {
+        if (p is Map) {
+          final pUid = (p['uid'] ?? p['id'] ?? '')?.toString();
+          return pUid == uid;
+        }
+        return false;
+      });
+
+      if (!stillMember) {
+        _handleForceLogout('لقد تمت إزالتك من قائمة المشاركين في هذا الدرس');
+        return;
+      }
+    });
+  }
+
+  void _stopKickListener() {
+    _kickSub?.cancel();
+    _kickSub = null;
+  }
+
+  void _handleForceLogout(String reason) {
+    _isKicked = true;
+    _forcedLogoutReason = reason;
+    _isGlobalLogout = reason.contains('النظام');
+    _isLocked = false;
+    
+    // Cleanup active session
+    final pdf = activePdf;
+    if (pdf != null && pdf.fileHash != null) {
+      _pdfSessionCodes.remove(pdf.fileHash);
+    }
+    _sessionLocked = false;
+    _sessionJoinLocked = false;
+    _stopKickListener();
+    _stopUserMonitor(); // Also stop monitoring the deleted account
+
+    // WIPE SCREEN
+    if (pdf != null) {
+      for (var i = 0; i < _classes.length; i++) {
+        final pdfIdx = _classes[i].pdfs.indexWhere((p) => p.id == pdf.id);
+        if (pdfIdx != -1) {
+          _classes[i].pdfs[pdfIdx] = _classes[i].pdfs[pdfIdx].copyWith(
+            highlights: [],
+            comments: [],
+          );
+        }
+      }
+    }
+
+    // Account check specific: If account deleted, wipe user
+    if (reason.contains('النظام')) {
+       _currentUser = null;
+    }
+
+    _saveState();
+    _notify();
+  }
+
+  void clearUnsyncedAnnotationsForActivePdf() {
+    // This logic ensures that if the session is locked, any local-only (un-synced) 
+    // drawings are reverted to the last known 'synced' state or removed.
+    final pdf = activePdf;
+    if (pdf == null) return;
+
+    // Filter out un-synced items
+    final syncedHighlights = pdf.highlights.where((h) => h.isSynced == true).toList();
+    final syncedComments = pdf.comments.where((c) => c.isSynced == true).toList();
+
+    for (var i = 0; i < _classes.length; i++) {
+      final pdfIdx = _classes[i].pdfs.indexWhere((p) => p.id == pdf.id);
+      if (pdfIdx != -1) {
+        _classes[i].pdfs[pdfIdx] = _classes[i].pdfs[pdfIdx].copyWith(
+          highlights: syncedHighlights,
+          comments: syncedComments,
+        );
+        break;
+      }
+    }
     _notify();
   }
 
@@ -650,6 +962,20 @@ class AppProvider extends ChangeNotifier {
 
     _saveState();
     _notify();
+
+    // AUTO-JOIN: If lecturer opens a PDF, look for an active session.
+    final hash = activePdf?.fileHash;
+    final username = _currentUser?.username;
+    if (_currentUser?.role == 'lecturer' && hash != null && username != null) {
+      Future.delayed(const Duration(milliseconds: 2500), () {
+        _syncService.findExistingSession(username, hash).then((existingCode) {
+          if (existingCode != null) {
+            setSessionCode(existingCode);
+            debugPrint('DEBUG: Auto-joined existing session ($existingCode) for $hash.');
+          }
+        });
+      });
+    }
   }
 
   // WINDOWS FILE ASSOCIATION: Load PDF file from command-line path
@@ -845,10 +1171,37 @@ class AppProvider extends ChangeNotifier {
       _notify();
       _saveTimer?.cancel();
       _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
-      _triggerSync(pdf.fileHash ?? '');
+      
+      // Anti-Resurrection: Immediate server-side delete if session is active
+      final code = _pdfSessionCodes[pdf.fileHash];
+      if (code != null && highlight.isSynced) {
+        _syncService.deleteAnnotation(code, pdf.fileHash ?? '', highlight.id).catchError((e) {
+          debugPrint('❌ deleteAnnotation failed: $e');
+        });
+      } else {
+        _triggerSync(pdf.fileHash ?? '');
+      }
       return;
     }
   }
+
+  /// Removes a highlight by its string [id] — used during bidirectional sync cleanup.
+  void removeHighlightById(String pdfId, String highlightId) {
+    for (var cls in _classes) {
+      var pdf = cls.pdfs.firstWhere(
+        (p) => p.id == pdfId,
+        orElse: () => PdfItem(id: '', name: '', path: ''),
+      );
+      if (pdf.id.isEmpty) continue;
+
+      pdf.highlights.removeWhere((h) => h.id == highlightId);
+      _notify();
+      _saveTimer?.cancel();
+      _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
+      return;
+    }
+  }
+
 
   void addComment(String pdfId, PdfComment comment) {
     for (var cls in _classes) {
@@ -889,7 +1242,16 @@ class AppProvider extends ChangeNotifier {
       _notify();
       _saveTimer?.cancel();
       _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
-      _triggerSync(pdf.fileHash ?? '');
+
+      // Anti-Resurrection: Immediate server-side delete if session is active
+      final code = _pdfSessionCodes[pdf.fileHash];
+      if (code != null && comment.isSynced) {
+        _syncService.deleteAnnotation(code, pdf.fileHash ?? '', comment.id).catchError((e) {
+          debugPrint('❌ deleteComment failed: $e');
+        });
+      } else {
+        _triggerSync(pdf.fileHash ?? '');
+      }
       return;
     }
   }
@@ -911,10 +1273,24 @@ class AppProvider extends ChangeNotifier {
       _notify();
       _saveTimer?.cancel();
       _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
-      _triggerSync(pdf.fileHash ?? '');
+
+      // PHASE 10: If a session is active, wipe that fileHash's server doc
+      // immediately so the next sync won't pull back deleted items.
+      final fileHash = pdf.fileHash;
+      final sessionCode = fileHash != null ? _pdfSessionCodes[fileHash] : null;
+      if (fileHash != null && fileHash.isNotEmpty && sessionCode != null) {
+        _syncService.clearAnnotationsForHash(sessionCode, fileHash).catchError((e) {
+          debugPrint('clearAnnotationsForHash failed: $e');
+        });
+        debugPrint('DEBUG: Cleared server annotations for $fileHash (session: $sessionCode).');
+      } else {
+        // No session — standard buffered sync (will push empty list)
+        _triggerSync(fileHash ?? '');
+      }
       return;
     }
   }
+
 
   /// Wipes ALL highlights and comments across ALL documents in ALL classes.
   void clearAllGlobalAnnotations() {
@@ -1834,6 +2210,11 @@ class AppProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _stopKickListener();
+    _stopUserMonitor();
+    for (var timer in _syncTimers.values) {
+      timer?.cancel();
+    }
     if (_saveTimer != null && _saveTimer!.isActive) {
       _saveTimer!.cancel();
       _saveState(); // Flush pending save immediately

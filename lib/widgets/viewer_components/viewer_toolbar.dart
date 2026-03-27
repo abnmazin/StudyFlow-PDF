@@ -577,8 +577,35 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
   tooltip: 'حفظ كعلامة مرجعية',
   iconMuted: iconMuted, // المتغير الخاص باللون الباهت في الثيم الخاص بك
 ),
-                    const SizedBox(width: 350),
+                    // Sync Status Indicator
+                    if (app.isSyncing) ...[
+                      const SizedBox(width: 12),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF3B82F6)),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'جاري تحديث البيانات...',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: textPrimary.withOpacity(0.8),
+                              fontFamily: 'Cairo',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
 
+                    const SizedBox(width: 8),
                     // ─── Divider ──
                     Container(width: 1, height: 28, color: separatorColor),
                     const SizedBox(width: 8),

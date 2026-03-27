@@ -1686,7 +1686,7 @@ class StudyFlowRightPanel extends StatelessWidget {
               Icon(LucideIcons.radio, size: 18, color: textPrimary),
               const SizedBox(width: 8),
               Text(
-                'Sync / Synchronization',
+                'المزامنة / Sync',
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
                   color: textPrimary,
@@ -1711,7 +1711,7 @@ class StudyFlowRightPanel extends StatelessWidget {
                 ),
               ),
             )
-          else if (isPrivileged)
+          else if (isPrivileged) ...[
             LecturerSessionCard(
               app: app,
               surfaceAlt: surfaceAlt,
@@ -1719,8 +1719,26 @@ class StudyFlowRightPanel extends StatelessWidget {
               textPrimary: textPrimary,
               textMuted: textMuted,
               syncService: SyncService(),
-            )
-          else
+            ),
+            if (app.currentSessionCode == null) ...[
+              const SizedBox(height: 16),
+              Divider(color: panelBorder),
+              const SizedBox(height: 16),
+              Text(
+                'أو الانضمام كعضو:',
+                style: TextStyle(color: textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              MemberSessionCard(
+                app: app,
+                surfaceAlt: surfaceAlt,
+                panelBorder: panelBorder,
+                textPrimary: textPrimary,
+                textMuted: textMuted,
+                syncService: SyncService(),
+              ),
+            ],
+          ] else
             MemberSessionCard(
               app: app,
               surfaceAlt: surfaceAlt,
