@@ -233,3 +233,35 @@ class TrashItem {
       ..canRestore = canRestore;
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// StudyTask: Daily to-do items persisted via Isar
+// ─────────────────────────────────────────────────────────────────────────────
+
+@collection
+class StudyTask {
+  Id id = Isar.autoIncrement;
+
+  @Index(unique: true)
+  String uuid = '';
+
+  @Index()
+  String title = '';
+
+  bool isDone = false;
+
+  DateTime createdAt = DateTime.now();
+
+  static StudyTask create({
+    String? uuid,
+    required String title,
+    bool isDone = false,
+    DateTime? createdAt,
+  }) {
+    return StudyTask()
+      ..uuid = uuid ?? const Uuid().v4()
+      ..title = title
+      ..isDone = isDone
+      ..createdAt = createdAt ?? DateTime.now();
+  }
+}

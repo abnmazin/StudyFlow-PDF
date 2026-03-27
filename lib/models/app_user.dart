@@ -19,4 +19,22 @@ class AppUser {
       hardwareId: (data['hardwareId'] ?? '').toString(),
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'uid': uid,
+      'username': username,
+      'role': role,
+      'hardwareId': hardwareId,
+    };
+  }
+
+  factory AppUser.fromJson(Map<String, dynamic> json) {
+    return AppUser(
+      uid: json['uid'] as String,
+      username: json['username'] as String,
+      role: json['role'] as String,
+      hardwareId: json['hardwareId'] as String,
+    );
+  }
 }

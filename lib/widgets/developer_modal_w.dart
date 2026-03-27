@@ -22,22 +22,34 @@ class _DeveloperModalState extends State<DeveloperModal>
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
   late Animation<double> _opacityAnimation;
+  late Animation<double> _blurAnimation;
 
   @override
   void initState() {
     super.initState();
+
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 500),
+      value: widget.isOpen ? 1.0 : 0.0,
     );
+
     _scaleAnimation = Tween<double>(
-      begin: 0.9,
+      begin: 0.8,
       end: 1.0,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutBack));
-    _opacityAnimation = Tween<double>(
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.elasticOut));
+
+    _opacityAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.0, 0.5, curve: Curves.easeIn),
+      ),
+    );
+
+    _blurAnimation = Tween<double>(
       begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
+      end: 12.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
   }
 
   @override
@@ -69,63 +81,35 @@ class _DeveloperModalState extends State<DeveloperModal>
       return const SizedBox.shrink();
     }
 
-    final modalMaxHeight =
-        (MediaQuery.of(context).size.height - 40).clamp(320.0, 600.0);
-
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
         return Stack(
           children: [
-            // Backdrop
+            // Backdrop with dark blue blur
             GestureDetector(
               onTap: widget.onClose,
-              child: FadeTransition(
-                opacity: _opacityAnimation,
-                child: Container(
-                  color: Colors.black.withOpacity(0.5),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-                    child: Container(color: Colors.transparent),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(
+                  sigmaX: _blurAnimation.value,
+                  sigmaY: _blurAnimation.value,
+                ),
+                child: FadeTransition(
+                  opacity: _opacityAnimation,
+                  child: Container(
+                    color: const Color(0xFF0F172A).withOpacity(0.8),
                   ),
                 ),
               ),
             ),
-            // Modal
+
+            // Modal Body
             Center(
-              child: FadeTransition(
-                opacity: _opacityAnimation,
-                child: ScaleTransition(
-                  scale: _scaleAnimation,
-                  child: Container(
-                    width: double.infinity,
-                    constraints: BoxConstraints(
-                      maxWidth: 400,
-                      maxHeight: modalMaxHeight,
-                    ),
-                    margin: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(24),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.25),
-                          blurRadius: 30,
-                          offset: const Offset(0, 15),
-                        ),
-                      ],
-                    ),
-                    clipBehavior: Clip.hardEdge,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.max,
-                      children: [
-                        _buildHeader(),
-                        Flexible(
-                          child: SingleChildScrollView(child: _buildInfoList()),
-                        ),
-                      ],
-                    ),
-                  ),
+              child: ScaleTransition(
+                scale: _scaleAnimation,
+                child: FadeTransition(
+                  opacity: _opacityAnimation,
+                  child: _buildGlassContainer(),
                 ),
               ),
             ),
@@ -135,51 +119,90 @@ class _DeveloperModalState extends State<DeveloperModal>
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildGlassContainer() {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
+      width: double.infinity,
+      constraints: const BoxConstraints(maxWidth: 380),
+      margin: const EdgeInsets.symmetric(horizontal: 24),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B).withOpacity(0.95),
+        borderRadius: BorderRadius.circular(40),
+        border: Border.all(
+          color: const Color(0xFF38BDF8).withOpacity(0.3),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF38BDF8).withOpacity(0.15),
+            blurRadius: 30,
+            spreadRadius: -5,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [_buildAestheticHeader(), _buildSocialBody()],
+      ),
+    );
+  }
+
+  Widget _buildAestheticHeader() {
+    return Container(
+      padding: const EdgeInsets.all(30),
       width: double.infinity,
       decoration: const BoxDecoration(
-        color: Color(0xFF0F172A), // Slate 900
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
+        ),
       ),
       child: Column(
         children: [
+          // Profile Picture with glow
           Container(
-            padding: const EdgeInsets.all(4),
+            padding: const EdgeInsets.all(3),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: const Color(0xFF334155), width: 3),
+              gradient: const LinearGradient(
+                colors: [Color(0xFF38BDF8), Color(0xFF1D4ED8)],
+              ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.3),
-                  blurRadius: 15,
-                  offset: const Offset(0, 5),
+                  color: const Color(0xFF38BDF8).withOpacity(0.4),
+                  blurRadius: 20,
+                  spreadRadius: 2,
                 ),
               ],
             ),
             child: const CircleAvatar(
-              radius: 40,
-              backgroundColor: Color(0xFF1E293B),
+              radius: 42,
+              backgroundColor: Color(0xFF0F172A),
               child: Icon(LucideIcons.user, size: 40, color: Colors.white),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
           const Text(
-            'حسن مازن',
+            'Hassan Mazin',
             style: TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.bold,
+              fontSize: 24,
+              fontWeight: FontWeight.w900,
               color: Colors.white,
-              letterSpacing: 0.5,
+              letterSpacing: 1.2,
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
+          // "Designed for Al-Bayt" badge - Updated to RTL
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
-              color: const Color(0xFF1E293B).withOpacity(0.8),
+              color: const Color(0xFF38BDF8).withOpacity(0.1),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFF334155)),
+              border: Border.all(
+                color: const Color(0xFF38BDF8).withOpacity(0.2),
+              ),
             ),
             child: Directionality(
               textDirection: TextDirection.rtl,
@@ -187,15 +210,15 @@ class _DeveloperModalState extends State<DeveloperModal>
                 mainAxisSize: MainAxisSize.min,
                 children: const [
                   Text(
-                    'التطبيق مصمم خصيصا للبيت',
+                    'تطبيق مصمم خصيصاً للبيت',
                     style: TextStyle(
-                      fontSize: 13,
+                      fontSize: 12,
                       color: Color(0xFFE2E8F0),
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                   SizedBox(width: 8),
-                  Icon(LucideIcons.sparkles, size: 16, color: Color(0xFF38BDF8)),
+                  Icon(LucideIcons.heart, size: 14, color: Color(0xFF38BDF8)),
                 ],
               ),
             ),
@@ -205,124 +228,137 @@ class _DeveloperModalState extends State<DeveloperModal>
     );
   }
 
-  Widget _buildInfoList() {
+  Widget _buildSocialBody() {
     return Container(
-      padding: const EdgeInsets.all(24),
-      color: const Color(0xFFF8FAFC), // Slight off-white background
+      padding: const EdgeInsets.fromLTRB(25, 10, 25, 30),
       child: Column(
         children: [
-          _buildClickableRow(
+          _buildElegantRow(
             icon: LucideIcons.send,
-            color: const Color(0xFF3B82F6), // Blue 500
-            label: 'تيليجرام',
+            color: const Color(0xFF38BDF8),
             value: '@FFFF_6',
             onTap: () => _launchUrl('https://t.me/FFFF_6'),
           ),
-          const SizedBox(height: 16),
-          _buildClickableRow(
+          const SizedBox(height: 12),
+          _buildElegantRow(
             icon: LucideIcons.tv,
-            color: const Color(0xFF8B5CF6), // Violet 500
-            label: 'القناة',
+            color: const Color(0xFF818CF8),
             value: '@AnyDesire',
             onTap: () => _launchUrl('https://t.me/AnyDesire'),
           ),
-          const SizedBox(height: 16),
-          _buildClickableRow(
-            icon: LucideIcons.phone,
-            color: const Color(0xFF10B981), // Emerald 500
-            label: 'الهاتف',
+          const SizedBox(height: 12),
+          _buildElegantRow(
+            icon: LucideIcons.messageCircle,
+            color: const Color(0xFF25D366),
             value: '07710529693',
-            onTap: () => _launchUrl('tel:07710529693'),
+            onTap: () => _launchUrl('https://wa.me/9647710529693'),
           ),
-          const SizedBox(height: 32),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: widget.onClose,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFF1F5F9), // Slate 100
-                foregroundColor: const Color(0xFF0F172A), // Slate 900
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: const Text(
-                'إغلاق',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-          ),
+          const SizedBox(height: 30),
+          _buildActionButtons(),
         ],
       ),
     );
   }
 
-  Widget _buildClickableRow({
+  Widget _buildElegantRow({
     required IconData icon,
     required Color color,
-    required String label,
     required String value,
     required VoidCallback onTap,
   }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.03),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-          border: Border.all(color: const Color(0xFFF1F5F9)), // Subtle slate 100
-        ),
-        child: Directionality(
-          textDirection: TextDirection.rtl,
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.12),
-                  shape: BoxShape.circle,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(22),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(22),
+            color: Colors.white.withOpacity(0.02),
+            border: Border.all(color: Colors.white.withOpacity(0.05)),
+          ),
+          child: Directionality(
+            textDirection: TextDirection.ltr, // Explicit LTR for contact rows
+            child: Row(
+              children: [
+                // 1. Icon on the left
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: Icon(icon, color: color, size: 20),
                 ),
-                child: Icon(icon, color: color, size: 20),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Text(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    color: Color(0xFF334155),
-                    fontWeight: FontWeight.w700,
+                const SizedBox(width: 15),
+                // 2. The ID/Value in the center (starting from left)
+                Expanded(
+                  child: Text(
+                    value,
+                    textAlign: TextAlign.left,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.5,
+                    ),
                   ),
                 ),
-              ),
-              Text(
-                value,
-                textDirection: TextDirection.ltr,
-                style: const TextStyle(
-                  fontSize: 15,
-                  color: Color(0xFF0F172A),
-                  fontWeight: FontWeight.w800,
-                  fontFamily: 'monospace',
-                  letterSpacing: 0.5,
+                // 3. Arrow on the right end
+                Icon(
+                  LucideIcons.chevronRight,
+                  size: 16,
+                  color: Colors.white.withOpacity(0.3),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Icon(LucideIcons.chevronLeft, size: 18, color: Colors.grey[400]),
-            ],
+              ],
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildActionButtons() {
+    return Row(
+      children: [
+        Expanded(
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              gradient: const LinearGradient(
+                colors: [Color(0xFF38BDF8), Color(0xFF1D4ED8)],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF38BDF8).withOpacity(0.3),
+                  blurRadius: 15,
+                  offset: const Offset(0, 5),
+                ),
+              ],
+            ),
+            child: ElevatedButton(
+              onPressed: widget.onClose,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.transparent,
+                shadowColor: Colors.transparent,
+                padding: const EdgeInsets.symmetric(vertical: 18),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+              ),
+              child: const Text(
+                'Close',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

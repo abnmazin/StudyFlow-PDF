@@ -1,64 +1,105 @@
 part of 'pdf_viewer_widget_w.dart';
 
-// ─── DASHBOARD ─────────────────────────────────────────────────────────────
+// ─── DASHBOARD COMMAND CENTER ───────────────────────────────────────────────
 
 Widget _buildDashboard(BuildContext context) {
   return Consumer<AppProvider>(
     builder: (context, app, _) {
       final isDarkMode = app.isDarkMode;
-      final dashboardBg = isDarkMode
-          ? const Color(0xFF0F172A)
-          : const Color(0xFFF8FAFC);
+      
+      // Admin if role is developer or lecturer
+      final role = app.currentUser?.role ?? '';
+      final bool isAdmin = role == 'developer' || role == 'lecturer';
 
-      // Use FutureBuilder for async recent docs
+      final rootBg = isDarkMode ? const Color(0xFF020617) : const Color(0xFFE2E8F0);
+      final canvasBg = isDarkMode ? const Color(0xFF0F172A) : Colors.white;
+      final canvasBorder = isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFCBD5E1);
+
       return ColoredBox(
-        color: dashboardBg,
-        child: SizedBox.expand(
+        color: rootBg,
+        child: SafeArea(
+          left: false,
+          right: false,
+          bottom: false,
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final width = constraints.maxWidth;
-              final horizontalPadding = width < 700
-                  ? 12.0
-                  : (width < 1100 ? 20.0 : 32.0);
-              final verticalPadding = width < 700 ? 12.0 : 20.0;
+              final isWide = constraints.maxWidth > 900;
+              final padding = constraints.maxWidth < 600 ? 12.0 : 20.0;
 
-              return FutureBuilder<List<List<PdfDocument>>>(
+              return FutureBuilder<List<dynamic>>(
                 future: Future.wait([
-                  context.read<FileManagerService>().getRecentDocuments(
-                    limit: 6,
-                  ),
+                  context.read<FileManagerService>().getRecentDocuments(limit: 5),
                   context.read<FileManagerService>().getAllDocuments(),
                 ]),
                 builder: (context, snapshot) {
-                  final recentDocs = snapshot.data != null
-                      ? snapshot.data![0]
-                      : <PdfDocument>[];
-                  final allDocs = snapshot.data != null
-                      ? snapshot.data![1]
-                      : <PdfDocument>[];
-                  final readingTimeEstimate = _estimateReadingTime(allDocs);
-
+                  final recentDocs = snapshot.data != null ? snapshot.data![0] as List<PdfDocument> : <PdfDocument>[];
+                  
                   return SingleChildScrollView(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: horizontalPadding,
-                      vertical: verticalPadding,
-                    ),
                     child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        minHeight:
-                            constraints.maxHeight - (verticalPadding * 2),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildWelcomeHeader(app),
-                          const SizedBox(height: 24),
-                          _buildQuickActionsGrid(context, isDarkMode),
-                          const SizedBox(height: 32),
-                          _buildRecentDocumentsSection(recentDocs, isDarkMode),
-                          const SizedBox(height: 32),
-                          _buildStatisticsSection(app, readingTimeEstimate),
-                        ],
+                      constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                      child: Container(
+                        margin: EdgeInsets.all(padding),
+                        decoration: BoxDecoration(
+                          color: canvasBg,
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(color: canvasBorder.withValues(alpha: 0.5)),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: isDarkMode ? 0.4 : 0.08),
+                              blurRadius: 30,
+                              offset: const Offset(0, 10),
+                            ),
+                          ],
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 32),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildHeroSection(context, app),
+                            const SizedBox(height: 32),
+                            
+                            if (isWide)
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    flex: 2,
+                                    child: _buildPrimaryColumn(context, app, isDarkMode),
+                                  ),
+                                  const SizedBox(width: 32),
+                                  Expanded(
+                                    flex: 1,
+                                    child: _buildSecondaryColumn(context, app, isDarkMode),
+                                  ),
+                                ],
+                              )
+                            else
+                              Column(
+                                children: [
+                                  _buildPrimaryColumn(context, app, isDarkMode),
+                                  const SizedBox(height: 32),
+                                  _buildSecondaryColumn(context, app, isDarkMode),
+                                ],
+                              ),
+                            
+                            const SizedBox(height: 48),
+                            
+                            // Bottom Area: Dynamic Admin View vs User View
+                            _buildSectionHeader(
+                              isAdmin ? 'لوحة تحكم المطور - نشر الإعلانات' : 'الكتب الأخيرة', 
+                              isDarkMode
+                            ),
+                            const SizedBox(height: 20),
+                            
+                            if (isAdmin) 
+                              _buildAdminAnnouncementSender(isDarkMode, app.currentUser?.username ?? 'Admin')
+                            else 
+                              _buildRecentVerticalList(context, recentDocs, isDarkMode),
+                            
+                            const SizedBox(height: 24),
+                          ],
+                        ),
                       ),
                     ),
                   );
@@ -72,557 +113,843 @@ Widget _buildDashboard(BuildContext context) {
   );
 }
 
-Widget _buildWelcomeHeader(AppProvider app) {
-  final panelBg = app.isDarkMode ? const Color(0xFF1E293B) : Colors.white;
-  final panelBorder = app.isDarkMode
-      ? const Color(0xFF334155)
-      : const Color(0xFFE2E8F0);
+// ─── ADMIN ANNOUNCEMENT SENDER ──────────────────────────────────────────────
 
-  final statsBadge = Container(
-    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-    decoration: BoxDecoration(
-      color: panelBg,
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: panelBorder),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withValues(alpha: 0.05),
-          blurRadius: 10,
-          offset: const Offset(0, 2),
-        ),
-      ],
-    ),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const Icon(LucideIcons.bookOpen, size: 20, color: Color(0xFF3B82F6)),
-        const SizedBox(width: 8),
-        Text(
-          '${app.totalPdfs} كتاب • ${app.totalHighlights} هايلايت',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: app.isDarkMode ? Colors.white : const Color(0xFF334155),
-          ),
-        ),
-      ],
-    ),
-  );
+class _AdminAnnouncementSender extends StatefulWidget {
+  final bool isDarkMode;
+  final String authorName;
+  const _AdminAnnouncementSender({required this.isDarkMode, required this.authorName});
 
-  return LayoutBuilder(
-    builder: (context, constraints) {
-      final compact = constraints.maxWidth < 900;
+  @override
+  State<_AdminAnnouncementSender> createState() => _AdminAnnouncementSenderState();
+}
 
-      final titleBlock = Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'مرحبًا بك في ستادي فلو',
-            style: TextStyle(
-              fontSize: compact ? 24 : 32,
-              fontWeight: FontWeight.bold,
-              color: app.isDarkMode ? Colors.white : const Color(0xFF0F172A),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'ابدأ رحلة تعلّم ذكية باستخدام أدوات PDF المتقدمة',
-            style: TextStyle(
-              fontSize: compact ? 14 : 16,
-              color: app.isDarkMode ? Colors.grey[400] : Colors.grey[600],
-            ),
-            maxLines: compact ? 2 : 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
+class _AdminAnnouncementSenderState extends State<_AdminAnnouncementSender> {
+  final TextEditingController _titleCtrl = TextEditingController();
+  final TextEditingController _bodyCtrl = TextEditingController();
+  String _selectedType = 'info';
+  String _selectedAudience = 'all';
+  bool _isSending = false;
+
+  @override
+  void dispose() {
+    _titleCtrl.dispose();
+    _bodyCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _publish() async {
+    final title = _titleCtrl.text.trim();
+    final body = _bodyCtrl.text.trim();
+    if (title.isEmpty) return;
+    setState(() => _isSending = true);
+    try {
+      await context.read<AppProvider>().syncService.publishAnnouncement(
+        title: title,
+        body: body,
+        type: _selectedType,
+        authorName: widget.authorName,
+        targetAudience: _selectedAudience,
       );
-
-      if (compact) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [titleBlock, const SizedBox(height: 16), statsBadge],
+      _titleCtrl.clear();
+      _bodyCtrl.clear();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ تم نشر الإشعار بنجاح'),
+            backgroundColor: Colors.green,
+          ),
         );
       }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ خطأ: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSending = false);
+    }
+  }
 
-      return Row(
-        children: [
-          Expanded(child: titleBlock),
-          const SizedBox(width: 16),
-          Flexible(child: statsBadge),
-        ],
-      );
-    },
-  );
-}
+  @override
+  Widget build(BuildContext context) {
+    final isDarkMode = widget.isDarkMode;
+    final panelColor = isDarkMode
+        ? const Color(0xFF312E81).withValues(alpha: 0.2)
+        : const Color(0xFFEEF2FF);
 
-Widget _buildQuickActionsGrid(BuildContext context, bool isDarkMode) {
-  final cardBg = isDarkMode ? const Color(0xFF1E293B) : Colors.white;
-  final cardBorder = isDarkMode
-      ? const Color(0xFF334155)
-      : const Color(0xFFE2E8F0);
-
-  final actions = [
-    {
-      'icon': LucideIcons.upload,
-      'label': 'رفع PDF',
-      'color': 0xFF3B82F6,
-      'action': () {
-        // Upload to current active class or default
-        final app = context.read<AppProvider>();
-        final targetClassId =
-            app.activeClassId ??
-            (app.classes.isNotEmpty ? app.classes.first.id : '');
-        if (targetClassId.isNotEmpty) {
-          app.uploadPdf(targetClassId);
-        }
-      },
-    },
-    {
-      'icon': LucideIcons.combine,
-      'label': 'دمج ملفات PDF',
-      'color': 0xFF8B5CF6, // Purple
-      'action': () => showDialog(
-        context: context,
-        builder: (context) => const MergePdfDialog(),
-      ),
-    },
-    {
-      'icon': LucideIcons.image,
-      'label': 'تحويل الصور إلى PDF',
-      'color': 0xFF10B981, // Green
-      'action': () => showDialog(
-        context: context,
-        builder: (context) => const ImagesToPdfDialog(),
-      ),
-    },
-    {
-      'icon': LucideIcons.folderPlus,
-      'label': 'مجلد جديد',
-      'color': 0xFFF59E0B, // Amber (shifted color)
-      'action': () => _showCreateFolderDialog(context),
-    },
-  ];
-
-  return LayoutBuilder(
-    builder: (context, constraints) {
-      final width = constraints.maxWidth;
-      final crossAxisCount = width >= 1200
-          ? 4
-          : (width >= 860 ? 3 : (width >= 520 ? 2 : 1));
-      final childAspectRatio = crossAxisCount == 1 ? 2.8 : 1.5;
-
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'إجراءات سريعة',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: isDarkMode ? Colors.white : const Color(0xFF1E293B),
-            ),
-          ),
-          const SizedBox(height: 16),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: crossAxisCount,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-              childAspectRatio: childAspectRatio,
-            ),
-            itemCount: actions.length,
-            itemBuilder: (context, index) {
-              final action = actions[index];
-              final colorVal = action['color'] as int;
-              final icon = action['icon'] as IconData;
-              final label = action['label'] as String;
-              final cb = action['action'] as VoidCallback;
-
-              return InkWell(
-                onTap: cb,
-                borderRadius: BorderRadius.circular(16),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: cardBg,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: cardBorder),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 10,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: Color(colorVal).withValues(alpha: 0.1),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(icon, color: Color(colorVal), size: 24),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        label,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: isDarkMode
-                              ? Colors.grey[300]
-                              : const Color(0xFF334155),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ],
-      );
-    },
-  );
-}
-
-Widget _buildRecentDocumentsSection(
-  List<PdfDocument> recentDocs,
-  bool isDarkMode,
-) {
-  final panelBg = isDarkMode ? const Color(0xFF1E293B) : Colors.white;
-  final panelBorder = isDarkMode
-      ? const Color(0xFF334155)
-      : const Color(0xFFE2E8F0);
-
-  if (recentDocs.isEmpty) {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(32),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: panelBg,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: panelBorder),
+        color: panelColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isDarkMode ? const Color(0xFF4338CA) : const Color(0xFFC7D2FE),
+          width: 1.5,
+        ),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            LucideIcons.fileText,
-            size: 48,
-            color: isDarkMode ? Colors.grey[600] : Colors.grey[300],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'لا توجد كتب مفتوحة مؤخرًا',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-              color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+          TextField(
+            controller: _titleCtrl,
+            decoration: InputDecoration(
+              hintText: 'عنوان الإشعار...',
+              filled: true,
+              fillColor: isDarkMode ? Colors.black26 : Colors.white,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            'ابدأ برفع كتاب جديد للدراسة',
-            style: TextStyle(
-              fontSize: 14,
-              color: isDarkMode ? Colors.grey[500] : Colors.grey[500],
+          const SizedBox(height: 16),
+          TextField(
+            controller: _bodyCtrl,
+            maxLines: 3,
+            decoration: InputDecoration(
+              hintText: 'محتوى الإشعار التفصيلي...',
+              filled: true,
+              fillColor: isDarkMode ? Colors.black26 : Colors.white,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Wrap(
+            spacing: 12,
+            children: [
+              ChoiceChip(
+                label: const Text('تنبيه 🟡'),
+                selected: _selectedType == 'warning',
+                onSelected: (_) => setState(() => _selectedType = 'warning'),
+              ),
+              ChoiceChip(
+                label: const Text('معلومة 🔵'),
+                selected: _selectedType == 'info',
+                onSelected: (_) => setState(() => _selectedType = 'info'),
+              ),
+              ChoiceChip(
+                label: const Text('تحديث 🟢'),
+                selected: _selectedType == 'update',
+                onSelected: (_) => setState(() => _selectedType = 'update'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // Audience Selector
+          Wrap(
+            spacing: 12,
+            children: [
+              ChoiceChip(
+                label: const Text('الكل 🌍'),
+                selected: _selectedAudience == 'all',
+                onSelected: (_) => setState(() => _selectedAudience = 'all'),
+              ),
+              ChoiceChip(
+                label: const Text('الطلاب 👨‍🎓'),
+                selected: _selectedAudience == 'student',
+                onSelected: (_) => setState(() => _selectedAudience = 'student'),
+              ),
+              ChoiceChip(
+                label: const Text('الأساتذة 👨‍🏫'),
+                selected: _selectedAudience == 'lecturer',
+                onSelected: (_) => setState(() => _selectedAudience = 'lecturer'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            height: 54,
+            child: ElevatedButton.icon(
+              onPressed: _isSending ? null : _publish,
+              icon: _isSending
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Icon(LucideIcons.send, size: 18),
+              label: Text(
+                _selectedAudience == 'all' ? 'نشر الإشعار للجميع' : 'نشر الإشعار للفئة المحددة',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF4338CA),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 0,
+              ),
             ),
           ),
         ],
       ),
     );
   }
+}
 
-  return LayoutBuilder(
-    builder: (context, constraints) {
-      final width = constraints.maxWidth;
-      final crossAxisCount = width >= 1200 ? 3 : (width >= 760 ? 2 : 1);
+Widget _buildAdminAnnouncementSender(bool isDarkMode, String authorName) {
+  return _AdminAnnouncementSender(isDarkMode: isDarkMode, authorName: authorName);
+}
 
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+// ─── PRIMARY COLUMN (FOLDERS & ACTIONS) ─────────────────────────────────────
+
+Widget _buildPrimaryColumn(
+  BuildContext context,
+  AppProvider app,
+  bool isDarkMode,
+) {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            'الكتب الأخيرة',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: isDarkMode ? Colors.white : const Color(0xFF1E293B),
-            ),
-          ),
-          const SizedBox(height: 16),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: crossAxisCount,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-              childAspectRatio: 2.5,
-            ),
-            itemCount: recentDocs.length,
-            itemBuilder: (context, index) {
-              final doc = recentDocs[index];
-              return _buildDocumentCard(context, doc, isDarkMode);
-            },
+          _buildSectionHeader('مجلداتي', isDarkMode),
+          TextButton.icon(
+            onPressed: () => _showCreateFolderDialog(context),
+            icon: const Icon(LucideIcons.plus, size: 16),
+            label: const Text('مجلد جديد'),
+            style: TextButton.styleFrom(foregroundColor: Colors.blue[600]),
           ),
         ],
+      ),
+      const SizedBox(height: 16),
+      _buildRealFolderGrid(isDarkMode),
+      const SizedBox(height: 32),
+      _buildSectionHeader('إجراءات سريعة', isDarkMode),
+      const SizedBox(height: 16),
+      _buildQuickActionChips(context, isDarkMode),
+    ],
+  );
+}
+
+// ─── SECONDARY COLUMN (ANNOUNCEMENTS & TO-DO) ──────────────────────────────
+
+Widget _buildSecondaryColumn(
+  BuildContext context,
+  AppProvider app,
+  bool isDarkMode,
+) {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      // 1. الإعلانات في الأعلى
+      Row(
+        children: [
+          Icon(LucideIcons.bell, size: 20, color: isDarkMode ? Colors.amber[400] : Colors.amber[600]),
+          const SizedBox(width: 8),
+          _buildSectionHeader('إعلانات هامة', isDarkMode),
+        ],
+      ),
+      const SizedBox(height: 16),
+      _buildAnnouncementsSection(isDarkMode),
+
+      const SizedBox(height: 32),
+
+      // 2. قائمة المهام اليومية (To-Do)
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              Icon(LucideIcons.checkSquare, size: 20, color: isDarkMode ? Colors.blue[400] : Colors.blue[600]),
+              const SizedBox(width: 8),
+              _buildSectionHeader('مهام اليوم', isDarkMode),
+            ],
+          ),
+          TextButton(
+            onPressed: () => _showAddTaskDialog(context),
+            child: const Text('إضافة مهمة', style: TextStyle(fontSize: 12)),
+          ),
+        ],
+      ),
+      const SizedBox(height: 12),
+      _buildToDoListMock(isDarkMode),
+    ],
+  );
+}
+
+// ─── HERO SECTION (WELCOME & JOIN) ──────────────────────────────────────────
+
+Widget _buildHeroSection(BuildContext context, AppProvider app) {
+  final isDarkMode = app.isDarkMode;
+
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'مرحبًا بك مجددًا 👋',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.5,
+                  color: isDarkMode ? Colors.white : const Color(0xFF0F172A),
+                ),
+              ),
+              Text(
+                'ماذا تريد أن تتعلم اليوم؟',
+                style: TextStyle(
+                  fontSize: 15,
+                  color: isDarkMode
+                      ? const Color(0xFF94A3B8)
+                      : const Color(0xFF64748B),
+                ),
+              ),
+            ],
+          ),
+          _buildQuickStatChip(app),
+        ],
+      ),
+      const SizedBox(height: 24),
+      const JoinSessionBar(),
+    ],
+  );
+}
+
+class JoinSessionBar extends StatefulWidget {
+  const JoinSessionBar({super.key});
+
+  @override
+  State<JoinSessionBar> createState() => _JoinSessionBarState();
+}
+
+class _JoinSessionBarState extends State<JoinSessionBar> {
+  final TextEditingController _codeController = TextEditingController();
+
+  @override
+  void dispose() {
+    _codeController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleJoin() async {
+    final provider = context.read<AppProvider>();
+    final code = _codeController.text.trim();
+
+    if (code.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('يرجى إدخال كود الدرس.')),
+      );
+      return;
+    }
+
+    final error = await provider.joinSession(code);
+    if (!mounted) return;
+
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    } else {
+      _codeController.clear();
+      // Success is handled by AppProvider (switching to the PDF)
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppProvider>();
+    final isDarkMode = app.isDarkMode;
+    final isJoining = app.isJoiningSession;
+
+    return Container(
+      height: 64,
+      decoration: BoxDecoration(
+        color: isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          Icon(
+            LucideIcons.radio,
+            color: isDarkMode ? Colors.blue[400] : Colors.blue[600],
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: TextField(
+              controller: _codeController,
+              enabled: !isJoining,
+              decoration: InputDecoration(
+                hintText: 'أدخل كود الدرس للبدء...',
+                hintStyle: TextStyle(
+                  color: isDarkMode
+                      ? const Color(0xFF64748B)
+                      : const Color(0xFF94A3B8),
+                ),
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+              ),
+              style: TextStyle(color: isDarkMode ? Colors.white : Colors.black),
+              onSubmitted: (_) => _handleJoin(),
+            ),
+          ),
+          const SizedBox(width: 8),
+          ElevatedButton(
+            onPressed: isJoining ? null : _handleJoin,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF3B82F6),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            child: isJoining
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Text(
+                    'انضمام الآن',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── ANNOUNCEMENTS SECTION ──────────────────────────────────────────────────
+
+Widget _buildAnnouncementsSection(bool isDarkMode) {
+  return Consumer<AppProvider>(
+    builder: (context, app, _) {
+      final currentUserRole = app.currentUser?.role ?? 'student';
+      
+      return StreamBuilder<List<Map<String, dynamic>>>(
+        stream: app.syncService.watchAnnouncements(currentUserRole),
+    builder: (context, snapshot) {
+      final announcements = snapshot.data ?? [];
+
+      if (snapshot.connectionState == ConnectionState.waiting && announcements.isEmpty) {
+        return const Center(
+          child: Padding(
+            padding: EdgeInsets.all(16),
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        );
+      }
+
+      if (announcements.isEmpty) {
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+            ),
+          ),
+          child: Text(
+            'لا توجد إعلانات حالياً',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+              fontSize: 13,
+            ),
+          ),
+        );
+      }
+
+      return Column(
+        children: announcements.map((ann) {
+          final type = ann['type'] as String? ?? 'info';
+          final color = type == 'warning'
+              ? Colors.amber
+              : type == 'update'
+                  ? Colors.green
+                  : Colors.blue;
+          final icon = type == 'warning'
+              ? LucideIcons.alertTriangle
+              : type == 'update'
+                  ? LucideIcons.refreshCw
+                  : LucideIcons.info;
+
+          return Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: isDarkMode ? const Color(0xFF1E293B) : Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 16,
+                    color: isDarkMode ? color[400] : color[600],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              ann['title'] as String? ?? '',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: isDarkMode ? Colors.white : const Color(0xFF0F172A),
+                              ),
+                            ),
+                          ),
+                          if ((ann['targetAudience'] as String? ?? 'all') != 'all') ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: ann['targetAudience'] == 'student'
+                                    ? Colors.blue.withValues(alpha: 0.1)
+                                    : ann['targetAudience'] == 'lecturer'
+                                        ? Colors.purple.withValues(alpha: 0.1)
+                                        : Colors.red.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(
+                                  color: ann['targetAudience'] == 'student'
+                                      ? Colors.blue.withValues(alpha: 0.3)
+                                      : ann['targetAudience'] == 'lecturer'
+                                          ? Colors.purple.withValues(alpha: 0.3)
+                                          : Colors.red.withValues(alpha: 0.3),
+                                ),
+                              ),
+                              child: Text(
+                                ann['targetAudience'] == 'student'
+                                    ? 'للطلاب'
+                                    : ann['targetAudience'] == 'lecturer'
+                                        ? 'للأساتذة'
+                                        : 'للإدارة',
+                                style: TextStyle(
+                                  fontSize: 8,
+                                  fontWeight: FontWeight.bold,
+                                  color: ann['targetAudience'] == 'student'
+                                      ? Colors.blue
+                                      : ann['targetAudience'] == 'lecturer'
+                                          ? Colors.purple
+                                          : Colors.red,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      if ((ann['body'] as String? ?? '').isNotEmpty)
+                        Text(
+                          ann['body'] as String,
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      );
+    },
+  );
+    },
+  );
+}
+
+// ─── TO-DO LIST MOCK ────────────────────────────────────────────────────────
+
+Widget _buildToDoListMock(bool isDarkMode) {
+  return Consumer<AppProvider>(
+    builder: (context, app, _) {
+      final tasks = app.tasks;
+
+      if (tasks.isEmpty) {
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                LucideIcons.listTodo,
+                size: 32,
+                color: isDarkMode ? Colors.white24 : Colors.black12,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'لا توجد مهام حالياً',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+
+      return ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 100),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+            ),
+          ),
+          child: Column(
+            children: tasks.map((task) {
+              final bool isDone = task.isDone;
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      height: 24,
+                      width: 24,
+                      child: Checkbox(
+                        value: isDone,
+                        onChanged: (val) {
+                          app.toggleTask(task.uuid);
+                        },
+                        activeColor: Colors.blue,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        task.title,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isDone
+                              ? (isDarkMode
+                                  ? const Color(0xFF64748B)
+                                  : const Color(0xFF94A3B8))
+                              : (isDarkMode
+                                  ? Colors.white
+                                  : const Color(0xFF0F172A)),
+                          decoration: isDone ? TextDecoration.lineThrough : null,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(LucideIcons.trash2, size: 14),
+                      onPressed: () => app.deleteTask(task.uuid),
+                      color: Colors.red.withValues(alpha: 0.6),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+        ),
       );
     },
   );
 }
 
-Widget _buildDocumentCard(
-  BuildContext context,
-  PdfDocument doc,
-  bool isDarkMode,
-) {
-  final cardBg = isDarkMode ? const Color(0xFF1E293B) : Colors.white;
-  final cardBorder = isDarkMode
-      ? const Color(0xFF334155)
-      : const Color(0xFFE2E8F0);
+void _showAddTaskDialog(BuildContext context) {
+  final TextEditingController controller = TextEditingController();
+  final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
-  return InkWell(
-    onTap: () {
-      // Open PDF via AppProvider
-      context.read<AppProvider>().setActivePdf(doc.uuid);
-      // Also set active class if tracked
-      if (doc.classId != null) {
-        context.read<AppProvider>().setActiveClass(doc.classId!);
-      }
-    },
-    borderRadius: BorderRadius.circular(12),
-    child: Container(
-      decoration: BoxDecoration(
-        color: cardBg,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: cardBorder),
-      ),
-      padding: const EdgeInsets.all(12),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: isDarkMode
-                  ? const Color(0xFF334155)
-                  : const Color(0xFFF1F5F9),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Center(
-              child: doc.thumbnailPath != null
-                  ? Image.file(File(doc.thumbnailPath!), fit: BoxFit.cover)
-                  : Icon(
-                      LucideIcons.fileText,
-                      size: 24,
-                      color: Colors.grey[400],
-                    ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  doc.originalPath
-                      .split(Platform.pathSeparator)
-                      .last, // Name fallback
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: isDarkMode ? Colors.white : const Color(0xFF1E293B),
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Icon(
-                      LucideIcons.bookmark,
-                      size: 12,
-                      color: Colors.grey[500],
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'الصفحة ${doc.lastPage}',
-                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                    ),
-                    const SizedBox(width: 8),
-                    Icon(
-                      LucideIcons.highlighter,
-                      size: 12,
-                      color: Colors.grey[500],
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${doc.annotationCount}',
-                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-Widget _buildStatisticsSection(AppProvider app, String readingTimeEstimate) {
-  final gradient = app.isDarkMode
-      ? const LinearGradient(colors: [Color(0xFF1E293B), Color(0xFF0F172A)])
-      : const LinearGradient(colors: [Color(0xFFFFFFFF), Color(0xFFF8FAFC)]);
-  final borderColor = app.isDarkMode
-      ? const Color(0xFF334155)
-      : const Color(0xFFE2E8F0);
-
-  return Container(
-    padding: const EdgeInsets.all(24),
-    decoration: BoxDecoration(
-      gradient: gradient,
-      borderRadius: BorderRadius.circular(16),
-      border: Border.all(color: borderColor),
-    ),
-    child: LayoutBuilder(
-      builder: (context, constraints) {
-        final compact = constraints.maxWidth < 760;
-        final itemWidth = compact
-            ? (constraints.maxWidth - 24) / 2
-            : (constraints.maxWidth - 36) / 4;
-
-        return Wrap(
-          alignment: WrapAlignment.spaceBetween,
-          runSpacing: 16,
-          spacing: 12,
-          children: [
-            SizedBox(
-              width: itemWidth,
-              child: _buildStatItem(
-                LucideIcons.bookOpen,
-                app.totalPdfs.toString(),
-                'إجمالي الكتب',
-                app.isDarkMode,
-              ),
-            ),
-            SizedBox(
-              width: itemWidth,
-              child: _buildStatItem(
-                LucideIcons.highlighter,
-                app.totalHighlights.toString(),
-                'هايلايت',
-                app.isDarkMode,
-              ),
-            ),
-            SizedBox(
-              width: itemWidth,
-              child: _buildStatItem(
-                LucideIcons.messageSquare,
-                app.totalComments.toString(),
-                'تعليقات',
-                app.isDarkMode,
-              ),
-            ),
-            SizedBox(
-              width: itemWidth,
-              child: _buildStatItem(
-                LucideIcons.clock,
-                readingTimeEstimate,
-                'وقت القراءة',
-                app.isDarkMode,
-              ),
-            ),
-          ],
-        );
-      },
-    ),
-  );
-}
-
-String _estimateReadingTime(List<PdfDocument> docs) {
-  // Fallback estimate: 2 minutes per reached page.
-  final totalPagesReached = docs.fold<int>(
-    0,
-    (sum, d) => sum + (d.lastPage > 0 ? d.lastPage : 0),
-  );
-  final totalMinutes = totalPagesReached * 2;
-  if (totalMinutes <= 0) return '0m';
-  final hours = totalMinutes ~/ 60;
-  final minutes = totalMinutes % 60;
-  if (hours == 0) return '${minutes}m';
-  if (minutes == 0) return '${hours}h';
-  return '${hours}h ${minutes}m';
-}
-
-Widget _buildStatItem(
-  IconData icon,
-  String value,
-  String label,
-  bool isDarkMode,
-) {
-  final iconColor = isDarkMode
-      ? Colors.white.withValues(alpha: 0.8)
-      : const Color(0xFF334155);
-  final valueColor = isDarkMode ? Colors.white : const Color(0xFF0F172A);
-  final labelColor = isDarkMode
-      ? Colors.white.withValues(alpha: 0.6)
-      : const Color(0xFF64748B);
-
-  return Column(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Icon(icon, color: iconColor, size: 24),
-      const SizedBox(height: 8),
-      Text(
-        value,
-        style: TextStyle(
-          fontSize: 20,
-          fontWeight: FontWeight.bold,
-          color: valueColor,
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      backgroundColor: isDarkMode ? const Color(0xFF0F172A) : Colors.white,
+      title: const Text('إضافة مهمة جديدة'),
+      content: TextField(
+        controller: controller,
+        autofocus: true,
+        decoration: const InputDecoration(
+          hintText: 'ماذا تريد أن تفعل؟',
         ),
+        onSubmitted: (val) {
+          if (val.trim().isNotEmpty) {
+            context.read<AppProvider>().addTask(val.trim());
+            Navigator.pop(context);
+          }
+        },
       ),
-      const SizedBox(height: 4),
-      Text(label, style: TextStyle(fontSize: 12, color: labelColor)),
-    ],
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('إلغاء'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            if (controller.text.trim().isNotEmpty) {
+              context.read<AppProvider>().addTask(controller.text.trim());
+              Navigator.pop(context);
+            }
+          },
+          child: const Text('إضافة'),
+        ),
+      ],
+    ),
+  );
+}
+
+
+// ─── UTILITIES & COMPONENTS ─────────────────────────────────────────────────
+
+Widget _buildQuickActionChips(BuildContext context, bool isDarkMode) {
+  final actions = [
+    {'icon': LucideIcons.upload, 'label': 'رفع PDF', 'color': Colors.blue},
+    {'icon': LucideIcons.combine, 'label': 'دمج ملفات', 'color': Colors.purple},
+    {'icon': LucideIcons.image, 'label': 'صور إلى PDF', 'color': Colors.teal},
+    {
+      'icon': LucideIcons.languages,
+      'label': 'ترجمة الملفات (قريباً)',
+      'color': Colors.indigo,
+    },
+  ];
+
+  return Wrap(
+    spacing: 12,
+    runSpacing: 12,
+    children: actions.map((a) {
+      final color = a['color'] as MaterialColor;
+      final label = a['label'] as String;
+      return InkWell(
+        onTap: () {
+          final app = context.read<AppProvider>();
+          if (label == 'رفع PDF') {
+            final classId =
+                app.activeClassId ?? (app.classes.isNotEmpty ? app.classes.first.id : null);
+            if (classId != null) {
+              app.uploadPdf(classId);
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('يرجى إنشاء مجلد أولاً لرفع الملف إليه.')),
+              );
+            }
+          } else if (label == 'دمج ملفات') {
+            showDialog(context: context, builder: (_) => const MergePdfDialog());
+          } else if (label == 'صور إلى PDF') {
+            showDialog(context: context, builder: (_) => const ImagesToPdfDialog());
+          } else if (label == 'ترجمة الملفات (قريباً)') {
+            // TODO: Feature under development
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('ميزة ترجمة الملفات قيد التطوير حالياً...')),
+            );
+          }
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: isDarkMode
+                ? color.withValues(alpha: 0.1)
+                : color.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withValues(alpha: 0.2)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                a['icon'] as IconData,
+                size: 18,
+                color: color[isDarkMode ? 400 : 600],
+              ),
+              const SizedBox(width: 8),
+              Text(
+                a['label'] as String,
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  color: isDarkMode ? Colors.white : color[900],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }).toList(),
   );
 }
 
 void _showCreateFolderDialog(BuildContext context) {
-  final controller = TextEditingController();
+  final TextEditingController controller = TextEditingController();
+  final isDarkMode = context.read<AppProvider>().isDarkMode;
+
   showDialog(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: const Text('مجلد جديد'),
+      backgroundColor: isDarkMode ? const Color(0xFF1E293B) : Colors.white,
+      title: Text(
+        'إنشاء مجلد جديد',
+        style: TextStyle(color: isDarkMode ? Colors.white : Colors.black),
+      ),
       content: TextField(
         controller: controller,
-        decoration: const InputDecoration(hintText: 'اسم المجلد'),
         autofocus: true,
+        style: TextStyle(color: isDarkMode ? Colors.white : Colors.black),
+        decoration: InputDecoration(
+          hintText: 'اسم المجلد...',
+          hintStyle: TextStyle(
+            color: isDarkMode ? Colors.white54 : Colors.black54,
+          ),
+        ),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(ctx),
           child: const Text('إلغاء'),
         ),
-        TextButton(
-          onPressed: () {
-            if (controller.text.isNotEmpty) {
-              context.read<FileManagerService>().createFolder(
-                name: controller.text,
-              );
-              Navigator.pop(ctx);
+        ElevatedButton(
+          onPressed: () async {
+            final name = controller.text.trim();
+            if (name.isNotEmpty) {
+              final app = context.read<AppProvider>();
+              // 1. Save to FileManagerService (Isar)
+              final folder = await FileManagerService().createFolder(name: name);
+              // 2. Sync to AppProvider (SharedPrefs) using the same UUID
+              app.addClass(name, uuid: folder.uuid);
             }
+            if (ctx.mounted) Navigator.pop(ctx);
           },
           child: const Text('إنشاء'),
         ),
@@ -630,16 +957,249 @@ void _showCreateFolderDialog(BuildContext context) {
     ),
   );
 }
-void _showTopSnack(BuildContext context, String msg) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(msg),
-      behavior: SnackBarBehavior.floating,
-      margin: EdgeInsets.only(
-        bottom: MediaQuery.of(context).size.height - 100,
-        left: 20,
-        right: 20,
-      ),
+
+Widget _buildRealFolderGrid(bool isDarkMode) {
+  return Consumer<FileManagerService>(
+    builder: (context, fileService, _) {
+      return FutureBuilder<List<ClassFolder>>(
+        future: fileService.getFoldersOrdered(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting && snapshot.data == null) {
+            return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+          }
+
+      final folders = snapshot.data ?? [];
+
+      if (folders.isEmpty) {
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 40),
+          decoration: BoxDecoration(
+            color: isDarkMode
+                ? const Color(0xFF1E293B).withOpacity(0.5)
+                : const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+              style: BorderStyle.none,
+            ),
+          ),
+          child: Column(
+            children: [
+              Icon(
+                LucideIcons.folderX,
+                size: 48,
+                color: isDarkMode ? Colors.grey[600] : Colors.grey[300],
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'لا توجد مجلدات حالياً',
+                style: TextStyle(
+                  color: Color(0xFF64748B),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+
+      return GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 220,
+          mainAxisSpacing: 16,
+          crossAxisSpacing: 16,
+          childAspectRatio: 1.3,
+        ),
+        itemCount: folders.length,
+        itemBuilder: (context, index) {
+          final folder = folders[index];
+          return InkWell(
+            onTap: () {
+              context.read<AppProvider>().setActiveClass(folder.uuid);
+            },
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              decoration: BoxDecoration(
+                color: isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                ),
+              ),
+              child: Stack(
+                children: [
+                  Positioned(
+                    top: 0,
+                    right: 0,
+                    child: Container(
+                      width: 60,
+                      height: 60,
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withValues(alpha: 0.1),
+                        borderRadius: const BorderRadius.only(
+                          bottomLeft: Radius.circular(60),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(LucideIcons.folder, color: Colors.blue[400], size: 32),
+                        const SizedBox(height: 12),
+                        Text(
+                          folder.name,
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: isDarkMode ? Colors.white : const Color(0xFF1E293B),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        Text(
+                          '${folder.pdfIds.length} ملفات',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFF64748B),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+          );
+        },
+      );
+    },
+  );
+}
+
+Widget _buildRecentVerticalList(
+  BuildContext context,
+  List<PdfDocument> docs,
+  bool isDarkMode,
+) {
+  if (docs.isEmpty) return const Text('لا توجد ملفات حديثة');
+
+  return ListView.separated(
+    shrinkWrap: true,
+    physics: const NeverScrollableScrollPhysics(),
+    itemCount: docs.length,
+    separatorBuilder: (_, __) => const SizedBox(height: 12),
+    itemBuilder: (context, index) {
+      final doc = docs[index];
+      return InkWell(
+        onTap: () => context.read<AppProvider>().setActivePdf(doc.uuid),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: isDarkMode
+                ? const Color(0xFF1E293B).withValues(alpha: 0.5)
+                : const Color(0xFFF1F5F9),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.red.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  LucideIcons.fileText,
+                  color: Colors.red,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      doc.originalPath.split(Platform.pathSeparator).last,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: isDarkMode
+                            ? Colors.white
+                            : const Color(0xFF0F172A),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      'آخر مرة: منذ يومين',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: const Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                LucideIcons.chevronLeft,
+                size: 16,
+                color: Color(0xFF94A3B8),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
+
+Widget _buildSectionHeader(String title, bool isDarkMode) {
+  return Text(
+    title,
+    style: TextStyle(
+      fontSize: 18,
+      fontWeight: FontWeight.w700,
+      color: isDarkMode ? Colors.white : const Color(0xFF1E293B),
     ),
   );
+}
+
+Widget _buildQuickStatChip(AppProvider app) {
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+    decoration: BoxDecoration(
+      color: Colors.blue.withValues(alpha: 0.1),
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Row(
+      children: [
+        const Icon(LucideIcons.flame, color: Colors.orange, size: 14),
+        const SizedBox(width: 4),
+        Text(
+          '${app.totalHighlights} نقاط تركيز',
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: Colors.blue,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+Widget _buildStatsVertical(AppProvider app, String time, bool isDarkMode) {
+  return const SizedBox.shrink(); // وظيفة معطلة حالياً لمنع الأخطاء
 }

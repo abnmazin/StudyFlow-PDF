@@ -113,7 +113,6 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   int _currentPage = -1;
   bool _isProcessing = false; // Processing lock
   Timer? _scrollDebounce;
-  Timer? _gestureSyncTimer;
   Timer? _scrollMaintenanceDebounce;
   Timer? _autoFitDebounce;
   int _lastTimestamp = 0;
@@ -398,17 +397,25 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   }
 
   bool _isTypingInTextField() {
-    final focused = FocusManager.instance.primaryFocus;
-    final context = focused?.context;
-    if (context == null) return false;
+    try {
+      final focused = FocusManager.instance.primaryFocus;
+      final context = focused?.context;
+      if (context == null || !context.mounted) return false;
 
-    if (context.widget is EditableText) return true;
-    if (context.findAncestorWidgetOfExactType<EditableText>() != null) {
-      return true;
+      if (context.widget is EditableText) return true;
+      if (context.findAncestorWidgetOfExactType<EditableText>() != null) {
+        return true;
+      }
+
+      final renderObject = context.findRenderObject();
+      if (renderObject == null) return false;
+      final renderType = renderObject.runtimeType.toString();
+      return renderType.toLowerCase().contains('editable');
+    } catch (e) {
+      // Safety: in case of "Looking up a deactivated widget's ancestor is unsafe"
+      // or other transient errors during context lookup.
+      return false;
     }
-
-    final renderType = context.findRenderObject()?.runtimeType.toString() ?? '';
-    return renderType.toLowerCase().contains('editable');
   }
 
   void _runShortcut(VoidCallback action) {
@@ -1084,7 +1091,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
             },
           ),
           onInteractionStart: (details) {
-            _gestureSyncTimer?.cancel();
+            app.cancelDebouncedSync();
           },
           onInteractionUpdate: (details) {
             // Auto-switch to Hand tool during multi-touch gestures
@@ -1093,15 +1100,9 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
             }
           },
           onInteractionEnd: (details) {
-            // Trigger bidirectional sync after pan/zoom ends (with debounce)
+            // Trigger bidirectional sync after pan/zoom ends (with debounce in AppProvider)
             if (_tool == ToolType.cursor && app.currentSessionCode != null) {
-              _gestureSyncTimer?.cancel();
-              _gestureSyncTimer = Timer(const Duration(milliseconds: 200), () {
-                if (mounted && !app.isSyncing) {
-                  debugPrint('DEBUG: Interaction ended. Triggering Gesture-based Sync.');
-                  app.performBidirectionalSync();
-                }
-              });
+              app.triggerDebouncedSync(silent: true);
             }
           },
           onViewerReady: (document, controller) {

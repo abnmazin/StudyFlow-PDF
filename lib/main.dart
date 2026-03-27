@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:cross_file/cross_file.dart';
@@ -204,8 +205,61 @@ class MyApp extends StatelessWidget {
           ),
           scaffoldBackgroundColor: const Color(0xFF121212),
         ),
-        home: const LoginScreen(),
+        home: const RootWrapper(),
       ),
+    );
+  }
+}
+
+class RootWrapper extends StatelessWidget {
+  const RootWrapper({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    // Watch AppProvider to rebuild when currentUser changes (e.g. logout)
+    final app = context.watch<AppProvider>();
+    
+    return FutureBuilder(
+      future: app.initialized,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.done) {
+          // Initialization complete, check if we have a user
+          if (app.currentUser != null) {
+            return const MainLayout();
+          } else {
+            return const LoginScreen();
+          }
+        }
+        
+        // Splash / Loading state
+        return const Scaffold(
+          body: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 50,
+                  height: 50,
+                  child: CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.blueAccent),
+                    strokeWidth: 3,
+                  ),
+                ),
+                SizedBox(height: 24),
+                Text(
+                  'StudyFlow',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.2,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -246,6 +300,9 @@ class _MainLayoutState extends State<MainLayout> {
     // Phase 11: Real-time Security Listener
     _appProvider = context.read<AppProvider>();
     _appProvider.addListener(_securityListener);
+
+    // Silent Account Verification (Optimistic UI)
+    _appProvider.verifyAccountStatusSilently(context);
 
     _incomingPdfSubscription = _incomingPdfPaths.stream.listen((path) async {
       if (!mounted) return;

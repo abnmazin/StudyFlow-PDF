@@ -10,7 +10,7 @@ import '../models/models.dart';
 ///   isLocked      bool            whether student drawing is locked
 ///   kicked_uuids  List of String  hardwareIds that are banned from this session
 ///   participants  List of Map     [{hardwareId, username}]
-///   annotations   Map             serialized highlights per pdfId
+///   (Sub-collection) annotations/{pdfHash}  Map {'data': List}
 class SyncService {
   final FirebaseFirestore _db;
 
@@ -78,6 +78,7 @@ class SyncService {
   /// Generates a new 6-char code with file metadata, creates the Firestore document, returns code.
   Future<String?> generateSessionCode(
     String fileHash,
+    String pdfName,
     int pageCount,
     String hostHardwareId,
     String ownerName,
@@ -93,14 +94,22 @@ class SyncService {
       'createdBy': ownerName, // Anchor to Username!
       'ownerName': ownerName,
       'fileHash': fileHash,
+      'pdfName': pdfName,
       'pageCount': pageCount,
       'isLocked': false,
       'joinLocked': false,
       'kicked_uids': <String>[],
       'participants': <Map<String, dynamic>>[], // Cleaner: Participants list is for students only
-      'annotations': <String, dynamic>{},
       'createdAt': FieldValue.serverTimestamp(),
     });
+
+    // Initialize annotations branch (sub-collection) so it's visible in Firestore Console
+    final annotDoc = _db.collection('sync_sessions').doc(code).collection('annotations').doc(fileHash);
+    final annotSnap = await annotDoc.get();
+    if (!annotSnap.exists) {
+      await annotDoc.set({'data': []});
+    }
+
     return code;
   }
 
@@ -155,6 +164,16 @@ class SyncService {
   Future<bool> checkUserExists(String uid) async {
     try {
       final snap = await _db.collection('users').doc(uid).get();
+      return snap.exists;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Checks if a hardwareId is in the 'blacklisted_devices' collection.
+  Future<bool> isDeviceBlacklisted(String hardwareId) async {
+    try {
+      final snap = await _db.collection('blacklisted_devices').doc(hardwareId).get();
       return snap.exists;
     } catch (_) {
       return false;
@@ -324,22 +343,29 @@ class SyncService {
   /// Used for "Resumed Session" detection.
   Future<bool> hasAnnotations(String code, String fileHash) async {
     final snap = await _db.collection('sync_sessions').doc(code).collection('annotations').doc(fileHash).get();
-    return snap.exists;
+    if (!snap.exists) return false;
+    final List data = snap.data()?['data'] as List? ?? [];
+    return data.isNotEmpty;
   }
 
   /// Fetches the literal truth array of annotations from the server
-  Future<List<dynamic>> getServerAnnotations(String code, String fileHash) async {
+  Future<({List<dynamic> items, int lastDeletedAt})> getServerAnnotations(String code, String fileHash) async {
     final snap = await _db.collection('sync_sessions').doc(code).collection('annotations').doc(fileHash).get();
-    if (!snap.exists || snap.data() == null) return [];
-    final data = snap.data()!['data'];
-    if (data is List) return data;
-    return [];
+    if (!snap.exists || snap.data() == null) return (items: [], lastDeletedAt: 0);
+    
+    final items = snap.data()!['data'];
+    final lastDeletedAt = (snap.data()!['lastDeletedAt'] as num?)?.toInt() ?? 0;
+    
+    if (items is List) return (items: items, lastDeletedAt: lastDeletedAt);
+    return (items: [], lastDeletedAt: lastDeletedAt);
   }
 
   /// Surgically removes a single annotation from the server by its ID.
   /// This prevents "resurrection" by ensuring the server truth is updated immediately.
   Future<void> deleteAnnotation(String code, String fileHash, String annotationId) async {
-    final serverItems = await getServerAnnotations(code, fileHash);
+    final serverData = await getServerAnnotations(code, fileHash);
+    final serverItems = serverData.items;
+    
     final updated = serverItems.where((item) {
       if (item is Map && item['id'] != null) {
         return item['id'].toString() != annotationId;
@@ -349,6 +375,7 @@ class SyncService {
 
     await _db.collection('sync_sessions').doc(code).collection('annotations').doc(fileHash).set({
       'data': updated,
+      'lastDeletedAt': DateTime.now().millisecondsSinceEpoch,
     });
     debugPrint('DEBUG: Deleted annotation $annotationId from server ($fileHash).');
   }
@@ -365,67 +392,140 @@ class SyncService {
     int downloadedCount,
     List<Map<String, dynamic>> toAddHighlights,
     List<Map<String, dynamic>> toAddComments,
+    Set<String> serverIds,
+    Set<String> orphans,
+    int serverLastDeletedAt,
   })> syncExistingAnnotations({
     required String code,
     required String fileHash,
     required List<Highlight> highlights,
     required List<PdfComment> comments,
+    Set<String> locallyDeletedIds = const {},
   }) async {
     // ── Phase 1: Fetch server truth ──────────────────────────────────────
-    final serverItems = await getServerAnnotations(code, fileHash);
+    final serverRes = await getServerAnnotations(code, fileHash);
+    final serverItems = serverRes.items;
+    final serverLastDeletedAt = serverRes.lastDeletedAt;
+
     final serverById = <String, Map<String, dynamic>>{
       for (final item in serverItems)
         if (item is Map && item['id'] != null)
           item['id'].toString(): Map<String, dynamic>.from(item)
     };
     final serverIds = serverById.keys.toSet();
-    debugPrint('DEBUG: Found ${serverIds.length} items on server.');
+    debugPrint('DEBUG: Found ${serverIds.length} items on server. LastDeleted: $serverLastDeletedAt');
 
-    // ── Phase 2: Local-to-Server (purge server-deleted orphans) ──────────
-    final deletedHighlightIds = highlights
-        .where((h) => h.isSynced && !serverIds.contains(h.id))
-        .map((h) => h.id)
-        .toSet();
-    final deletedCommentIds = comments
-        .where((c) => c.isSynced && !serverIds.contains(c.id))
-        .map((c) => c.id)
-        .toSet();
-    final deletedIds = {...deletedHighlightIds, ...deletedCommentIds};
-    debugPrint('DEBUG: Removed ${deletedIds.length} items locally (deleted from server).');
+    // ── Phase 2: Reconciliation (Conflicts & Orphans) ────────────────────
+    
+    // a. Identify orphans to delete locally
+    final orphans = <String>{};
+    for (final h in highlights) {
+      if (h.isSynced && !serverIds.contains(h.id)) {
+        // Missing from server. Deleted by someone else?
+        if (h.updatedAt < serverLastDeletedAt) {
+          orphans.add(h.id);
+        }
+      }
+    }
+    for (final c in comments) {
+      if (c.isSynced && !serverIds.contains(c.id)) {
+        if (c.updatedAt < serverLastDeletedAt) {
+          orphans.add(c.id);
+        }
+      }
+    }
 
-    // ── Phase 3: Server-to-Local (items on server but missing locally) ────
+    // b. Identify local mods that override server truth (Last-Writer-Wins)
+    final localModified = <String>{};
+    for (final h in highlights) {
+      if (serverIds.contains(h.id)) {
+        final sItem = serverById[h.id]!;
+        final sUpdatedAt = (sItem['updatedAt'] as num?)?.toInt() ?? 0;
+        if (!h.isSynced || h.updatedAt > sUpdatedAt) {
+          localModified.add(h.id);
+        }
+      }
+    }
+    for (final c in comments) {
+      if (serverIds.contains(c.id)) {
+        final sItem = serverById[c.id]!;
+        final sUpdatedAt = (sItem['updatedAt'] as num?)?.toInt() ?? 0;
+        if (!c.isSynced || c.updatedAt > sUpdatedAt) {
+          localModified.add(c.id);
+        }
+      }
+    }
+
+    final deletedIds = {...orphans, ...locallyDeletedIds};
+    if (deletedIds.isNotEmpty) {
+      debugPrint('DEBUG: Purging ${deletedIds.length} items (orphans + local-deleted).');
+    }
+
+    // ── Phase 3: Server-to-Local (download missing or newer server items) ─
     final localIds = {
       ...highlights.map((h) => h.id),
       ...comments.map((c) => c.id),
     };
-    final toDownload = serverById.entries
-        .where((e) => !localIds.contains(e.key) && !deletedIds.contains(e.key))
-        .map((e) => e.value)
-        .toList();
+
+    final toDownload = <Map<String, dynamic>>[];
+    for (final sItem in serverItems) {
+      if (sItem is! Map) continue;
+      final sid = sItem['id']?.toString() ?? '';
+      if (deletedIds.contains(sid)) continue;
+
+      if (!localIds.contains(sid)) {
+        toDownload.add(Map<String, dynamic>.from(sItem));
+      } else {
+        // Conflict check: is server newer than local?
+        final sUpdatedAt = (sItem['updatedAt'] as num?)?.toInt() ?? 0;
+        // Find local item
+        final lH = highlights.where((h) => h.id == sid).firstOrNull;
+        final lC = comments.where((c) => c.id == sid).firstOrNull;
+        final lUpdatedAt = lH?.updatedAt ?? lC?.updatedAt ?? 0;
+
+        if (sUpdatedAt > lUpdatedAt) {
+          toDownload.add(Map<String, dynamic>.from(sItem));
+        }
+      }
+    }
+
     final toAddHighlights = toDownload.where((e) => e['kind'] == 'highlight').toList();
     final toAddComments   = toDownload.where((e) => e['kind'] == 'comment').toList();
-    debugPrint('DEBUG: Downloading ${toDownload.length} missing items from server (${toAddHighlights.length} highlights, ${toAddComments.length} comments).');
+    if (toDownload.isNotEmpty) {
+      debugPrint('DEBUG: Downloading ${toDownload.length} items.');
+    }
 
-    // ── Phase 4: Push new local items ────────────────────────────────────
-    final newHighlights = highlights.where((h) => !serverIds.contains(h.id) && !h.isSynced).toList();
-    final newComments   = comments.where((c) => !serverIds.contains(c.id) && !c.isSynced).toList();
-    debugPrint('DEBUG: Uploading ${newHighlights.length + newComments.length} new local items.');
+    // ── Phase 4: Push new/modified local items ───────────────────────────
+    final newHighlights = highlights.where((h) => !orphans.contains(h.id) && (!serverIds.contains(h.id) || localModified.contains(h.id))).toList();
+    final newComments   = comments.where((c) => !orphans.contains(c.id) && (!serverIds.contains(c.id) || localModified.contains(c.id))).toList();
+    
+    if (newHighlights.isNotEmpty || newComments.isNotEmpty) {
+      debugPrint('DEBUG: Uploading ${newHighlights.length + newComments.length} items.');
+    }
 
-    final newHJson = newHighlights.map((h) => {...h.toJson(isExisting: true), 'kind': 'highlight'}).toList();
-    final newCJson = newComments.map((c) => {...c.toJson(isExisting: true), 'kind': 'comment'}).toList();
+    final newHJson = newHighlights.map((h) => {...h.toJson(isExisting: true), 'isSynced': true, 'kind': 'highlight'}).toList();
+    final newCJson = newComments.map((c) => {...c.toJson(isExisting: true), 'isSynced': true, 'kind': 'comment'}).toList();
 
-    // Retain all valid server items (minus deleted orphans) + push new ones
+    // ── Phase 5: Build merged truth ──────────────────────────────────────
+    // Retain all server items that weren't deleted AND weren't overridden by local mods
     final retained = serverItems
-        .where((item) => item is Map && !deletedIds.contains(item['id']?.toString()))
+        .where((item) => item is Map && !deletedIds.contains(item['id']?.toString()) && !localModified.contains(item['id']?.toString()))
+        .map((item) => item is Map ? {...item, 'isSynced': true} : item)
         .toList();
+
     final merged = [...retained, ...newHJson, ...newCJson];
+
+    final Map<String, dynamic> updatePayload = {'data': merged};
+    if (locallyDeletedIds.isNotEmpty) {
+      updatePayload['lastDeletedAt'] = DateTime.now().millisecondsSinceEpoch;
+    }
 
     await _db
         .collection('sync_sessions')
         .doc(code)
         .collection('annotations')
         .doc(fileHash)
-        .set({'data': merged});
+        .set(updatePayload, SetOptions(merge: true));
 
     return (
       deletedCount:     deletedIds.length,
@@ -433,6 +533,9 @@ class SyncService {
       downloadedCount:  toDownload.length,
       toAddHighlights:  toAddHighlights,
       toAddComments:    toAddComments,
+      serverIds:        {...serverIds, ...newHighlights.map((h) => h.id), ...newComments.map((c) => c.id)},
+      orphans:          orphans,
+      serverLastDeletedAt: serverLastDeletedAt,
     );
   }
 
@@ -565,5 +668,45 @@ class SyncService {
           });
           return docs;
         });
+  }
+
+  // ─────────────────────────────────────────────
+  // ANNOUNCEMENTS
+  // ─────────────────────────────────────────────
+
+  /// Real-time stream of announcements, filtered by role and ordered by newest first.
+  Stream<List<Map<String, dynamic>>> watchAnnouncements(String currentUserRole) {
+    return _db
+        .collection('announcements')
+        .where('targetAudience', whereIn: ['all', currentUserRole])
+        .orderBy('createdAt', descending: true)
+        .limit(10)
+        .snapshots()
+        .map((snap) => snap.docs
+            .map((doc) => {...doc.data(), 'id': doc.id})
+            .toList());
+  }
+
+  /// Publishes a new announcement to Firestore.
+  Future<void> publishAnnouncement({
+    required String title,
+    required String body,
+    required String type, // 'warning', 'info', 'update'
+    required String authorName,
+    String targetAudience = 'all', // 'all', 'student', 'lecturer'
+  }) async {
+    await _db.collection('announcements').add({
+      'title': title,
+      'body': body,
+      'type': type,
+      'authorName': authorName,
+      'targetAudience': targetAudience,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// Deletes an announcement by its document ID.
+  Future<void> deleteAnnouncement(String id) async {
+    await _db.collection('announcements').doc(id).delete();
   }
 }

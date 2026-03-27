@@ -11,6 +11,7 @@ class Highlight {
   final List<Rect>? rects;
   final int? backgroundColor;  // Fill color for shapes (nullable, stored as int)
   final bool isSynced;
+  final int updatedAt; // Timestamp for conflict resolution
 
   Highlight({
     required this.id,
@@ -22,7 +23,8 @@ class Highlight {
     this.rects,
     this.backgroundColor,  // Optional background color
     this.isSynced = false,
-  });
+    int? updatedAt,
+  }) : updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
 
   Path? _cachedPath;
   Path get cachedPath {
@@ -47,6 +49,7 @@ class Highlight {
     'type': type.toString(),
     if (isExisting) 'isExisting': true,
     'isSynced': isSynced,
+    'updatedAt': updatedAt,
     if (backgroundColor != null) 'backgroundColor': backgroundColor,
     if (rects != null)
       'rects': rects!
@@ -71,6 +74,7 @@ class Highlight {
           : HighlightType.highlight,
       backgroundColor: json['backgroundColor'],  // Load background color if present
       isSynced: json['isSynced'] ?? false,
+      updatedAt: json['updatedAt'] ?? DateTime.now().millisecondsSinceEpoch,
       rects: (json['rects'] as List?)?.map((r) {
         return Rect.fromLTRB(r['L'], r['T'], r['R'], r['B']);
       }).toList(),
@@ -86,6 +90,7 @@ class Highlight {
     List<Rect>? rects,
     int? backgroundColor,
     bool? isSynced,
+    int? updatedAt,
   }) {
     return Highlight(
       id: id ?? this.id,
@@ -97,6 +102,7 @@ class Highlight {
       rects: rects ?? this.rects,
       backgroundColor: backgroundColor ?? this.backgroundColor,
       isSynced: isSynced ?? this.isSynced,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 }
@@ -116,6 +122,7 @@ class PdfComment {
   final Color borderColor;
   final Color bgColor;
   final bool isSynced;
+  final int updatedAt;
 
   PdfComment({
     required this.id,
@@ -132,7 +139,8 @@ class PdfComment {
     this.borderColor = const Color(0xFF000000),
     this.bgColor = const Color(0xFFFEF3C7),
     this.isSynced = false,
-  });
+    int? updatedAt,
+  }) : updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
 
   Map<String, dynamic> toJson({bool isExisting = false}) => {
     'id': id,
@@ -151,6 +159,7 @@ class PdfComment {
     'bgColor': bgColor.value,
     if (isExisting) 'isExisting': true,
     'isSynced': isSynced,
+    'updatedAt': updatedAt,
   };
 
   factory PdfComment.fromJson(Map<String, dynamic> json) {
@@ -169,6 +178,7 @@ class PdfComment {
       borderColor: Color(json['borderColor'] ?? 0xFF000000),
       bgColor: Color(json['bgColor'] ?? 0xFFFEF3C7),
       isSynced: json['isSynced'] ?? false,
+      updatedAt: json['updatedAt'] ?? DateTime.now().millisecondsSinceEpoch,
     );
   }
 
@@ -187,6 +197,7 @@ class PdfComment {
     Color? borderColor,
     Color? bgColor,
     bool? isSynced,
+    int? updatedAt,
   }) {
     return PdfComment(
       id: id ?? this.id,
@@ -203,6 +214,7 @@ class PdfComment {
       borderColor: borderColor ?? this.borderColor,
       bgColor: bgColor ?? this.bgColor,
       isSynced: isSynced ?? this.isSynced,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 }

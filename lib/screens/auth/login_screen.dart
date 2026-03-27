@@ -157,9 +157,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 22),
-                  if (_errorMessage != null) ...[
+                  if (_errorMessage != null || context.watch<AppProvider>().forcedLogoutReason != null) ...[
                     Text(
-                      _errorMessage!,
+                      _errorMessage ?? context.watch<AppProvider>().forcedLogoutReason!,
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         color: Colors.redAccent,

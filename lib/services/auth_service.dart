@@ -19,6 +19,12 @@ class AuthService {
 
     final currentUuid = await _hardwareService.getDeviceUUID();
 
+    // 1. BLACKLIST CHECK: Prevent blocked devices from logging in
+    final blacklistDoc = await _firestore.collection('blacklisted_devices').doc(currentUuid).get();
+    if (blacklistDoc.exists) {
+      throw Exception('هذا الجهاز محظور من استخدام النظام، يرجى مراجعة المطور');
+    }
+
     final query = await _firestore
         .collection('users')
         .where('username', isEqualTo: normalizedUsername)

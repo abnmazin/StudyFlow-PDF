@@ -113,6 +113,7 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
       final activePdf = widget.app.activePdf!;
       final code = await widget.syncService.generateSessionCode(
         activePdf.fileHash ?? '',
+        activePdf.name,
         activePdf.pageCount ?? 0,
         hardwareId,
         widget.app.currentUser?.username ?? 'محاضر مجهول',

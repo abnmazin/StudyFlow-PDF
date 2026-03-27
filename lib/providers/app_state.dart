@@ -12,6 +12,12 @@ import '../models/models.dart';
 import '../models/app_user.dart';
 import '../services/sync_service.dart';
 import '../services/file_hash_service.dart';
+import '../services/file_manager_service.dart';
+import '../models/isar_models.dart' hide PdfDocument;
+import 'package:isar/isar.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../screens/auth/login_screen.dart';
 
 enum DrawingSyncStrategy { disabled, immediate, buffered, isolate }
 
@@ -101,6 +107,9 @@ class AppProvider extends ChangeNotifier {
   bool _needsSave = false;
   bool _isSyncing = false;
   bool get isSyncing => _isSyncing;
+  bool _isJoiningSession = false;
+  bool get isJoiningSession => _isJoiningSession;
+  Timer? _syncDebounce; // Debouncer for background sync
   ToolType _currentTool = ToolType.cursor;
   ToolType get currentTool => _currentTool;
 
@@ -111,6 +120,7 @@ class AppProvider extends ChangeNotifier {
 
   final Map<String, Timer?> _syncTimers = {};
   final Map<String, bool> _pendingSyncs = {};
+  final Map<String, Set<String>> _locallyDeletedIds = {}; // Key: fileHash
 
   // Helper to trigger sync in background safely
   void triggerSync(String fileHash) {
@@ -119,7 +129,18 @@ class AppProvider extends ChangeNotifier {
 
   /// Fetch → Purge orphans → Download missing → Upload new.
   /// Has a cooldown guard so concurrent calls are silently ignored.
-  Future<void> performBidirectionalSync() async {
+  Future<void> performBidirectionalSync({bool silent = false}) async {
+    final activePdf = this.activePdf;
+    if (activePdf == null) return;
+    final fileHash = activePdf.fileHash;
+    if (fileHash == null) return;
+
+    // ── Phase 1: Wait for any pending buffered syncs to finish ────────────────
+    if (_pendingSyncs[fileHash] == true) {
+      debugPrint('DEBUG: Waiting for pending buffered sync before reconciliation...');
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+
     if (_isSyncing) {
       debugPrint('DEBUG: Sync already in progress – skipping.');
       return;
@@ -144,68 +165,122 @@ class AppProvider extends ChangeNotifier {
       }
     }
 
-    final activePdf = this.activePdf;
-    final sessionCode = currentSessionCode;
-    if (activePdf == null || sessionCode == null) return;
-
-    _isSyncing = true;
-    _notify();
-    debugPrint('DEBUG: performBidirectionalSync started (session: $sessionCode, hash: ${activePdf.fileHash}).');
+    if (!silent) {
+      _isSyncing = true;
+      _notify();
+    }
 
     try {
+      final sessionCode = currentSessionCode;
+      if (sessionCode == null) {
+        if (!silent) {
+          _isSyncing = false;
+          _notify();
+        }
+        return;
+      }
+      debugPrint('DEBUG: performBidirectionalSync started (session: $sessionCode, hash: ${activePdf.fileHash}, silent: $silent).');
+
       final result = await _syncService.syncExistingAnnotations(
         code: sessionCode,
         fileHash: activePdf.fileHash ?? '',
         highlights: activePdf.highlights,
         comments: activePdf.comments,
+        locallyDeletedIds: _locallyDeletedIds[fileHash] ?? {},
       );
 
-      // ── Purge local orphans (items deleted server-side) ─────────────────
-      if (result.deletedCount > 0) {
-        final serverIds = {
-          ...result.toAddHighlights.map((e) => e['id']?.toString() ?? ''),
-          ...result.toAddComments.map((e)   => e['id']?.toString() ?? ''),
-        };
-        for (final h in List.of(activePdf.highlights)) {
-          if (h.isSynced && !serverIds.contains(h.id)) {
-            removeHighlightById(activePdf.id, h.id);
+      // Successfully synced? Clear the locally deleted ids for this hash
+      _locallyDeletedIds[fileHash]?.clear();
+
+      // ── Orphan Pruning & Sync State Persistence ─────────────────────────
+      final serverIds = result.serverIds;
+      final orphans = result.orphans;
+      
+      // Update local highlights: mark synced or remove orphans
+      final localHighlights = List.of(activePdf.highlights);
+      for (final h in localHighlights) {
+        if (orphans.contains(h.id)) {
+          activePdf.highlights.removeWhere((item) => item.id == h.id);
+        } else if (serverIds.contains(h.id)) {
+          if (!h.isSynced) {
+            final idx = activePdf.highlights.indexWhere((item) => item.id == h.id);
+            if (idx != -1) activePdf.highlights[idx] = h.copyWith(isSynced: true);
           }
         }
       }
 
-      // ── Inject server-only highlights (no duplicates) ───────────────────
-      if (result.toAddHighlights.isNotEmpty) {
-        final existingIds = {for (final h in activePdf.highlights) h.id};
-        for (final json in result.toAddHighlights) {
-          try {
-            final h = Highlight.fromJson(Map<String, dynamic>.from(json));
-            if (!existingIds.contains(h.id)) {
-              addHighlight(activePdf.id, h.copyWith(isSynced: true));
-            }
-          } catch (_) {}
+      // Update local comments: mark synced or remove orphans
+      final localComments = List.of(activePdf.comments);
+      for (final c in localComments) {
+        if (orphans.contains(c.id)) {
+          activePdf.comments.removeWhere((item) => item.id == c.id);
+        } else if (serverIds.contains(c.id)) {
+          if (!c.isSynced) {
+            final idx = activePdf.comments.indexWhere((item) => item.id == c.id);
+            if (idx != -1) activePdf.comments[idx] = c.copyWith(isSynced: true);
+          }
         }
       }
 
-      // ── Inject server-only comments (no duplicates) ─────────────────────
-      if (result.toAddComments.isNotEmpty) {
-        final existingIds = {for (final c in activePdf.comments) c.id};
-        for (final json in result.toAddComments) {
-          try {
-            final c = PdfComment.fromJson(Map<String, dynamic>.from(json));
-            if (!existingIds.contains(c.id)) {
-              addComment(activePdf.id, c.copyWith(isSynced: true));
-            }
-          } catch (_) {}
+      // ── Inject/Update Highlights from Server ────────────────────────────
+      for (final json in result.toAddHighlights) {
+        try {
+          final h = Highlight.fromJson(Map<String, dynamic>.from(json)).copyWith(isSynced: true);
+          final idx = activePdf.highlights.indexWhere((item) => item.id == h.id);
+          if (idx != -1) {
+            activePdf.highlights[idx] = h;
+          } else {
+            activePdf.highlights.add(h);
+          }
+          debugPrint('📥 Downloaded highlight: ${h.id}');
+        } catch (e) {
+          debugPrint('❌ Error parsing highlight from server: $e');
+        }
+      }
+
+      // ── Inject/Update Comments from Server ──────────────────────────────
+      for (final json in result.toAddComments) {
+        try {
+          final c = PdfComment.fromJson(Map<String, dynamic>.from(json)).copyWith(isSynced: true);
+          final idx = activePdf.comments.indexWhere((item) => item.id == c.id);
+          if (idx != -1) {
+            activePdf.comments[idx] = c;
+          } else {
+            activePdf.comments.add(c);
+          }
+          debugPrint('📥 Downloaded comment: ${c.id}');
+        } catch (e) {
+          debugPrint('❌ Error parsing comment from server: $e');
         }
       }
 
       debugPrint('DEBUG: performBidirectionalSync done. Deleted: ${result.deletedCount}, Downloaded: ${result.downloadedCount}, Uploaded: ${result.uploadedCount}.');
+      
+      if (result.uploadedCount >= 0) {
+        // Successfully synced
+      }
     } catch (e) {
       debugPrint('ERROR: performBidirectionalSync failed: $e');
     } finally {
-      _isSyncing = false;
-      _notify();
+      if (!silent) {
+        _isSyncing = false;
+        _notify();
+      }
     }
+  }
+
+  /// Triggers a debounced bidirectional sync (default 1.8s).
+  /// Used for gestures and tool changes to avoid UI lag.
+  void triggerDebouncedSync({bool silent = true}) {
+    _syncDebounce?.cancel();
+    _syncDebounce = Timer(const Duration(milliseconds: 1800), () {
+      performBidirectionalSync(silent: silent);
+    });
+  }
+
+  /// Cancels any pending debounced sync.
+  void cancelDebouncedSync() {
+    _syncDebounce?.cancel();
   }
 
   void setCurrentTool(ToolType tool) {
@@ -214,10 +289,8 @@ class AppProvider extends ChangeNotifier {
 
     // Trigger sync ONLY if switching to hand tool and in active session
     if (tool == ToolType.cursor && currentSessionCode != null) {
-      debugPrint("DEBUG: AppProvider switching to Hand Tool. Triggering Manual Sync Logic...");
-      SchedulerBinding.instance.addPostFrameCallback((_) {
-        performBidirectionalSync();
-      });
+      debugPrint("DEBUG: AppProvider switching to Hand Tool. Triggering Debounced Sync...");
+      triggerDebouncedSync(silent: true);
     }
   }
 
@@ -386,10 +459,19 @@ class AppProvider extends ChangeNotifier {
 
   Future<void> _initialize() async {
     await _loadState();
-    // Start user monitor if we have a persisted user
+    
+    // SYNC: Ensure all SharedPreferences folders exist in Isar
+    await _syncFoldersWithIsar();
+
+    // Load tasks from Isar
+    await _loadTasks();
+    
+    // STARTUP SECURITY GUARD: Verify account still exists if we have a saved session
+    // (Optimistic UI: we no longer block on this! Verification happens silently in MainLayout)
     if (_currentUser != null) {
       _startUserMonitor(_currentUser!.uid);
     }
+    
     _initCompleter.complete();
   }
 
@@ -422,6 +504,39 @@ class AppProvider extends ChangeNotifier {
   bool get isGlobalLogout => _isGlobalLogout;
   bool get isKicked => _isKicked;
 
+  // ─── OPTIMISTIC UI / SILENT ACCOUNT VERIFICATION ───────────────────────────
+  Future<void> verifyAccountStatusSilently(BuildContext context) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? _currentUser?.uid;
+    if (uid == null) return;
+    
+    try {
+      final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final isActive = doc.data()?['isActive'] ?? true; // fallback to true
+      
+      if (!doc.exists || isActive == false) {
+        debugPrint('🚫 Background Verification Guard: Account invalid or suspended.');
+        await FirebaseAuth.instance.signOut();
+        _currentUser = null;
+        await _saveState();
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("تم تسجيل الخروج. الحساب غير موجود أو تم إيقافه."),
+              backgroundColor: Colors.red,
+            ),
+          );
+          // Navigate back to LoginScreen
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const LoginScreen()),
+            (route) => false,
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint("Silent verification failed: \$e");
+    }
+  }
+
   void clearForcedLogoutReason() {
     _forcedLogoutReason = null;
     _isGlobalLogout = false;
@@ -451,6 +566,7 @@ class AppProvider extends ChangeNotifier {
   void setCurrentUser(AppUser user) {
     _currentUser = user;
     _startUserMonitor(user.uid);
+    _saveState(); // PERSISTENT LOGIN: Save user on set
     _notify();
   }
 
@@ -731,10 +847,22 @@ class AppProvider extends ChangeNotifier {
   static const String _prefsKeyGeminiApiKey = 'pdfreader_gemini_api_key';
   static const String _prefsKeyGroqApiKey = 'pdfreader_groq_api_key';
   static const String _prefsKeyPdfSessionCodes = 'pdfreader_session_codes';
+  static const String _prefsKeyUser = 'pdfreader_user';
 
   Future<void> _loadState() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+
+      // Load User Session (Auto-Login)
+      final userJson = prefs.getString(_prefsKeyUser);
+      if (userJson != null) {
+        try {
+          _currentUser = AppUser.fromJson(jsonDecode(userJson));
+          debugPrint('✅ Auto-Login: Loaded user ${_currentUser?.username}');
+        } catch (e) {
+          debugPrint('⚠️ Error decoding user session: $e');
+        }
+      }
 
       // Load Classes
       final classesJson = prefs.getString(_prefsKeyClasses);
@@ -893,6 +1021,13 @@ class AppProvider extends ChangeNotifier {
       
       // Save session codes
       await prefs.setString(_prefsKeyPdfSessionCodes, jsonEncode(_pdfSessionCodes));
+
+      // Save user session
+      if (_currentUser != null) {
+        await prefs.setString(_prefsKeyUser, jsonEncode(_currentUser!.toJson()));
+      } else {
+        await prefs.remove(_prefsKeyUser);
+      }
     } catch (e) {
       debugPrint('Error saving state: $e');
     } finally {
@@ -1045,6 +1180,79 @@ class AppProvider extends ChangeNotifier {
       }
     }
   }
+  
+  /// Student-facing manual join: Fetches session metadata by [code],
+  /// searches local classes for the required fileHash, activates it,
+  /// and connects to the sync session.
+  Future<String?> joinSession(String code) async {
+    if (code.isEmpty) return 'يرجى إدخال كود الدرس.';
+    if (_currentUser == null) return 'يرجى تسجيل الدخول أولاً.';
+
+    _isJoiningSession = true;
+    _notify();
+
+    try {
+      // 1. Fetch session security/metadata to get the fileHash
+      final sessionDoc = await _syncService.watchSessionSecurity(code.trim().toUpperCase()).first;
+      
+      if (sessionDoc['exists'] == false) {
+        return 'الكود غير صحيح أو الجلسة منتهية.';
+      }
+
+      final targetHash = sessionDoc['fileHash'] as String?;
+      final targetPageCount = (sessionDoc['pageCount'] as num?)?.toInt();
+
+      if (targetHash == null || targetPageCount == null) {
+        return 'بيانات الجلسة غير مكتملة على الخادم.';
+      }
+
+      // 2. Search local classes for this hash
+      PdfItem? matchingPdf;
+      String? matchingClassId;
+
+      for (final cls in _classes) {
+        for (final p in cls.pdfs) {
+          if (p.fileHash == targetHash) {
+            matchingPdf = p;
+            matchingClassId = cls.id;
+            break;
+          }
+        }
+        if (matchingPdf != null) break;
+      }
+
+      if (matchingPdf == null) {
+        return 'الملف المطلوب ($targetHash) غير موجود في مجلداتك. يرجى التأكد من إضافة الملف أولاً.';
+      }
+
+      // 3. Activate the PDF
+      setActiveClass(matchingClassId!);
+      setActivePdf(matchingPdf.id);
+
+      // 4. Perform the actual join
+      final error = await _syncService.joinSession(
+        code: code.trim().toUpperCase(),
+        uid: _currentUser!.uid,
+        username: _currentUser!.username,
+        studentFileHash: targetHash,
+        studentPageCount: targetPageCount,
+      );
+
+      if (error == null) {
+        setSessionCode(code.trim().toUpperCase());
+        debugPrint('DEBUG: Manual Join Success ($code) for ${matchingPdf.name}.');
+        return null; // Success
+      } else {
+        return error;
+      }
+    } catch (e) {
+      debugPrint('ERROR: joinSession failed: $e');
+      return 'حدث خطأ أثناء الاتصال بالخادم: $e';
+    } finally {
+      _isJoiningSession = false;
+      _notify();
+    }
+  }
 
   // WINDOWS FILE ASSOCIATION: Load PDF file from command-line path
   Future<void> loadPdfFromPath(String filePath) async {
@@ -1117,9 +1325,9 @@ class AppProvider extends ChangeNotifier {
     }
   }
 
-  void addClass(String name) {
+  void addClass(String name, {String? uuid}) {
     final newClass = ClassItem(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: uuid ?? DateTime.now().millisecondsSinceEpoch.toString(),
       name: name,
       pdfs: [],
     );
@@ -1129,6 +1337,74 @@ class AppProvider extends ChangeNotifier {
     }
     _saveState();
     _notify();
+  }
+
+  Future<void> _syncFoldersWithIsar() async {
+    try {
+      final fileService = FileManagerService();
+      if (!fileService.isInitialized) await fileService.init();
+
+      final fileIsar = fileService.isar;
+      // Get folders from Isar
+      final existingFolders = await fileIsar.classFolders.where().findAll();
+      final currentClassIds = _classes.map((c) => c.id).toSet();
+
+      bool changed = false;
+
+      // 1. Cleanup Orphans: Delete from Isar if not in AppProvider
+      final orphans = existingFolders.where((f) => !currentClassIds.contains(f.uuid)).toList();
+      if (orphans.isNotEmpty) {
+        await fileIsar.writeTxn(() async {
+          for (final orphan in orphans) {
+            await fileIsar.classFolders.delete(orphan.id);
+            debugPrint('Sync: Deleted orphaned Isar folder "${orphan.name}".');
+          }
+        });
+        changed = true;
+      }
+
+      // 2. Sync/Migrate from AppProvider to Isar
+      for (final cls in _classes) {
+        final existingInIsar = existingFolders.cast<ClassFolder?>().firstWhere(
+          (f) => f?.uuid == cls.id,
+          orElse: () => null,
+        );
+
+        final pdfIds = cls.pdfs.map((p) => p.id).toList();
+
+        if (existingInIsar == null) {
+          // Create new
+          final newFolder = ClassFolder.create(
+            uuid: cls.id,
+            name: cls.name,
+            orderIndex: existingFolders.length,
+            pdfIds: pdfIds,
+          );
+          await fileIsar.writeTxn(() async {
+            await fileIsar.classFolders.put(newFolder);
+          });
+          existingFolders.add(newFolder);
+          changed = true;
+          debugPrint('Sync: Migrated class "${cls.name}" with ${pdfIds.length} PDFs to Isar.');
+        } else {
+          // Update PDF IDs if they differ (to fix zero count issue)
+          if (!listEquals(existingInIsar.pdfIds, pdfIds)) {
+            existingInIsar.pdfIds = pdfIds;
+            await fileIsar.writeTxn(() async {
+              await fileIsar.classFolders.put(existingInIsar);
+            });
+            changed = true;
+            debugPrint('Sync: Updated PDF IDs for "${cls.name}" (${pdfIds.length} files).');
+          }
+        }
+      }
+
+      if (changed) {
+        fileService.notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Error syncing folders with Isar: $e');
+    }
   }
 
   void reorderClasses(int oldIndex, int newIndex) {
@@ -1189,21 +1465,24 @@ class AppProvider extends ChangeNotifier {
     for (var cls in _classes) {
       var pdfIndex = cls.pdfs.indexWhere((p) => p.id == pdfId);
       if (pdfIndex != -1) {
-        cls.pdfs[pdfIndex].highlights.add(highlight);
+        final newH = highlight.copyWith(
+          updatedAt: DateTime.now().millisecondsSinceEpoch,
+          isSynced: false,
+        );
+        cls.pdfs[pdfIndex].highlights.add(newH);
         // سجل الإضافة في سجل العمليات
         _actionHistory.add(
           ActionRecord(
             pdfId: pdfId,
             actionType: ActionTypes.ACTION_ADD_HIGHLIGHT,
-            itemId: highlight.id,
-            newState: highlight.toJson(),
+            itemId: newH.id,
+            newState: newH.toJson(),
           ),
         );
-        debugPrint('📝 Action recorded: highlight ${highlight.id}');
+        debugPrint('📝 Action recorded: highlight ${newH.id}');
         _redoHistory.clear();
-        _saveState();
         _notify();
-        _triggerSync(cls.pdfs[pdfIndex].fileHash ?? '');
+        triggerDebouncedSync(silent: true);
         return;
       }
     }
@@ -1236,6 +1515,12 @@ class AppProvider extends ChangeNotifier {
       if (pdf.id.isEmpty) continue;
 
       pdf.highlights.remove(highlight);
+      
+      // Track deletion for Sync Reconciliation (Anti-Resurrection)
+      if (pdf.fileHash != null) {
+        _locallyDeletedIds.putIfAbsent(pdf.fileHash!, () => <String>{}).add(highlight.id);
+      }
+
       _notify();
       _saveTimer?.cancel();
       _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
@@ -1279,21 +1564,27 @@ class AppProvider extends ChangeNotifier {
       );
       if (pdf.id.isEmpty) continue;
 
-      pdf.comments.add(comment);
+      final newC = comment.copyWith(
+        updatedAt: DateTime.now().millisecondsSinceEpoch,
+        isSynced: false,
+      );
+      pdf.comments.add(newC);
       // سجل الإضافة في سجل العمليات
       _actionHistory.add(
         ActionRecord(
           pdfId: pdfId,
           actionType: ActionTypes.ACTION_ADD_COMMENT,
-          itemId: comment.id,
-          newState: comment.toJson(),
+          itemId: newC.id,
+          newState: newC.toJson(),
         ),
       );
-      debugPrint('📝 Action recorded: comment ${comment.id}');
+      debugPrint('📝 Action recorded: comment ${newC.id}');
       _redoHistory.clear();
       _notify();
       _saveTimer?.cancel();
       _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
+      
+      triggerDebouncedSync(silent: true);
       return;
     }
   }
@@ -1307,6 +1598,12 @@ class AppProvider extends ChangeNotifier {
       if (pdf.id.isEmpty) continue;
 
       pdf.comments.removeWhere((c) => c.id == comment.id);
+
+      // Track deletion for Sync Reconciliation
+      if (pdf.fileHash != null) {
+        _locallyDeletedIds.putIfAbsent(pdf.fileHash!, () => <String>{}).add(comment.id);
+      }
+
       _notify();
       _saveTimer?.cancel();
       _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
@@ -1318,8 +1615,25 @@ class AppProvider extends ChangeNotifier {
           debugPrint('❌ deleteComment failed: $e');
         });
       } else {
-        _triggerSync(pdf.fileHash ?? '');
+        triggerDebouncedSync(silent: true);
       }
+      return;
+    }
+  }
+
+  /// Removes a comment by its string [id] — used during bidirectional sync cleanup.
+  void removeCommentById(String pdfId, String commentId) {
+    for (var cls in _classes) {
+      var pdf = cls.pdfs.firstWhere(
+        (p) => p.id == pdfId,
+        orElse: () => PdfItem(id: '', name: '', path: ''),
+      );
+      if (pdf.id.isEmpty) continue;
+
+      pdf.comments.removeWhere((c) => c.id == commentId);
+      _notify();
+      _saveTimer?.cancel();
+      _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
       return;
     }
   }
@@ -1338,6 +1652,7 @@ class AppProvider extends ChangeNotifier {
       _actionHistory.removeWhere((a) => a.pdfId == pdfId);
       _redoHistory.removeWhere((a) => a.pdfId == pdfId);
 
+      _locallyDeletedIds[pdf.fileHash!]?.clear();
       _notify();
       _saveTimer?.cancel();
       _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
@@ -1353,7 +1668,7 @@ class AppProvider extends ChangeNotifier {
         debugPrint('DEBUG: Cleared server annotations for $fileHash (session: $sessionCode).');
       } else {
         // No session — standard buffered sync (will push empty list)
-        _triggerSync(fileHash ?? '');
+        triggerDebouncedSync(silent: true);
       }
       return;
     }
@@ -1391,7 +1706,7 @@ class AppProvider extends ChangeNotifier {
       _notify();
       _saveTimer?.cancel();
       _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
-      _triggerSync(pdf.fileHash ?? '');
+      triggerDebouncedSync(silent: true);
       return;
     }
   }
@@ -1418,7 +1733,7 @@ class AppProvider extends ChangeNotifier {
       _notify();
       _saveTimer?.cancel();
       _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
-      _triggerSync(pdf.fileHash ?? '');
+      triggerDebouncedSync(silent: true);
       return;
     }
   }
@@ -1474,11 +1789,15 @@ class AppProvider extends ChangeNotifier {
 
       final index = pdf.comments.indexWhere((c) => c.id == oldComment.id);
       if (index != -1) {
-        pdf.comments[index] = newComment;
+        final updated = newComment.copyWith(
+          updatedAt: DateTime.now().millisecondsSinceEpoch,
+          isSynced: false,
+        );
+        pdf.comments[index] = updated;
         // سجل التعديل في سجل العمليات
         recordUpdate(
           pdfId: pdfId,
-          itemId: oldComment.id,
+          itemId: updated.id,
           actionType: ActionTypes.ACTION_UPDATE_COMMENT,
           oldState: {
             'content': oldComment.content,
@@ -1511,6 +1830,7 @@ class AppProvider extends ChangeNotifier {
             },
           },
         );
+        triggerDebouncedSync(silent: true);
       }
       return;
     }
@@ -1553,6 +1873,9 @@ class AppProvider extends ChangeNotifier {
         final idx = pdf.highlights.indexWhere((h) => h.id == action.itemId);
         if (idx != -1) {
           final removed = pdf.highlights.removeAt(idx);
+          if (pdf.fileHash != null) {
+            _locallyDeletedIds.putIfAbsent(pdf.fileHash!, () => <String>{}).add(action.itemId);
+          }
           _redoHistory.add(
             ActionRecord(
               pdfId: action.pdfId,
@@ -1568,6 +1891,9 @@ class AppProvider extends ChangeNotifier {
         final idx = pdf.comments.indexWhere((c) => c.id == action.itemId);
         if (idx != -1) {
           final removed = pdf.comments.removeAt(idx);
+          if (pdf.fileHash != null) {
+            _locallyDeletedIds.putIfAbsent(pdf.fileHash!, () => <String>{}).add(action.itemId);
+          }
           _redoHistory.add(
             ActionRecord(
               pdfId: action.pdfId,
@@ -1592,7 +1918,10 @@ class AppProvider extends ChangeNotifier {
                 newState: action.oldState,
               ),
             );
-            final restored = Highlight.fromJson(action.oldState!);
+            final restored = Highlight.fromJson(action.oldState!).copyWith(
+              updatedAt: DateTime.now().millisecondsSinceEpoch,
+              isSynced: false,
+            );
             pdf.highlights[idx] = restored;
             debugPrint('🔙 Undo: Restored highlight ${action.itemId}');
           }
@@ -1612,7 +1941,10 @@ class AppProvider extends ChangeNotifier {
                 newState: action.oldState,
               ),
             );
-            final restored = PdfComment.fromJson(action.oldState!);
+            final restored = PdfComment.fromJson(action.oldState!).copyWith(
+              updatedAt: DateTime.now().millisecondsSinceEpoch,
+              isSynced: false,
+            );
             pdf.comments[idx] = restored;
             debugPrint('🔙 Undo: Restored comment ${action.itemId}');
           }
@@ -1620,8 +1952,14 @@ class AppProvider extends ChangeNotifier {
         break;
       case ActionTypes.ACTION_DELETE_HIGHLIGHT:
         if (action.newState != null) {
-          final restored = Highlight.fromJson(action.newState!);
+          final restored = Highlight.fromJson(action.newState!).copyWith(
+            updatedAt: DateTime.now().millisecondsSinceEpoch,
+            isSynced: false,
+          );
           pdf.highlights.add(restored);
+          if (pdf.fileHash != null) {
+            _locallyDeletedIds[pdf.fileHash!]?.remove(action.itemId);
+          }
           _redoHistory.add(
             ActionRecord(
               pdfId: action.pdfId,
@@ -1635,8 +1973,14 @@ class AppProvider extends ChangeNotifier {
         break;
       case ActionTypes.ACTION_DELETE_COMMENT:
         if (action.newState != null) {
-          final restored = PdfComment.fromJson(action.newState!);
+          final restored = PdfComment.fromJson(action.newState!).copyWith(
+            updatedAt: DateTime.now().millisecondsSinceEpoch,
+            isSynced: false,
+          );
           pdf.comments.add(restored);
+          if (pdf.fileHash != null) {
+            _locallyDeletedIds[pdf.fileHash!]?.remove(action.itemId);
+          }
           _redoHistory.add(
             ActionRecord(
               pdfId: action.pdfId,
@@ -1653,7 +1997,7 @@ class AppProvider extends ChangeNotifier {
     _saveTimer?.cancel();
     _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
     _notify();
-    _triggerSync(pdf.fileHash ?? '');
+    triggerDebouncedSync(silent: true);
   }
 
   void redoLastAction() {
@@ -1683,16 +2027,28 @@ class AppProvider extends ChangeNotifier {
     switch (action.actionType) {
       case ActionTypes.ACTION_ADD_HIGHLIGHT:
         if (action.newState != null) {
-          final restored = Highlight.fromJson(action.newState!);
+          final restored = Highlight.fromJson(action.newState!).copyWith(
+            updatedAt: DateTime.now().millisecondsSinceEpoch,
+            isSynced: false,
+          );
           pdf.highlights.add(restored);
+          if (pdf.fileHash != null) {
+            _locallyDeletedIds[pdf.fileHash!]?.remove(action.itemId);
+          }
           _actionHistory.add(action);
           debugPrint('↪️ Redo: Restored highlight ${action.itemId}');
         }
         break;
       case ActionTypes.ACTION_ADD_COMMENT:
         if (action.newState != null) {
-          final restored = PdfComment.fromJson(action.newState!);
+          final restored = PdfComment.fromJson(action.newState!).copyWith(
+            updatedAt: DateTime.now().millisecondsSinceEpoch,
+            isSynced: false,
+          );
           pdf.comments.add(restored);
+          if (pdf.fileHash != null) {
+            _locallyDeletedIds[pdf.fileHash!]?.remove(action.itemId);
+          }
           _actionHistory.add(action);
           debugPrint('↪️ Redo: Restored comment ${action.itemId}');
         }
@@ -1710,7 +2066,10 @@ class AppProvider extends ChangeNotifier {
                 newState: action.oldState,
               ),
             );
-            final restored = Highlight.fromJson(action.oldState!);
+            final restored = Highlight.fromJson(action.oldState!).copyWith(
+              updatedAt: DateTime.now().millisecondsSinceEpoch,
+              isSynced: false,
+            );
             pdf.highlights[idx] = restored;
             debugPrint('↪️ Redo: Restored highlight ${action.itemId}');
           }
@@ -1730,7 +2089,10 @@ class AppProvider extends ChangeNotifier {
                 newState: action.oldState,
               ),
             );
-            final restored = PdfComment.fromJson(action.oldState!);
+            final restored = PdfComment.fromJson(action.oldState!).copyWith(
+              updatedAt: DateTime.now().millisecondsSinceEpoch,
+              isSynced: false,
+            );
             pdf.comments[idx] = restored;
             debugPrint('↪️ Redo: Restored comment ${action.itemId}');
           }
@@ -1741,6 +2103,9 @@ class AppProvider extends ChangeNotifier {
           final idx = pdf.highlights.indexWhere((h) => h.id == action.itemId);
           if (idx != -1) {
             final removed = pdf.highlights.removeAt(idx);
+            if (pdf.fileHash != null) {
+              _locallyDeletedIds.putIfAbsent(pdf.fileHash!, () => <String>{}).add(action.itemId);
+            }
             _actionHistory.add(
               ActionRecord(
                 pdfId: action.pdfId,
@@ -1758,6 +2123,9 @@ class AppProvider extends ChangeNotifier {
           final idx = pdf.comments.indexWhere((c) => c.id == action.itemId);
           if (idx != -1) {
             final removed = pdf.comments.removeAt(idx);
+            if (pdf.fileHash != null) {
+              _locallyDeletedIds.putIfAbsent(pdf.fileHash!, () => <String>{}).add(action.itemId);
+            }
             _actionHistory.add(
               ActionRecord(
                 pdfId: action.pdfId,
@@ -1775,7 +2143,7 @@ class AppProvider extends ChangeNotifier {
     _saveTimer?.cancel();
     _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
     _notify();
-    _triggerSync(pdf.fileHash ?? '');
+    triggerDebouncedSync(silent: true);
   }
 
   void clearActionHistory() {
@@ -2100,7 +2468,11 @@ class AppProvider extends ChangeNotifier {
     List<Highlight> updatedHighlights = [];
     for (var h in pdf.highlights) {
       if (h.page > deletedPageNum) {
-        updatedHighlights.add(h.copyWith(page: h.page - 1));
+        updatedHighlights.add(h.copyWith(
+          page: h.page - 1,
+          updatedAt: DateTime.now().millisecondsSinceEpoch,
+          isSynced: false,
+        ));
       } else {
         updatedHighlights.add(h);
       }
@@ -2112,7 +2484,11 @@ class AppProvider extends ChangeNotifier {
     List<PdfComment> updatedComments = [];
     for (var c in pdf.comments) {
       if (c.page > deletedPageNum) {
-        updatedComments.add(c.copyWith(page: c.page - 1));
+        updatedComments.add(c.copyWith(
+          page: c.page - 1,
+          updatedAt: DateTime.now().millisecondsSinceEpoch,
+          isSynced: false,
+        ));
       } else {
         updatedComments.add(c);
       }
@@ -2274,6 +2650,42 @@ class AppProvider extends ChangeNotifier {
 
     _saveState();
     _notify();
+  }
+
+  // ─── STUDY TASKS ───────────────────────────────────────────────────────────
+  List<StudyTask> _tasks = [];
+  List<StudyTask> get tasks => _tasks;
+
+  Future<void> _loadTasks() async {
+    final fileService = FileManagerService();
+    try {
+      _tasks = await fileService.getAllTasks();
+      _notify();
+    } catch (e) {
+      debugPrint('Error loading tasks: $e');
+    }
+  }
+
+  Future<void> addTask(String title) async {
+    final newTask = StudyTask.create(title: title);
+    _tasks.add(newTask);
+    _notify();
+    await FileManagerService().saveTask(newTask);
+  }
+
+  Future<void> toggleTask(String uuid) async {
+    final index = _tasks.indexWhere((t) => t.uuid == uuid);
+    if (index != -1) {
+      _tasks[index].isDone = !_tasks[index].isDone;
+      _notify();
+      await FileManagerService().saveTask(_tasks[index]);
+    }
+  }
+
+  Future<void> deleteTask(String uuid) async {
+    _tasks.removeWhere((t) => t.uuid == uuid);
+    _notify();
+    await FileManagerService().deleteTaskByUuid(uuid);
   }
 
   @override

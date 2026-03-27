@@ -68,6 +68,7 @@ class FileManagerService extends ChangeNotifier {
         PdfDocumentSchema,
         PdfSnapshotSchema,
         TrashItemSchema,
+        StudyTaskSchema,
       ], directory: dbDir.path);
 
       _isInitialized = true;
@@ -505,5 +506,28 @@ class FileManagerService extends ChangeNotifier {
   Future<List<TrashItem>> getTrashItems() async {
     if (!_isInitialized) await init();
     return _isar.trashItems.where().sortByDeletedAtDesc().findAll();
+  }
+
+  // ── 6. Study Tasks ────────────────────────────────────────────────────────
+
+  Future<List<StudyTask>> getAllTasks() async {
+    if (!_isInitialized) await init();
+    return _isar.studyTasks.where().sortByCreatedAt().findAll();
+  }
+
+  Future<void> saveTask(StudyTask task) async {
+    if (!_isInitialized) await init();
+    await _isar.writeTxn(() async {
+      await _isar.studyTasks.put(task);
+    });
+    _notify();
+  }
+
+  Future<void> deleteTaskByUuid(String uuid) async {
+    if (!_isInitialized) await init();
+    await _isar.writeTxn(() async {
+      await _isar.studyTasks.filter().uuidEqualTo(uuid).deleteFirst();
+    });
+    _notify();
   }
 }
