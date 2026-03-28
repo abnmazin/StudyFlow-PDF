@@ -28,7 +28,7 @@ We are building a **Flutter PDF annotation app** (desktop + tablet) using the [`
 ## 🏗️ PROJECT STRUCTURE
 
 ```
-pdfreader/
+StudyFlowPdf/
 ├── lib/
 │   ├── widgets/
 │   │   ├── pdf_viewer_widget_w.dart          ← main widget (~900 lines)

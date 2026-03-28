@@ -5,7 +5,6 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../screens/auth/login_screen.dart';
-import 'viewer_components/join_master_modal.dart';
 
 class GlobalSettingsModal extends StatefulWidget {
   const GlobalSettingsModal({super.key});
@@ -18,33 +17,357 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
   final Set<String> _selectedHashes = {};
   bool _isGenerating = false;
   String? _generatedMasterCode;
-
-  // منطق التبديل للوحة المطور
   bool _showDevDashboard = false;
+
+  final TextEditingController _joinCodeController = TextEditingController();
+  bool _isJoining = false;
+
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  @override
+  void dispose() {
+    _joinCodeController.dispose();
+    super.dispose();
+  }
+
+  // ─── ميثودات التحكم بالحزم (قفل، حظر، حذف) ──────────────────────────────────
+
+  Future<void> _joinMasterBundle(AppProvider app) async {
+    final code = _joinCodeController.text.trim();
+    if (code.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('الرجاء إدخال كود الحزمة')));
+      return;
+    }
+
+    setState(() => _isJoining = true);
+
+    try {
+      final bundleDoc = await app.syncService.getMasterBundle(code);
+      if (bundleDoc == null) {
+        throw Exception('كود الحزمة غير صحيح أو لا يوجد');
+      }
+
+      final bundleList = bundleDoc['bundle'] as List<dynamic>? ?? [];
+      final bool isLocked = bundleDoc['isLocked'] as bool? ?? false;
+      final List bannedUsernames = bundleDoc['bannedUsernames'] as List? ?? [];
+      final String? currentUsername = app.currentUser?.username;
+
+      if (isLocked) {
+        throw Exception('هذه الحزمة مغلقة حالياً من قبل المحاضر.');
+      }
+
+      if (currentUsername != null &&
+          bannedUsernames.contains(currentUsername)) {
+        throw Exception('لقد تم حظرك من الوصول إلى محتويات هذه الحزمة.');
+      }
+
+      if (currentUsername != null) {
+        await app.syncService.registerMasterBundleActivation(
+          code,
+          currentUsername,
+        );
+      }
+
+      final result = app.linkMasterBundle(bundleList);
+      final int successCount = result['successCount'] ?? 0;
+      final List<String> missingFiles = List<String>.from(
+        result['missingFiles'] ?? [],
+      );
+
+      if (mounted) {
+        _joinCodeController.clear();
+        _showJoinSummaryDialog(context, successCount, missingFiles);
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'خطأ: ${e.toString().replaceAll("Exception:", "").trim()}',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isJoining = false);
+      }
+    }
+  }
+
+  void _showJoinSummaryDialog(
+    BuildContext context,
+    int successCount,
+    List<String> missingFiles,
+  ) {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        return AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+          title: const Row(
+            children: [
+              Icon(LucideIcons.checkCircle, color: Colors.green),
+              SizedBox(width: 8),
+              Text('نتيجة الربط'),
+            ],
+          ),
+          content: SizedBox(
+            width: 320,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'تم ربط ($successCount) ملفات بنجاح. 🔗',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                if (missingFiles.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  const Row(
+                    children: [
+                      Icon(
+                        LucideIcons.alertTriangle,
+                        color: Colors.orange,
+                        size: 18,
+                      ),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'تنبيه: الملفات التالية غير متوفرة بجهازك:',
+                          style: TextStyle(
+                            color: Colors.orange,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    constraints: const BoxConstraints(maxHeight: 150),
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.black12 : Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: missingFiles.length,
+                      itemBuilder: (context, index) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Text(
+                            '- ${missingFiles[index]}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDark ? Colors.white70 : Colors.black87,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('موافق'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _toggleLock(AppProvider app, String docId, bool status) async {
+    await app.syncService.toggleMasterBundleLock(docId, status);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(status ? 'تم قفل الحزمة' : 'تم فتح الحزمة')),
+      );
+    }
+  }
+
+  void _manageBannedUsers(
+    BuildContext context,
+    AppProvider app,
+    String bundleId,
+    List<String> activators,
+    List<String> bannedUsernames,
+  ) {
+    final controller = TextEditingController();
+    final allStudents = <String>{...activators, ...bannedUsernames}.toList()
+      ..sort();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('إدارة مستخدمي الحزمة'),
+          content: SizedBox(
+            width: 320,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: controller,
+                        decoration: const InputDecoration(
+                          hintText: 'حظر يوزر يدوي...',
+                          isDense: true,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(
+                        LucideIcons.userPlus,
+                        color: Colors.blue,
+                      ),
+                      onPressed: () async {
+                        final name = controller.text.trim();
+                        if (name.isNotEmpty) {
+                          await app.syncService.banUserFromMasterBundle(
+                            bundleId,
+                            name,
+                          );
+                          controller.clear();
+                          Navigator.pop(ctx);
+                        }
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'قائمة الطلاب النشطين والمحظورين:',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                if (allStudents.isEmpty)
+                  const Text(
+                    'لا يوجد مسجلون.',
+                    style: TextStyle(color: Colors.grey, fontSize: 10),
+                  )
+                else
+                  Flexible(
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: allStudents.length,
+                      itemBuilder: (context, index) {
+                        final username = allStudents[index];
+                        final isBanned = bannedUsernames.contains(username);
+                        return ListTile(
+                          dense: true,
+                          title: Text(
+                            username,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isBanned ? Colors.red : null,
+                              decoration: isBanned
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                            ),
+                          ),
+                          trailing: IconButton(
+                            icon: Icon(
+                              isBanned
+                                  ? LucideIcons.userCheck
+                                  : LucideIcons.userX,
+                              color: isBanned ? Colors.green : Colors.red,
+                              size: 16,
+                            ),
+                            onPressed: () async {
+                              if (isBanned)
+                                await app.syncService.unbanUserFromMasterBundle(
+                                  bundleId,
+                                  username,
+                                );
+                              else
+                                await app.syncService.banUserFromMasterBundle(
+                                  bundleId,
+                                  username,
+                                );
+                              Navigator.pop(ctx);
+                            },
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('إغلاق'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmDelete(
+    String collection,
+    String docId,
+    String itemType,
+  ) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('حذف $itemType'),
+        content: const Text('هل أنت متأكد؟ لا يمكن التراجع عن هذا الإجراء.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('تراجع'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('حذف نهائي'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      await _firestore.collection(collection).doc(docId).delete();
+    }
+  }
+
+  // ─── منطق إنشاء الحزمة ─────────────────────────────────────────────────────
 
   Future<void> _generateMasterBundle(AppProvider app) async {
     if (_selectedHashes.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('الرجاء تحديد ملف واحد على الأقل.')),
+        const SnackBar(content: Text('حدد ملفاً واحداً على الأقل.')),
       );
       return;
     }
-
     setState(() {
       _isGenerating = true;
       _generatedMasterCode = null;
     });
-
     try {
       final user = app.currentUser;
       if (user == null) throw Exception('Unauthorized');
-
       final List<Map<String, dynamic>> bundle = [];
-
       for (var cls in app.classes) {
         for (var pdf in cls.pdfs) {
           if (pdf.fileHash != null && _selectedHashes.contains(pdf.fileHash)) {
-            final sessionCode = await app.syncService.generateSessionCode(
+            final code = await app.syncService.generateSessionCode(
               pdf.fileHash!,
               pdf.name,
               pdf.pageCount ?? 0,
@@ -52,18 +375,15 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
               user.username,
               user.uid,
             );
-
-            if (sessionCode != null) {
+            if (code != null)
               bundle.add({
                 'hash': pdf.fileHash,
-                'sessionCode': sessionCode,
+                'sessionCode': code,
                 'name': pdf.name,
               });
-            }
           }
         }
       }
-
       final masterCode = await app.syncService.createMasterBundle(
         user.username,
         bundle,
@@ -199,7 +519,7 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
 
                         const SizedBox(height: 24),
                         _buildSectionHeader(
-                          'سجل الحزم السابقة',
+                          'سجل الحزم السابقة وإدارتها',
                           LucideIcons.history,
                           textMuted,
                         ),
@@ -221,20 +541,14 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                           textMuted,
                         ),
                         const SizedBox(height: 12),
-                        _buildSettingsCard(surfaceAlt, panelBorder, [
-                          _buildActionTile(
-                            icon: LucideIcons.link2,
-                            label: 'ربط حزمة دراسية (Master Bundle)',
-                            onTap: () {
-                              app.toggleSettings(false);
-                              showDialog(
-                                context: context,
-                                builder: (context) => const JoinMasterModal(),
-                              );
-                            },
-                            textPrimary: textPrimary,
-                          ),
-                        ]),
+                        _buildCompactJoinCard(
+                          context,
+                          app,
+                          surfaceAlt,
+                          panelBorder,
+                          textPrimary,
+                          textMuted,
+                        ),
                       ],
 
                       if (app.currentUser?.role == 'developer') ...[
@@ -249,36 +563,14 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                           _buildActionTile(
                             icon: LucideIcons.shieldCheck,
                             label: 'إدارة النظام (Dashboard)',
-                            onTap: () {
-                              setState(() => _showDevDashboard = true);
-                            },
+                            onTap: () =>
+                                setState(() => _showDevDashboard = true),
                             textPrimary: textPrimary,
                           ),
                         ]),
                       ],
                       const SizedBox(height: 32),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: () => _confirmLogout(context, app),
-                          icon: const Icon(
-                            LucideIcons.logOut,
-                            size: 18,
-                            color: Color(0xFFDC2626),
-                          ),
-                          label: const Text(
-                            'تسجيل الخروج',
-                            style: TextStyle(color: Color(0xFFDC2626)),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: Color(0xFFDC2626)),
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        ),
-                      ),
+                      _buildLogoutButton(context, app),
                       const SizedBox(height: 24),
                     ],
                   ),
@@ -293,7 +585,6 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('تسجيل الخروج؟'),
-        content: const Text('هل أنت متأكد من رغبتك في تسجيل الخروج؟'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -311,14 +602,14 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                 (route) => false,
               );
             },
-            child: const Text('تسجيل خروج'),
+            child: const Text('خروج'),
           ),
         ],
       ),
     );
   }
 
-  // --- ميثودات مساعدة (Helper Widgets) ---
+  // ─── عناصر واجهة السجل مع أزرار التحكم ───────────────────────────────────────
 
   Widget _buildMasterBundleHistory(
     AppProvider app,
@@ -343,7 +634,7 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
             return Padding(
               padding: const EdgeInsets.all(16),
               child: Text(
-                'لا توجد حزم سابقة.',
+                'لا توجد حزم.',
                 style: TextStyle(color: muted, fontSize: 13),
               ),
             );
@@ -352,6 +643,7 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
             children: bundles.map((data) {
               final files = data['bundle'] as List? ?? [];
               final bool isLocked = data['isLocked'] as bool? ?? false;
+              final docId = data['id'] ?? data['masterCode'];
 
               return ExpansionTile(
                 title: Row(
@@ -366,31 +658,57 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                     ),
                     if (isLocked) ...[
                       const SizedBox(width: 8),
-                      const Icon(LucideIcons.lock, size: 14, color: Colors.red),
+                      const Icon(LucideIcons.lock, size: 12, color: Colors.red),
                     ],
                   ],
                 ),
                 subtitle: Text(
-                  'عدد الملفات: ${files.length}',
-                  style: TextStyle(color: muted, fontSize: 11),
+                  'ملفات: ${files.length}',
+                  style: TextStyle(color: muted, fontSize: 10),
                 ),
                 leading: Icon(
                   LucideIcons.package,
                   size: 18,
                   color: isLocked ? Colors.red : Colors.orange,
                 ),
-                trailing: IconButton(
-                  icon: const Icon(
-                    LucideIcons.copy,
-                    size: 16,
-                    color: Colors.blue,
-                  ),
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: data['masterCode']));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('تم نسخ الكود')),
-                    );
-                  },
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: Icon(
+                        isLocked ? LucideIcons.unlock : LucideIcons.lock,
+                        size: 16,
+                        color: isLocked ? Colors.green : Colors.red,
+                      ),
+                      onPressed: () => _toggleLock(app, docId, !isLocked),
+                      tooltip: isLocked ? 'فتح الحزمة' : 'قفل الحزمة',
+                    ),
+                    IconButton(
+                      icon: const Icon(
+                        LucideIcons.userX,
+                        size: 16,
+                        color: Colors.amber,
+                      ),
+                      onPressed: () => _manageBannedUsers(
+                        context,
+                        app,
+                        docId,
+                        List<String>.from(data['activators'] ?? []),
+                        List<String>.from(data['bannedUsernames'] ?? []),
+                      ),
+                      tooltip: 'إدارة المحظورين',
+                    ),
+                    IconButton(
+                      icon: const Icon(
+                        LucideIcons.trash2,
+                        size: 16,
+                        color: Colors.redAccent,
+                      ),
+                      onPressed: () =>
+                          _confirmDelete('master_sessions', docId, 'الحزمة'),
+                      tooltip: 'حذف نهائي',
+                    ),
+                  ],
                 ),
                 children: files
                     .map(
@@ -411,6 +729,152 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
       ),
     ]);
   }
+
+  Widget _buildCompactJoinCard(
+    BuildContext context,
+    AppProvider app,
+    Color surface,
+    Color border,
+    Color text,
+    Color muted,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  LucideIcons.link2,
+                  color: Colors.blue,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'الارتباط بحزمة دراسية',
+                      style: TextStyle(
+                        color: text,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      'أدخل كود المنهج للوصول الفوري للملفات',
+                      style: TextStyle(color: muted, fontSize: 10),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _joinCodeController,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 2,
+                    color: Colors.blue,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'الكود هنا...',
+                    hintStyle: TextStyle(
+                      fontSize: 12,
+                      letterSpacing: 0,
+                      color: muted.withOpacity(0.5),
+                      fontWeight: FontWeight.normal,
+                    ),
+                    isDense: true,
+                    filled: true,
+                    fillColor: Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFF0F172A)
+                        : Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: border),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(
+                        color: Colors.blue,
+                        width: 2,
+                      ),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              SizedBox(
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: _isJoining ? null : () => _joinMasterBundle(app),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                  ),
+                  child: _isJoining
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          'ربط',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 13,
+                          ),
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── الهيلبرز المتبقية (بدون تغيير) ──────────────────────────────────────────
 
   Widget _buildMasterBundleCreator(
     AppProvider app,
@@ -491,7 +955,6 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                 }).toList(),
               );
             }).toList(),
-
             const SizedBox(height: 16),
             if (_generatedMasterCode != null) ...[
               Container(
@@ -503,10 +966,6 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(
-                      'كود الحزمة: ',
-                      style: TextStyle(color: text, fontSize: 13),
-                    ),
                     Text(
                       _generatedMasterCode!,
                       style: const TextStyle(
@@ -526,9 +985,6 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                         Clipboard.setData(
                           ClipboardData(text: _generatedMasterCode!),
                         );
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('تم نسخ الكود')),
-                        );
                       },
                     ),
                   ],
@@ -536,7 +992,6 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
               ),
               const SizedBox(height: 12),
             ],
-
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
@@ -555,10 +1010,6 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                     : const Icon(LucideIcons.plus, size: 18),
                 label: Text(
                   _isGenerating ? 'جاري الإنشاء...' : 'إنشاء حزمة دراسية',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                  ),
                 ),
                 style: FilledButton.styleFrom(
                   backgroundColor: Colors.blue,
@@ -572,84 +1023,81 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
     ]);
   }
 
-  Widget _buildSectionHeader(String title, IconData icon, Color color) {
-    return Row(
-      children: [
-        Icon(icon, size: 14, color: color),
-        const SizedBox(width: 8),
-        Text(
-          title,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-            color: color,
-            letterSpacing: 1.2,
+  Widget _buildLogoutButton(BuildContext context, AppProvider app) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: () => _confirmLogout(context, app),
+        icon: const Icon(
+          LucideIcons.logOut,
+          size: 18,
+          color: Color(0xFFDC2626),
+        ),
+        label: const Text(
+          'تسجيل الخروج',
+          style: TextStyle(color: Color(0xFFDC2626)),
+        ),
+        style: OutlinedButton.styleFrom(
+          side: const BorderSide(color: Color(0xFFDC2626)),
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
           ),
         ),
-      ],
-    );
-  }
-
-  Widget _buildSettingsCard(Color bg, Color border, List<Widget> children) {
-    return Card(
-      elevation: 0,
-      margin: EdgeInsets.zero,
-      color: bg,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: border),
       ),
-      child: Column(children: children),
     );
   }
 
+  Widget _buildSectionHeader(String title, IconData icon, Color color) => Row(
+    children: [
+      Icon(icon, size: 14, color: color),
+      const SizedBox(width: 8),
+      Text(
+        title,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          color: color,
+          letterSpacing: 1.2,
+        ),
+      ),
+    ],
+  );
+  Widget _buildSettingsCard(Color bg, Color border, List<Widget> children) =>
+      Card(
+        elevation: 0,
+        margin: EdgeInsets.zero,
+        color: bg,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: border),
+        ),
+        child: Column(children: children),
+      );
   Widget _buildToggleTile({
     required IconData icon,
     required String label,
     required bool value,
     required ValueChanged<bool> onChanged,
     required Color textPrimary,
-  }) {
-    return SwitchListTile(
-      value: value,
-      onChanged: onChanged,
-      activeColor: const Color(0xFF3B82F6),
-      title: Text(
-        label,
-        style: TextStyle(
-          color: textPrimary,
-          fontSize: 13,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-      secondary: Icon(icon, size: 20, color: textPrimary.withOpacity(0.7)),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-    );
-  }
-
+  }) => SwitchListTile(
+    value: value,
+    onChanged: onChanged,
+    activeColor: const Color(0xFF3B82F6),
+    title: Text(label, style: TextStyle(color: textPrimary, fontSize: 13)),
+    secondary: Icon(icon, size: 20, color: textPrimary.withOpacity(0.7)),
+  );
   Widget _buildActionTile({
     required IconData icon,
     required String label,
     required VoidCallback onTap,
-    bool isDanger = false,
     required Color textPrimary,
-  }) {
-    final color = isDanger ? const Color(0xFFF87171) : textPrimary;
-    return ListTile(
-      onTap: onTap,
-      leading: Icon(icon, size: 20, color: color),
-      title: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 13,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-      trailing: const Icon(LucideIcons.chevronLeft, size: 16),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-    );
-  }
+  }) => ListTile(
+    onTap: onTap,
+    leading: Icon(icon, size: 20, color: textPrimary),
+    title: Text(label, style: TextStyle(color: textPrimary, fontSize: 13)),
+    trailing: const Icon(LucideIcons.chevronLeft, size: 16),
+  );
 
   Widget _buildAiSettingsContent(
     BuildContext context,
@@ -661,30 +1109,10 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
   ) {
     final isDark = app.isDarkMode;
     const geminiModels = ['gemini-2.5-flash', 'gemini-2.0-flash'];
-    const groqModels = [
-      'llama-3.3-70b-versatile',
-      'llama-3.1-8b-instant',
-      'mixtral-8x7b-32768',
-    ];
-
+    const groqModels = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
     final selectedModel = app.aiProvider == 'groq'
         ? app.groqModel
         : app.geminiModel;
-    final modelItems = (app.aiProvider == 'groq' ? groqModels : geminiModels)
-        .map((m) => DropdownMenuItem(value: m, child: Text(m)))
-        .toList();
-
-    InputDecoration decor(String label) => InputDecoration(
-      labelText: label,
-      isDense: true,
-      filled: true,
-      fillColor: isDark ? const Color(0xFF0F172A) : Colors.white,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: BorderSide(color: panelBorder),
-      ),
-    );
-
     return Card(
       elevation: 0,
       margin: EdgeInsets.zero,
@@ -699,9 +1127,15 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
           children: [
             DropdownButtonFormField<String>(
               value: app.aiProvider,
-              decoration: decor('مزود الخدمة'),
+              decoration: InputDecoration(
+                labelText: 'المزود',
+                isDense: true,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
               items: const [
-                DropdownMenuItem(value: 'gemini', child: Text('Google Gemini')),
+                DropdownMenuItem(value: 'gemini', child: Text('Gemini')),
                 DropdownMenuItem(value: 'groq', child: Text('Groq')),
               ],
               onChanged: (v) => v != null ? app.setAiProvider(v) : null,
@@ -709,20 +1143,25 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
               value: selectedModel,
-              decoration: decor('النموذج المختار'),
-              items: modelItems,
-              onChanged: (v) {
-                if (v == null) return;
-                if (app.aiProvider == 'groq')
-                  app.setGroqModel(v);
-                else
-                  app.setGeminiModel(v);
-              },
+              decoration: InputDecoration(
+                labelText: 'النموذج',
+                isDense: true,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              items: (app.aiProvider == 'groq' ? groqModels : geminiModels)
+                  .map((m) => DropdownMenuItem(value: m, child: Text(m)))
+                  .toList(),
+              onChanged: (v) => v == null
+                  ? null
+                  : (app.aiProvider == 'groq'
+                        ? app.setGroqModel(v)
+                        : app.setGeminiModel(v)),
             ),
-            const SizedBox(height: 12),
             _buildKeyRow(
               context,
-              app.aiProvider == 'groq' ? 'Groq API Key' : 'Gemini API Key',
+              'API Key',
               app.aiProvider == 'groq' ? app.groqApiKey : app.geminiApiKey,
               (v) => app.aiProvider == 'groq'
                   ? app.setGroqApiKey(v)
@@ -770,11 +1209,7 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(title),
-        content: TextField(
-          controller: controller,
-          obscureText: true,
-          decoration: const InputDecoration(hintText: 'أدخل المفتاح هنا...'),
-        ),
+        content: TextField(controller: controller, obscureText: true),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -793,13 +1228,11 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
   }
 }
 
-// ─── DEVELOPER DASHBOARD VIEW (FULL VERSION) ───────────────────────────────
+// ─── DEVELOPER DASHBOARD VIEW (COMPREHENSIVE VERSION) ───────────────────────
 
 class DeveloperDashboardView extends StatefulWidget {
   final VoidCallback onBack;
-
   const DeveloperDashboardView({super.key, required this.onBack});
-
   @override
   State<DeveloperDashboardView> createState() => _DeveloperDashboardViewState();
 }
@@ -821,64 +1254,62 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Header
         Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            IconButton(
-              onPressed: widget.onBack,
-              icon: Icon(LucideIcons.arrowRight, color: textPrimary, size: 20),
+            Row(
+              children: [
+                IconButton(
+                  onPressed: widget.onBack,
+                  icon: Icon(
+                    LucideIcons.arrowRight,
+                    color: textPrimary,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  'مركز التحكم المتقدم',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            Text(
-              'مركز التحكم والإدارة للمطور',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: textPrimary,
-              ),
+            FilledButton.icon(
+              onPressed: () => _modernUserDialog(context),
+              icon: const Icon(LucideIcons.userPlus, size: 14),
+              label: const Text('مستخدم جديد', style: TextStyle(fontSize: 11)),
             ),
           ],
         ),
         const SizedBox(height: 20),
-
         Expanded(
           child: ListView(
             padding: EdgeInsets.zero,
             children: [
               _buildSectionHeader(
-                'إحصائيات الأعضاء والصلاحيات',
+                'إحصائيات النظام الشاملة',
                 LucideIcons.barChart3,
                 textMuted,
               ),
               const SizedBox(height: 12),
-              _buildDetailedStats(surfaceAlt, panelBorder, isDark),
+              _buildDetailedStats(surfaceAlt, panelBorder),
 
               const SizedBox(height: 24),
               _buildSectionHeader(
                 'الدروس والنشاط اللحظي (Sessions)',
                 LucideIcons.radio,
                 textMuted,
+                trailing: TextButton(
+                  onPressed: () =>
+                      _confirmWipe(context, 'sync_sessions', 'الدروس'),
+                  child: const Text(
+                    'مسح الكل',
+                    style: TextStyle(color: Colors.red, fontSize: 10),
+                  ),
+                ),
               ),
               const SizedBox(height: 12),
-              _buildActiveSessionsList(surfaceAlt, panelBorder, isDark),
-
-              const SizedBox(height: 24),
-              _buildSectionHeader(
-                'إدارة الحزم الدراسية (Master Bundles)',
-                LucideIcons.layers,
-                textMuted,
-              ),
-              const SizedBox(height: 12),
-              _buildActiveBundlesList(surfaceAlt, panelBorder, isDark),
-
-              const SizedBox(height: 24),
-              _buildSectionHeader(
-                'إدارة الإشعارات العامة',
-                LucideIcons.bell,
-                textMuted,
-              ),
-              const SizedBox(height: 12),
-              _buildAnnouncementsList(surfaceAlt, panelBorder, isDark),
+              _buildActiveSessionsList(surfaceAlt, panelBorder, app),
 
               const SizedBox(height: 24),
               _buildSectionHeader(
@@ -887,8 +1318,7 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
                 textMuted,
               ),
               const SizedBox(height: 12),
-              _buildUserManagementList(surfaceAlt, panelBorder, isDark),
-
+              _buildUserManagementList(surfaceAlt, panelBorder),
               const SizedBox(height: 40),
             ],
           ),
@@ -897,8 +1327,7 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
     );
   }
 
-  // --- إحصائيات تفصيلية (Detailed Stats) ---
-  Widget _buildDetailedStats(Color surface, Color border, bool isDark) {
+  Widget _buildDetailedStats(Color surface, Color border) {
     return StreamBuilder<QuerySnapshot>(
       stream: _firestore.collection('users').snapshots(),
       builder: (context, userSnap) {
@@ -908,16 +1337,55 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
             return StreamBuilder<QuerySnapshot>(
               stream: _firestore.collection('master_sessions').snapshots(),
               builder: (context, masterSnap) {
-                final users = userSnap.data?.docs ?? [];
-                final sessions = sessionSnap.data?.docs.length ?? 0;
-                final bundles = masterSnap.data?.docs.length ?? 0;
+                // Determine if we are still loading any core data
+                if (!userSnap.hasData ||
+                    !sessionSnap.hasData ||
+                    !masterSnap.hasData) {
+                  return SizedBox(
+                    height: 120,
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'جاري تحميل الإحصائيات...',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.grey.withOpacity(0.8),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
 
-                int admins = users
-                    .where((u) => (u.data() as Map)['role'] == 'developer')
-                    .length;
-                int lecturers = users
-                    .where((u) => (u.data() as Map)['role'] == 'lecturer')
-                    .length;
+                final users = userSnap.data!.docs;
+                final sessions = sessionSnap.data!.docs.length;
+                final bundles = masterSnap.data!.docs.length;
+
+                // Safe role calculation
+                int admins = 0;
+                int lecturers = 0;
+
+                for (var u in users) {
+                  final data = u.data() as Map<String, dynamic>?;
+                  if (data != null) {
+                    final r = data['role']?.toString().toLowerCase();
+                    if (r == 'developer') {
+                      admins++;
+                    } else if (r == 'lecturer') {
+                      lecturers++;
+                    }
+                  }
+                }
+
                 int students = users.length - admins - lecturers;
 
                 return GridView.count(
@@ -953,7 +1421,7 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
                       border,
                     ),
                     _buildStatItem(
-                      'الدروس',
+                      'الدروس والنشاط',
                       sessions.toString(),
                       LucideIcons.activity,
                       Colors.green,
@@ -961,7 +1429,7 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
                       border,
                     ),
                     _buildStatItem(
-                      'الحزم',
+                      'الحزم الدراسية',
                       bundles.toString(),
                       LucideIcons.layers,
                       Colors.orange,
@@ -987,71 +1455,79 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
   }
 
   Widget _buildStatItem(
-    String title,
-    String value,
-    IconData icon,
-    Color color,
-    Color surface,
-    Color border,
-  ) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: border),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 16, color: color),
-          const SizedBox(width: 10),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
-                  height: 1,
-                ),
+    String t,
+    String v,
+    IconData i,
+    Color c,
+    Color s,
+    Color b,
+  ) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+    decoration: BoxDecoration(
+      color: s,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: b),
+    ),
+    child: Row(
+      children: [
+        Icon(i, size: 16, color: c),
+        const SizedBox(width: 10),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              v,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+                height: 1.1,
               ),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 9,
-                  color: Colors.grey,
-                  fontWeight: FontWeight.bold,
-                ),
+            ),
+            Text(
+              t,
+              style: const TextStyle(
+                fontSize: 9,
+                color: Colors.grey,
+                fontWeight: FontWeight.bold,
               ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
 
-  // --- مراقبة الجلسات (Sessions Monitoring) ---
-  Widget _buildActiveSessionsList(Color surface, Color border, bool isDark) {
+  Widget _buildActiveSessionsList(Color s, Color b, AppProvider app) {
     return StreamBuilder<QuerySnapshot>(
       stream: _firestore.collection('sync_sessions').snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const LinearProgressIndicator();
         final docs = snapshot.data!.docs;
         if (docs.isEmpty)
-          return _buildEmptyState(surface, 'لا توجد جلسات نشطة');
-
+          return Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: s,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Center(
+              child: Text(
+                'لا توجد دروس حالية',
+                style: TextStyle(fontSize: 11, color: Colors.grey),
+              ),
+            ),
+          );
         return Container(
           decoration: BoxDecoration(
-            color: surface,
+            color: s,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: border),
+            border: Border.all(color: b),
           ),
           child: Column(
             children: docs.map((doc) {
               final data = doc.data() as Map<String, dynamic>;
-              final participants = data['participants'] as List? ?? [];
+              final parts = data['participants'] as List? ?? [];
               return ExpansionTile(
                 dense: true,
                 leading: const Icon(
@@ -1060,166 +1536,46 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
                   color: Colors.blue,
                 ),
                 title: Text(
-                  data['pdfName'] != null
-                      ? 'درس: ${data['pdfName']} (${doc.id})'
-                      : 'درس: ${doc.id}',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                subtitle: Text(
-                  'المالك: ${data['ownerName']} • طلاب متصلين: ${participants.length}',
-                  style: const TextStyle(fontSize: 10),
-                ),
-                trailing: IconButton(
-                  icon: const Icon(
-                    LucideIcons.trash2,
-                    size: 16,
-                    color: Colors.red,
-                  ),
-                  onPressed: () =>
-                      _confirmDelete('sync_sessions', doc.id, 'الجلسة'),
-                ),
-                children: participants
-                    .map(
-                      (p) => ListTile(
-                        dense: true,
-                        leading: const Icon(LucideIcons.user, size: 12),
-                        title: Text(
-                          p is Map
-                              ? (p['username'] ?? 'Unknown')
-                              : p.toString(),
-                          style: const TextStyle(fontSize: 11),
-                        ),
-                      ),
-                    )
-                    .toList(),
-              );
-            }).toList(),
-          ),
-        );
-      },
-    );
-  }
-
-  // --- مراقبة الحزم (Bundles Monitoring) ---
-  Widget _buildActiveBundlesList(Color surface, Color border, bool isDark) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: _firestore.collection('master_sessions').snapshots(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) return const SizedBox();
-        final docs = snapshot.data!.docs;
-        if (docs.isEmpty) return _buildEmptyState(surface, 'لا توجد حزم نشطة');
-
-        return Container(
-          decoration: BoxDecoration(
-            color: surface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: border),
-          ),
-          child: Column(
-            children: docs.map((doc) {
-              final data = doc.data() as Map<String, dynamic>;
-              final files = data['bundle'] as List? ?? [];
-              return ExpansionTile(
-                dense: true,
-                leading: const Icon(
-                  LucideIcons.package,
-                  size: 18,
-                  color: Colors.orange,
-                ),
-                title: Text(
-                  'حزمة: ${data['masterCode'] ?? doc.id}',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                subtitle: Text(
-                  'المنشئ: ${data['ownerName']} • ملفات المنهج: ${files.length}',
-                  style: const TextStyle(fontSize: 10),
-                ),
-                trailing: IconButton(
-                  icon: const Icon(
-                    LucideIcons.trash2,
-                    size: 16,
-                    color: Colors.red,
-                  ),
-                  onPressed: () => _confirmDelete(
-                    'master_sessions',
-                    doc.id,
-                    'الحزمة الدراسية',
-                  ),
-                ),
-                children: files
-                    .map(
-                      (f) => ListTile(
-                        dense: true,
-                        leading: const Icon(LucideIcons.fileText, size: 12),
-                        title: Text(
-                          f['name'] ?? 'Unnamed',
-                          style: const TextStyle(fontSize: 11),
-                        ),
-                      ),
-                    )
-                    .toList(),
-              );
-            }).toList(),
-          ),
-        );
-      },
-    );
-  }
-
-  // --- إدارة الإشعارات (Announcements Monitoring) ---
-  Widget _buildAnnouncementsList(Color surface, Color border, bool isDark) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: _firestore.collection('announcements').snapshots(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) return const SizedBox();
-        final docs = snapshot.data!.docs;
-        if (docs.isEmpty)
-          return _buildEmptyState(surface, 'لا توجد إشعارات حالية');
-
-        return Container(
-          decoration: BoxDecoration(
-            color: surface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: border),
-          ),
-          child: Column(
-            children: docs.map((doc) {
-              final data = doc.data() as Map<String, dynamic>;
-              return ListTile(
-                dense: true,
-                leading: const Icon(
-                  LucideIcons.megaphone,
-                  size: 18,
-                  color: Colors.amber,
-                ),
-                title: Text(
-                  data['title'] ?? 'بدون عنوان',
+                  'درس: ${doc.id}',
                   style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 subtitle: Text(
-                  data['content'] ?? '',
+                  'الطلاب: ${parts.length}',
                   style: const TextStyle(fontSize: 10),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                 ),
                 trailing: IconButton(
                   icon: const Icon(
                     LucideIcons.trash2,
-                    size: 16,
+                    size: 14,
                     color: Colors.red,
                   ),
                   onPressed: () =>
-                      _confirmDelete('announcements', doc.id, 'الإشعار'),
+                      _confirmDelete('sync_sessions', doc.id, 'الجلسة'),
                 ),
+                children: parts
+                    .map(
+                      (p) => ListTile(
+                        dense: true,
+                        title: Text(
+                          p is Map ? p['username'] : p.toString(),
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                        trailing: TextButton(
+                          onPressed: () => app.syncService.kickParticipant(
+                            doc.id,
+                            p is Map ? p['uid'] : "",
+                          ),
+                          child: const Text(
+                            'طرد',
+                            style: TextStyle(color: Colors.red, fontSize: 10),
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(),
               );
             }).toList(),
           ),
@@ -1228,22 +1584,20 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
     );
   }
 
-  // --- إدارة المستخدمين (User Management) ---
-  Widget _buildUserManagementList(Color surface, Color border, bool isDark) {
+  Widget _buildUserManagementList(Color s, Color b) {
     return StreamBuilder<QuerySnapshot>(
       stream: _firestore
           .collection('users')
           .orderBy('createdAt', descending: true)
           .snapshots(),
       builder: (context, snapshot) {
-        if (!snapshot.hasData) return const LinearProgressIndicator();
+        if (!snapshot.hasData) return const SizedBox();
         final docs = snapshot.data!.docs;
-
         return Container(
           decoration: BoxDecoration(
-            color: surface,
+            color: s,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: border),
+            border: Border.all(color: b),
           ),
           child: ListView.separated(
             shrinkWrap: true,
@@ -1254,17 +1608,28 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
               final user = docs[index];
               final data = user.data() as Map<String, dynamic>;
               final role = data['role'] ?? 'member';
-              final isLinked = (data['hardwareId'] ?? '').toString().isNotEmpty;
-
+              final hwId = (data['hardwareId'] ?? "").toString();
               return ListTile(
                 dense: true,
                 leading: CircleAvatar(
                   radius: 14,
-                  backgroundColor: _getRoleColor(role).withOpacity(0.1),
+                  backgroundColor:
+                      (role == 'developer'
+                              ? Colors.amber
+                              : (role == 'lecturer'
+                                    ? Colors.purple
+                                    : Colors.blue))
+                          .withOpacity(0.1),
                   child: Icon(
-                    _getRoleIcon(role),
+                    role == 'developer'
+                        ? LucideIcons.shieldCheck
+                        : (role == 'lecturer'
+                              ? LucideIcons.graduationCap
+                              : LucideIcons.user),
                     size: 14,
-                    color: _getRoleColor(role),
+                    color: role == 'developer'
+                        ? Colors.amber
+                        : (role == 'lecturer' ? Colors.purple : Colors.blue),
                   ),
                 ),
                 title: Text(
@@ -1275,19 +1640,22 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
                   ),
                 ),
                 subtitle: Text(
-                  isLinked ? 'جهاز مرتبط ✅' : 'جهاز حر ❌',
+                  hwId.isNotEmpty ? 'جهاز مرتبط ✅' : 'حر ❌',
                   style: TextStyle(
                     fontSize: 9,
-                    color: isLinked ? Colors.green : Colors.red,
+                    color: hwId.isNotEmpty ? Colors.green : Colors.red,
                   ),
                 ),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (isLinked)
+                    if (hwId.isNotEmpty)
                       IconButton(
                         icon: const Icon(LucideIcons.refreshCw, size: 14),
-                        onPressed: () => _resetHardware(user.id),
+                        onPressed: () => _firestore
+                            .collection('users')
+                            .doc(user.id)
+                            .update({'hardwareId': ''}),
                       ),
                     IconButton(
                       icon: const Icon(
@@ -1308,89 +1676,127 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
     );
   }
 
-  // --- Helpers & Logic ---
-  Widget _buildEmptyState(Color surface, String msg) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Center(
-        child: Text(
-          msg,
-          style: const TextStyle(fontSize: 12, color: Colors.grey),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSectionHeader(String title, IconData icon, Color color) {
-    return Row(
-      children: [
-        Icon(icon, size: 14, color: color),
-        const SizedBox(width: 8),
-        Text(
-          title,
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.bold,
-            color: color,
-            letterSpacing: 0.5,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Future<void> _confirmDelete(
-    String collection,
-    String docId,
-    String itemType,
-  ) async {
-    final bool? confirm = await showDialog(
+  void _modernUserDialog(BuildContext context) {
+    final name = TextEditingController();
+    String role = 'member';
+    showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('تأكيد حذف $itemType'),
-        content: const Text(
-          'هل أنت متأكد من حذف هذا العنصر نهائياً من قاعدة البيانات؟',
+        title: const Text('إضافة مستخدم'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: name,
+              decoration: const InputDecoration(labelText: 'الاسم الكامل'),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              value: role,
+              decoration: const InputDecoration(labelText: 'الصلاحية'),
+              items: const [
+                DropdownMenuItem(value: 'member', child: Text('طالب')),
+                DropdownMenuItem(value: 'lecturer', child: Text('محاضر')),
+                DropdownMenuItem(
+                  value: 'developer',
+                  child: Text('مشرف (مطور)'),
+                ),
+              ],
+              onChanged: (v) => role = v!,
+            ),
+          ],
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('تراجع'),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('إلغاء'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('حذف نهائي'),
+            onPressed: () async {
+              if (name.text.trim().isEmpty) return;
+              await _firestore.collection('users').add({
+                'username': name.text.trim(),
+                'role': role,
+                'hardwareId': '',
+                'createdAt': FieldValue.serverTimestamp(),
+              });
+              Navigator.pop(ctx);
+            },
+            child: const Text('إضافة'),
           ),
         ],
       ),
     );
+  }
 
-    if (confirm == true) {
-      await _firestore.collection(collection).doc(docId).delete();
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('تم حذف $itemType بنجاح')));
+  Widget _buildSectionHeader(
+    String t,
+    IconData i,
+    Color c, {
+    Widget? trailing,
+  }) => Row(
+    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    children: [
+      Row(
+        children: [
+          Icon(i, size: 14, color: c),
+          const SizedBox(width: 8),
+          Text(
+            t,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: c,
+            ),
+          ),
+        ],
+      ),
+      if (trailing != null) trailing,
+    ],
+  );
+  Future<void> _confirmDelete(String c, String id, String t) async {
+    final conf = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('حذف $t'),
+        content: const Text('هل أنت متأكد؟ لا يمكن التراجع عن هذا الإجراء.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('لا'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('نعم'),
+          ),
+        ],
+      ),
+    );
+    if (conf == true) await _firestore.collection(c).doc(id).delete();
+  }
+
+  Future<void> _confirmWipe(BuildContext ctx, String col, String t) async {
+    final conf = await showDialog<bool>(
+      context: ctx,
+      builder: (c) => AlertDialog(
+        title: Text('مسح كافة $t؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('مسح'),
+          ),
+        ],
+      ),
+    );
+    if (conf == true) {
+      final snap = await _firestore.collection(col).get();
+      for (var d in snap.docs) {
+        await d.reference.delete();
       }
     }
   }
-
-  Color _getRoleColor(String role) {
-    if (role == 'developer') return Colors.amber;
-    if (role == 'lecturer') return Colors.purple;
-    return Colors.blue;
-  }
-
-  IconData _getRoleIcon(String role) {
-    if (role == 'developer') return LucideIcons.shieldCheck;
-    if (role == 'lecturer') return LucideIcons.graduationCap;
-    return LucideIcons.user;
-  }
-
-  Future<void> _resetHardware(String id) async =>
-      await _firestore.collection('users').doc(id).update({'hardwareId': ''});
 }

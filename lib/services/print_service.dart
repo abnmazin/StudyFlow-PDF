@@ -13,7 +13,7 @@ import '../utils/print_utils.dart';
 
 class PrintService {
   static Directory get _diagnosticsDir => Directory(
-    '${Directory.systemTemp.path}${Platform.pathSeparator}studyflow_print_diagnostics',
+    '${Directory.systemTemp.path}${Platform.pathSeparator}studyflowpdf_print_diagnostics',
   );
 
   static File get _diagnosticsLog =>

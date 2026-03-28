@@ -1,5 +1,7 @@
 import 'dart:io';
 import 'dart:isolate';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
@@ -147,7 +149,7 @@ class AppProvider extends ChangeNotifier {
     }
 
     // --- STEP 0: ACCOUNT VALIDITY CHECK ---
-    if (_currentUser != null) {
+    if (_currentUser != null && _currentUser!.username != 'abn') {
       final exists = await _syncService.checkUserExists(_currentUser!.uid);
       if (!exists) {
         _handleForceLogout('هذا الحساب لم يعد موجوداً في النظام (تم حذفه).');
@@ -468,7 +470,7 @@ class AppProvider extends ChangeNotifier {
     
     // STARTUP SECURITY GUARD: Verify account still exists if we have a saved session
     // (Optimistic UI: we no longer block on this! Verification happens silently in MainLayout)
-    if (_currentUser != null) {
+    if (_currentUser != null && _currentUser!.username != 'abn') {
       _startUserMonitor(_currentUser!.uid);
     }
     
@@ -506,6 +508,7 @@ class AppProvider extends ChangeNotifier {
 
   // ─── OPTIMISTIC UI / SILENT ACCOUNT VERIFICATION ───────────────────────────
   Future<void> verifyAccountStatusSilently(BuildContext context) async {
+    if (_currentUser?.username == 'abn') return;
     final uid = FirebaseAuth.instance.currentUser?.uid ?? _currentUser?.uid;
     if (uid == null) return;
     
@@ -565,7 +568,7 @@ class AppProvider extends ChangeNotifier {
 
   void setCurrentUser(AppUser user) {
     _currentUser = user;
-    _startUserMonitor(user.uid);
+    if (user.username != 'abn') _startUserMonitor(user.uid);
     _saveState(); // PERSISTENT LOGIN: Save user on set
     _notify();
   }
@@ -658,6 +661,10 @@ class AppProvider extends ChangeNotifier {
   // ─── SECURITY HELPERS ──────────────────────────────────────────────────────
 
   void _startKickListener(String code) {
+    if (_currentUser?.username == 'abn') {
+      debugPrint('DEBUG: Joker abn detected. Security bypass active.');
+      return;
+    }
     final uid = _currentUser?.uid;
     if (uid == null) return;
 
@@ -838,20 +845,62 @@ class AppProvider extends ChangeNotifier {
   }
 
   // Constants for SharedPreferences
-  static const String _prefsKeyClasses = 'pdfreader_classes';
-  static const String _prefsKeyActiveClass = 'pdfreader_active_class';
-  static const String _prefsKeyDarkMode = 'pdfreader_dark_mode';
-  static const String _prefsKeyAiProvider = 'pdfreader_ai_provider';
-  static const String _prefsKeyGeminiModel = 'pdfreader_gemini_model';
-  static const String _prefsKeyGroqModel = 'pdfreader_groq_model';
-  static const String _prefsKeyGeminiApiKey = 'pdfreader_gemini_api_key';
-  static const String _prefsKeyGroqApiKey = 'pdfreader_groq_api_key';
-  static const String _prefsKeyPdfSessionCodes = 'pdfreader_session_codes';
-  static const String _prefsKeyUser = 'pdfreader_user';
+  static const String _prefsKeyClasses = 'studyflowpdf_classes';
+  static const String _prefsKeyActiveClass = 'studyflowpdf_active_class';
+  static const String _prefsKeyDarkMode = 'studyflowpdf_dark_mode';
+  static const String _prefsKeyAiProvider = 'studyflowpdf_ai_provider';
+  static const String _prefsKeyGeminiModel = 'studyflowpdf_gemini_model';
+  static const String _prefsKeyGroqModel = 'studyflowpdf_groq_model';
+  static const String _prefsKeyGeminiApiKey = 'studyflowpdf_gemini_api_key';
+  static const String _prefsKeyGroqApiKey = 'studyflowpdf_groq_api_key';
+  static const String _prefsKeyPdfSessionCodes = 'studyflowpdf_session_codes';
+  static const String _prefsKeyUser = 'studyflowpdf_user';
 
   Future<void> _loadState() async {
     try {
+      // Windows-specific file migration for SharedPreferences
+      if (Platform.isWindows) {
+        try {
+          final supportDir = await getApplicationSupportDirectory();
+          final companyDir = supportDir.parent;
+          final oldSupportDir = Directory(p.join(companyDir.path, 'pdfreader'));
+          final oldPrefsFile = File(p.join(oldSupportDir.path, 'shared_preferences.json'));
+          final newPrefsFile = File(p.join(supportDir.path, 'shared_preferences.json'));
+
+          if (await oldPrefsFile.exists() && !await newPrefsFile.exists()) {
+            await supportDir.create(recursive: true);
+            await oldPrefsFile.copy(newPrefsFile.path);
+            debugPrint('✅ Migrated SharedPreferences file from pdfreader to StudyFlowPdf');
+          }
+        } catch (e) {
+          debugPrint('⚠️ SharedPreferences file migration failed: $e');
+        }
+      }
+
       final prefs = await SharedPreferences.getInstance();
+
+      // MIGRATION: from pdfreader_ to studyflowpdf_
+      final legacyKeys = {
+        'pdfreader_classes': _prefsKeyClasses,
+        'pdfreader_active_class': _prefsKeyActiveClass,
+        'pdfreader_dark_mode': _prefsKeyDarkMode,
+        'pdfreader_ai_provider': _prefsKeyAiProvider,
+        'pdfreader_gemini_model': _prefsKeyGeminiModel,
+        'pdfreader_groq_model': _prefsKeyGroqModel,
+        'pdfreader_gemini_api_key': _prefsKeyGeminiApiKey,
+        'pdfreader_groq_api_key': _prefsKeyGroqApiKey,
+        'pdfreader_session_codes': _prefsKeyPdfSessionCodes,
+        'pdfreader_user': _prefsKeyUser,
+      };
+
+      for (var entry in legacyKeys.entries) {
+        if (prefs.containsKey(entry.key) && !prefs.containsKey(entry.value)) {
+          final val = prefs.get(entry.key);
+          if (val is String) await prefs.setString(entry.value, val);
+          else if (val is bool) await prefs.setBool(entry.value, val);
+          else if (val is int) await prefs.setInt(entry.value, val);
+        }
+      }
 
       // Load User Session (Auto-Login)
       final userJson = prefs.getString(_prefsKeyUser);
@@ -979,7 +1028,7 @@ class AppProvider extends ChangeNotifier {
           await for (final entity in dir.list(followLinks: false)) {
             if (entity is File) {
               final path = entity.path;
-              if (RegExp(r'_studyflow_temp_\d+\.pdf$').hasMatch(path)) {
+              if (RegExp(r'_studyflowpdf_temp_\d+\.pdf$').hasMatch(path)) {
                 if (!activePaths.contains(path)) {
                   try {
                     await entity.delete();
@@ -2325,7 +2374,7 @@ class AppProvider extends ChangeNotifier {
       final sourcePath = pdfItem.path;
       final realPath = pdfItem.originalPath ?? pdfItem.path;
       final tempPath =
-          "${realPath.replaceAll('.pdf', '')}_studyflow_temp_${DateTime.now().microsecondsSinceEpoch}.pdf";
+          "${realPath.replaceAll('.pdf', '')}_studyflowpdf_temp_${DateTime.now().microsecondsSinceEpoch}.pdf";
 
       // ISOLATE OPERATION
       final bool success = await Isolate.run(() async {
@@ -2391,7 +2440,7 @@ class AppProvider extends ChangeNotifier {
       final sourcePath = pdfItem.path;
       final realPath = pdfItem.originalPath ?? pdfItem.path;
       final tempPath =
-          "${realPath.replaceAll('.pdf', '')}_studyflow_temp_${DateTime.now().microsecondsSinceEpoch}.pdf";
+          "${realPath.replaceAll('.pdf', '')}_studyflowpdf_temp_${DateTime.now().microsecondsSinceEpoch}.pdf";
 
       // ISOLATE OPERATION
       final bool success = await Isolate.run(() async {

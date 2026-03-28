@@ -8,16 +8,16 @@
 ## Step 1: Build Your Flutter Web App
 
 ```powershell
-cd d:\Programing\flutter\pdfreader
-flutter build web --release --base-href "/pdfreader/"
+cd d:\Programing\flutter\StudyFlowPdf
+flutter build web --release --base-href "/StudyFlowPdf/"
 ```
 
-**Note:** Replace `/pdfreader/` with `/your-repo-name/` or use `/` if using a custom domain.
+**Note:** Replace `/StudyFlowPdf/` with `/your-repo-name/` or use `/` if using a custom domain.
 
 ## Step 2: Initialize Git Repository (if not already done)
 
 ```powershell
-cd d:\Programing\flutter\pdfreader
+cd d:\Programing\flutter\StudyFlowPdf
 git init
 git add .
 git commit -m "Initial commit"
@@ -27,7 +27,7 @@ git commit -m "Initial commit"
 
 1. Go to https://github.com and log in
 2. Click "New repository" (the + icon in top right)
-3. Name it `pdfreader` (or any name you prefer)
+3. Name it `StudyFlowPdf` (or any name you prefer)
 4. Keep it public (required for free GitHub Pages)
 5. Don't initialize with README (we already have code)
 6. Click "Create repository"
@@ -35,7 +35,7 @@ git commit -m "Initial commit"
 ## Step 4: Push Code to GitHub
 
 ```powershell
-git remote add origin https://github.com/YOUR-USERNAME/pdfreader.git
+git remote add origin https://github.com/YOUR-USERNAME/StudyFlowPdf.git
 git branch -M main
 git push -u origin main
 ```
@@ -72,7 +72,7 @@ jobs:
         run: flutter pub get
       
       - name: Build web
-        run: flutter build web --release --base-href "/pdfreader/"
+        run: flutter build web --release --base-href "/StudyFlowPdf/"
       
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
@@ -91,7 +91,7 @@ jobs:
 
 ```powershell
 # Build the app
-flutter build web --release --base-href "/pdfreader/"
+flutter build web --release --base-href "/StudyFlowPdf/"
 
 # Install gh-pages tool (one time)
 npm install -g gh-pages
@@ -104,7 +104,7 @@ OR manually:
 
 ```powershell
 # Build the app
-flutter build web --release --base-href "/pdfreader/"
+flutter build web --release --base-href "/StudyFlowPdf/"
 
 # Create gh-pages branch
 git checkout --orphan gh-pages
@@ -168,7 +168,7 @@ flutter build web --release --base-href "/"
 
 ## Testing Your Deployment
 
-- **GitHub Pages URL**: `https://YOUR-USERNAME.github.io/pdfreader/`
+- **GitHub Pages URL**: `https://YOUR-USERNAME.github.io/StudyFlowPdf/`
 - **Custom Domain URL**: `https://yourdomain.com`
 
 ## Common Issues & Solutions

@@ -47,7 +47,17 @@ class FileManagerService extends ChangeNotifier {
 
     try {
       final appDocDir = await getApplicationDocumentsDirectory();
-      final root = Directory(p.join(appDocDir.path, 'StudyFlow'));
+      final oldRoot = Directory(p.join(appDocDir.path, 'StudyFlow'));
+      final root = Directory(p.join(appDocDir.path, 'StudyFlowPdf'));
+
+      // Migrate if old exists
+      if (await oldRoot.exists() && !await root.exists()) {
+        try {
+          await oldRoot.rename(root.path);
+        } catch (e) {
+          debugPrint('Migration failed: $e');
+        }
+      }
 
       _originalsDir = Directory(p.join(root.path, 'Originals'));
       _sessionsDir = Directory(p.join(root.path, 'Sessions'));

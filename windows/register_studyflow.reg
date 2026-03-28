@@ -7,7 +7,7 @@ Windows Registry Editor Version 5.00
 ; 
 ; IMPORTANT: Before running this script:
 ; 1. Build your Flutter app in release mode: flutter build windows --release
-; 2. Find the executable at: build\windows\runner\Release\pdfreader.exe
+; 2. Find the executable at: build\windows\runner\Release\StudyFlowPdf.exe
 ; 3. Update the path below to match your executable location
 ; 4. Right-click this file and select "Merge" to apply changes
 ; =========================================================================
@@ -19,7 +19,7 @@ Windows Registry Editor Version 5.00
 
 ; Set default icon (uses the PDF icon from your exe)
 [HKEY_CLASSES_ROOT\StudyFlow.PDF\DefaultIcon]
-@="\"D:\\Programing\\flutter\\pdfreader\\build\\windows\\runner\\Release\\pdfreader.exe\",0"
+@="\"D:\\Programing\\flutter\\pdfreader\\build\\windows\\runner\\Release\\StudyFlowPdf.exe\",0"
 
 ; Register shell open command
 [HKEY_CLASSES_ROOT\StudyFlow.PDF\shell]
@@ -29,7 +29,7 @@ Windows Registry Editor Version 5.00
 @="Open with StudyFlow"
 
 [HKEY_CLASSES_ROOT\StudyFlow.PDF\shell\open\command]
-@="\"D:\\Programing\\flutter\\pdfreader\\build\\windows\\runner\\Release\\pdfreader.exe\" \"%1\""
+@="\"D:\\Programing\\flutter\\pdfreader\\build\\windows\\runner\\Release\\StudyFlowPdf.exe\" \"%1\""
 
 ; Associate .pdf extension with StudyFlow.PDF
 [HKEY_CLASSES_ROOT\.pdf]
@@ -52,10 +52,10 @@ Windows Registry Editor Version 5.00
 ; =========================================================================
 ; INSTRUCTIONS TO CUSTOMIZE:
 ; =========================================================================
-; 1. Replace ALL instances of "C:\\Path\\To\\Your\\pdfreader.exe" with your
+; 1. Replace ALL instances of "C:\\Path\\To\\Your\\StudyFlowPdf.exe" with your
 ;    actual executable path. Use double backslashes (\\) for paths.
 ; 
-;    Example: "C:\\Users\\YourName\\Documents\\StudyFlow\\build\\windows\\runner\\Release\\pdfreader.exe"
+;    Example: "C:\\Users\\YourName\\Documents\\StudyFlow\\build\\windows\\runner\\Release\\StudyFlowPdf.exe"
 ;
 ; 2. Save this file as "register_studyflow.reg"
 ;

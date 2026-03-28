@@ -123,7 +123,7 @@ class _SidebarState extends State<Sidebar> {
                     Icon(LucideIcons.book, color: Color(0xFF60A5FA), size: 24),
                     SizedBox(width: 8),
                     Text(
-                      'StudyFlow',
+                      'StudyFlow pdf',
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,

@@ -8,6 +8,10 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
+import 'package:markdown/markdown.dart' as md;
+
 import '../../models/models.dart';
 import '../../providers/app_state.dart';
 import '../../services/sync_service.dart';
@@ -1263,6 +1267,7 @@ class StudyFlowRightPanel extends StatelessWidget {
                   child: _AiChatWidget(
                     isDarkMode: isDarkMode,
                     pdfId: activePdf?.id,
+                    pdfController: pdfController,
                   ),
                 ),
               ],
@@ -1756,8 +1761,13 @@ class StudyFlowRightPanel extends StatelessWidget {
 class _AiChatWidget extends StatefulWidget {
   final bool isDarkMode;
   final String? pdfId;
+  final PdfViewerController? pdfController;
 
-  const _AiChatWidget({required this.isDarkMode, this.pdfId});
+  const _AiChatWidget({
+    required this.isDarkMode,
+    this.pdfId,
+    this.pdfController,
+  });
 
   @override
   State<_AiChatWidget> createState() => _AiChatWidgetState();
@@ -1778,7 +1788,7 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
     {
       'role': 'ai',
       'content':
-          'مرحباً بك! أنا مساعدك الذكي في StudyFlow. كيف يمكنني مساعدتك في فهم هذه الملزمة؟',
+          'مرحباً بك! أنا مساعدك الذكي في StudyFlow pdf. كيف يمكنني مساعدتك في فهم هذه الملزمة؟',
     },
   ];
   final TextEditingController _controller = TextEditingController();
@@ -1796,7 +1806,7 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
     {
       'role': 'ai',
       'content':
-          'مرحباً بك! أنا مساعدك الذكي في StudyFlow. كيف يمكنني مساعدتك في فهم هذه الملزمة؟',
+          'مرحباً بك! أنا مساعدك الذكي في StudyFlow pdf. كيف يمكنني مساعدتك في فهم هذه الملزمة؟',
     },
   ];
 
@@ -1862,6 +1872,38 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
     await prefs.setString(_conversationKey, jsonEncode(_messages));
   }
 
+  Future<String> _getActivePageText() async {
+    final controller = widget.pdfController;
+    if (controller == null) return "لا يوجد نص متاح حالياً.";
+
+    try {
+      final doc = controller.document;
+      if (doc == null) return "المستند غير جاهز.";
+
+      final pageNumber = controller.pageNumber ?? 1;
+      if (pageNumber < 1 || pageNumber > doc.pages.length) {
+        return "هذه الصفحة غير صالحة للسياق.";
+      }
+
+      final page = doc.pages[pageNumber - 1];
+      final text = await page.loadText();
+      final content = text?.fullText.trim() ?? "";
+      return content.isNotEmpty ? content : "هذه الصفحة لا تحتوي على نص قابل للقراءة.";
+    } catch (e) {
+      debugPrint('Error extracting page text: $e');
+      return "تعذر استخراج النص من الصفحة الحالية.";
+    }
+  }
+
+  String _buildSystemPrompt(String pageText) {
+    return "أنت مساعد دراسي أكاديمي ومحاضر ذكي تابع لتطبيق StudyFlow pdf. "
+        "يجب عليك كتابة جميع المعادلات الرياضية والكسور والرموز باستخدام صيغة LaTeX القياسية "
+        "(مثال: استخدم \\frac{1}{2} بدلاً من 1/2، أو استخدم \$\$...\$\$ للمعادلات الكبيرة). "
+        "تجنب استخدام علامات النجمة الخاصة بالماركداون (* أو **) داخل أو حول المعادلات إذا كانت قد تتداخل مع الرموز الرياضية. "
+        "أجب باللغة العربية بأسلوب علمي دقيق وواضح ومختصر قدر الإمكان. "
+        "السياق الحالي للطالب من الصفحة المفتوحة في الملزمة هو:\n\n$pageText";
+  }
+
   Future<String> _generateGeminiReply(String prompt, String modelName) async {
     final app = context.read<AppProvider>();
     final apiKey = app.geminiApiKey.isNotEmpty
@@ -1870,8 +1912,28 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
     if (apiKey.isEmpty) {
       throw Exception('GEMINI_API_KEY missing in .env');
     }
+
+    // 1. Get Context
+    final pageText = await _getActivePageText();
+    final systemPrompt = _buildSystemPrompt(pageText);
+
+    // 2. Sliding Window (Last 4 messages)
+    final history = _messages.length > 4 
+        ? _messages.sublist(_messages.length - 4) 
+        : _messages;
+
+    // 3. Construct Payload for Gemini
+    // We'll prepend the system prompt as a user message or inside the prompt itself 
+    // because Gemini GenerativeModel.generateContent often expects a single prompt or part of a list.
+    // For simplicity and effectiveness, we wrap it in a single prompt string for now.
+    String fullPrompt = "Instructions:\n$systemPrompt\n\nHistory:\n";
+    for (var msg in history) {
+      fullPrompt += "${msg['role'] == 'user' ? 'User' : 'AI'}: ${msg['content']}\n";
+    }
+    fullPrompt += "User: $prompt\nAI:";
+
     final model = GenerativeModel(model: modelName, apiKey: apiKey);
-    final response = await model.generateContent([Content.text(prompt)]);
+    final response = await model.generateContent([Content.text(fullPrompt)]);
     final aiText = (response.text ?? '').trim();
     return aiText.isEmpty ? 'لم أتمكن من توليد إجابة.' : aiText;
   }
@@ -1886,6 +1948,25 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
       throw Exception('GROQ_API_KEY missing in settings/.env');
     }
 
+    // 1. Get Context
+    final pageText = await _getActivePageText();
+    final systemPrompt = _buildSystemPrompt(pageText);
+
+    // 2. Sliding Window (Last 4 messages)
+    final history = _messages.length > 4 
+        ? _messages.sublist(_messages.length - 4) 
+        : _messages;
+
+    // 3. Construct Messages Array for Groq (OpenAI Compatible)
+    final apiMessages = [
+      {'role': 'system', 'content': systemPrompt},
+      ...history.map((m) => {
+            'role': m['role'] == 'ai' ? 'assistant' : m['role'],
+            'content': m['content'],
+          }),
+      {'role': 'user', 'content': prompt},
+    ];
+
     final uri = Uri.parse('https://api.groq.com/openai/v1/chat/completions');
     final response = await http
         .post(
@@ -1896,13 +1977,7 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
           },
           body: jsonEncode({
             'model': modelName,
-            'messages': [
-              {
-                'role': 'system',
-                'content': 'You are a helpful study assistant for PDF notes.',
-              },
-              {'role': 'user', 'content': prompt},
-            ],
+            'messages': apiMessages,
             'temperature': 0.3,
           }),
         )
@@ -2072,10 +2147,39 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
           bottomRight: Radius.circular(isUser ? 0 : 14),
         ),
       ),
-      child: Text(
-        content,
-        style: TextStyle(color: textColor, fontSize: 14, height: 1.35),
-        textDirection: TextDirection.rtl,
+      child: MarkdownBody(
+        data: content,
+        selectable: true,
+        styleSheet: MarkdownStyleSheet(
+          p: TextStyle(color: textColor, fontSize: 14, height: 1.35),
+          pPadding: EdgeInsets.zero,
+          listBullet: TextStyle(color: textColor, fontSize: 14),
+          code: TextStyle(
+            color: widget.isDarkMode ? const Color(0xFFE2E8F0) : const Color(0xFF1E293B),
+            backgroundColor: widget.isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+            fontFamily: 'monospace',
+          ),
+          codeblockDecoration: BoxDecoration(
+            color: widget.isDarkMode ? const Color(0xFF0F172A) : const Color(0xFFCBD5E1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+        builders: {
+          'math_block': LatexElementBuilder(
+            textStyle: TextStyle(color: textColor, fontSize: 14),
+          ),
+          'math_inline': LatexElementBuilder(
+            textStyle: TextStyle(color: textColor, fontSize: 14),
+          ),
+        },
+        extensionSet: md.ExtensionSet(
+          md.ExtensionSet.gitHubFlavored.blockSyntaxes,
+          [
+            md.EmojiSyntax(),
+            LatexInlineSyntax(),
+            ...md.ExtensionSet.gitHubFlavored.inlineSyntaxes
+          ],
+        ),
       ),
     );
 
@@ -2243,3 +2347,58 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
     );
   }
 }
+
+// ──────────────────────────────────────────────────────────────
+// CUSTOM LATEX RENDERERS FOR MARKDOWN
+// ──────────────────────────────────────────────────────────────
+
+class LatexInlineSyntax extends md.InlineSyntax {
+  LatexInlineSyntax() : super(r'(\$\$[\s\S]+?\$\$|\$[\s\S]+?\$)', caseSensitive: false);
+
+  @override
+  bool onMatch(md.InlineParser parser, Match match) {
+    final text = match[1]!;
+    if (text.startsWith(r'$$') && text.endsWith(r'$$')) {
+      final math = text.substring(2, text.length - 2);
+      parser.addNode(md.Element.text('math_block', math));
+    } else {
+      final math = text.substring(1, text.length - 1);
+      parser.addNode(md.Element.text('math_inline', math));
+    }
+    return true;
+  }
+}
+
+class LatexElementBuilder extends MarkdownElementBuilder {
+  final TextStyle? textStyle;
+  LatexElementBuilder({this.textStyle});
+
+  @override
+  Widget visitElementAfter(md.Element element, TextStyle? preferredStyle) {
+    final text = element.textContent;
+    if (element.tag == 'math_block') {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        alignment: Alignment.center,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Math.tex(
+            text,
+            textStyle: textStyle?.copyWith(fontSize: 16),
+            mathStyle: MathStyle.display,
+            onErrorFallback: (err) => const Text(r'$...$', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ),
+      );
+    } else {
+      return Math.tex(
+        text,
+        textStyle: textStyle,
+        mathStyle: MathStyle.text,
+        onErrorFallback: (err) => const Text(r'$...$', style: TextStyle(color: Colors.redAccent)),
+      );
+    }
+  }
+}
+

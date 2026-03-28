@@ -190,7 +190,7 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AppProvider()),
       ],
       child: MaterialApp(
-        title: 'StudyFlow',
+        title: 'StudyFlow pdf',
         debugShowCheckedModeBanner: false,
         locale: const Locale('ar'),
         supportedLocales: const [Locale('ar'), Locale('en')],
@@ -247,7 +247,7 @@ class RootWrapper extends StatelessWidget {
                 ),
                 SizedBox(height: 24),
                 Text(
-                  'StudyFlow',
+                  'StudyFlow pdf',
                   style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
