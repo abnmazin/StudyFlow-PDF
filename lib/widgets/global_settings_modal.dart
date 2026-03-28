@@ -739,135 +739,94 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
     Color muted,
   ) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: surface,
-        borderRadius: BorderRadius.circular(15),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: border),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
+          Expanded(
+            child: SizedBox(
+              height: 36,
+              child: TextField(
+                controller: _joinCodeController,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.2,
+                  color: Colors.blue,
+                ),
+                decoration: InputDecoration(
+                  hintText: 'الكود هنا...',
+                  hintStyle: TextStyle(
+                    fontSize: 10,
+                    letterSpacing: 0,
+                    color: muted.withOpacity(0.5),
+                    fontWeight: FontWeight.normal,
+                  ),
+                  isDense: true,
+                  filled: true,
+                  fillColor: Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF0F172A)
+                      : Colors.white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: border),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: const BorderSide(color: Colors.blue, width: 1.5),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 10,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            height: 36,
+            child: FilledButton(
+              onPressed: _isJoining ? null : () => _joinMasterBundle(app),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                minimumSize: const Size(54, 36),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(
-                  LucideIcons.link2,
-                  color: Colors.blue,
-                  size: 20,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                textStyle: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 11,
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'الارتباط بحزمة دراسية',
-                      style: TextStyle(
-                        color: text,
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
+              child: _isJoining
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
                       ),
-                    ),
-                    Text(
-                      'أدخل كود المنهج للوصول الفوري للملفات',
-                      style: TextStyle(color: muted, fontSize: 10),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _joinCodeController,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 2,
-                    color: Colors.blue,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: 'الكود هنا...',
-                    hintStyle: TextStyle(
-                      fontSize: 12,
-                      letterSpacing: 0,
-                      color: muted.withOpacity(0.5),
-                      fontWeight: FontWeight.normal,
-                    ),
-                    isDense: true,
-                    filled: true,
-                    fillColor: Theme.of(context).brightness == Brightness.dark
-                        ? const Color(0xFF0F172A)
-                        : Colors.white,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: border),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(
-                        color: Colors.blue,
-                        width: 2,
-                      ),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 14,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              SizedBox(
-                height: 48,
-                child: ElevatedButton(
-                  onPressed: _isJoining ? null : () => _joinMasterBundle(app),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                  ),
-                  child: _isJoining
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Text(
-                          'ربط',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w900,
-                            fontSize: 13,
-                          ),
-                        ),
-                ),
-              ),
-            ],
+                    )
+                  : const Text('ربط'),
+            ),
           ),
         ],
       ),
@@ -1107,7 +1066,6 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
     Color textPrimary,
     Color textMuted,
   ) {
-    final isDark = app.isDarkMode;
     const geminiModels = ['gemini-2.5-flash', 'gemini-2.0-flash'];
     const groqModels = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
     final selectedModel = app.aiProvider == 'groq'

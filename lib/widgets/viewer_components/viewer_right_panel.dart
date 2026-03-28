@@ -1896,13 +1896,29 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
   }
 
   String _buildSystemPrompt(String pageText) {
-    return "أنت مساعد دراسي أكاديمي ومحاضر ذكي تابع لتطبيق StudyFlow pdf. "
-        "يجب عليك كتابة جميع المعادلات الرياضية والكسور والرموز باستخدام صيغة LaTeX القياسية "
-        "(مثال: استخدم \\frac{1}{2} بدلاً من 1/2، أو استخدم \$\$...\$\$ للمعادلات الكبيرة). "
-        "تجنب استخدام علامات النجمة الخاصة بالماركداون (* أو **) داخل أو حول المعادلات إذا كانت قد تتداخل مع الرموز الرياضية. "
-        "أجب باللغة العربية بأسلوب علمي دقيق وواضح ومختصر قدر الإمكان. "
-        "السياق الحالي للطالب من الصفحة المفتوحة في الملزمة هو:\n\n$pageText";
+    const strictMathInstruction =
+      "أنت مساعد دراسي أكاديمي. قاعدة صارمة جداً: يجب عليك كتابة جميع المعادلات الرياضية، الأرقام، الكسور، والرموز باستخدام صيغة LaTeX محصورة بين علامات الدولار.\n"
+      "للمعادلات داخل النص استخدم علامة دولار واحدة: \$equation\$\n"
+      "للمعادلات في سطر منفصل استخدم علامتي دولار:\n"
+      "\$\$equation\$\$\n"
+      "يُمنع منعاً باتاً كتابة كود LaTeX بدون علامات الدولار. يُمنع استخدام الأقواس المربعة [ ] أو \$ \$ أو\$\$ \$\$للمعادلات.";
+
+    return "$strictMathInstruction\n"
+      "أجب باللغة العربية بأسلوب علمي دقيق وواضح ومختصر قدر الإمكان.\n"
+      "السياق الحالي للطالب من الصفحة المفتوحة في الملزمة هو:\n\n$pageText";
   }
+
+    String formatChatResponseForLaTeX(String text) {
+    // Normalize common AI delimiter variants to the app's markdown math delimiters.
+    String formatted = text
+      .replaceAll(r'\[', r'$$')
+      .replaceAll(r'\]', r'$$');
+    formatted = formatted
+      .replaceAll(r'\(', r'$')
+      .replaceAll(r'\)', r'$');
+
+    return formatted;
+    }
 
   Future<String> _generateGeminiReply(String prompt, String modelName) async {
     final app = context.read<AppProvider>();
@@ -2124,7 +2140,7 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
 
   Widget _buildChatBubble(Map<String, String> message) {
     final role = message['role'] ?? 'ai';
-    final content = message['content'] ?? '';
+    final content = formatChatResponseForLaTeX(message['content'] ?? '');
     final isUser = role == 'user';
 
     final userColor = const Color(0xFF3B82F6);
@@ -2375,28 +2391,49 @@ class LatexElementBuilder extends MarkdownElementBuilder {
 
   @override
   Widget visitElementAfter(md.Element element, TextStyle? preferredStyle) {
-    final text = element.textContent;
+    final rawText = element.textContent;
+    const lrm = '\u200E';
+    final text = '$lrm$rawText$lrm';
     if (element.tag == 'math_block') {
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 8),
-        alignment: Alignment.center,
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Math.tex(
-            text,
-            textStyle: textStyle?.copyWith(fontSize: 16),
-            mathStyle: MathStyle.display,
-            onErrorFallback: (err) => const Text(r'$...$', style: TextStyle(color: Colors.redAccent)),
+        alignment: Alignment.centerLeft,
+        child: Directionality(
+          textDirection: TextDirection.ltr,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: Math.tex(
+              text,
+              textStyle: textStyle?.copyWith(fontSize: 16),
+              mathStyle: MathStyle.display,
+              onErrorFallback: (err) => const Text(
+                r'$...$',
+                style: TextStyle(color: Colors.redAccent),
+                textDirection: TextDirection.ltr,
+              ),
+            ),
           ),
         ),
       );
     } else {
-      return Math.tex(
-        text,
-        textStyle: textStyle,
-        mathStyle: MathStyle.text,
-        onErrorFallback: (err) => const Text(r'$...$', style: TextStyle(color: Colors.redAccent)),
+      return Directionality(
+        textDirection: TextDirection.ltr,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Math.tex(
+            text,
+            textStyle: textStyle,
+            mathStyle: MathStyle.text,
+            onErrorFallback: (err) => const Text(
+              r'$...$',
+              style: TextStyle(color: Colors.redAccent),
+              textDirection: TextDirection.ltr,
+            ),
+          ),
+        ),
       );
     }
   }

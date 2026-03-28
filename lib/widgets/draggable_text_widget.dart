@@ -49,21 +49,32 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
   late TextEditingController _textController;
   late FocusNode _focusNode;
 
-  TextDirection _resolveBaseDirection(String text) {
-    // Determine direction from the first strong character.
-    // This avoids forcing RTL for mixed text like (0) inside notes.
-    final rtlRegex = RegExp(r'[\u0590-\u08FF\uFB1D-\uFDFD\uFE70-\uFEFC]');
-    final ltrRegex = RegExp(r'[A-Za-z]');
+  TextDirection _resolveTextDirection(String text) {
+    final trimmedLeading = text.trimLeft();
+    if (trimmedLeading.isEmpty) return TextDirection.rtl;
 
-    for (final rune in text.runes) {
-      final ch = String.fromCharCode(rune);
-      if (rtlRegex.hasMatch(ch)) return TextDirection.rtl;
-      if (ltrRegex.hasMatch(ch)) return TextDirection.ltr;
-    }
+    // Dynamic direction from the first meaningful character in the note.
+    final first = trimmedLeading[0];
+    final startsWithArabic = RegExp(r'^[\u0600-\u06FF]').hasMatch(first);
+    return startsWithArabic ? TextDirection.rtl : TextDirection.ltr;
+  }
 
-    // If no strong characters exist (digits/symbols only), prefer LTR so
-    // parentheses and cursor movement behave naturally.
-    return TextDirection.ltr;
+  String _fixBidiBrackets(String text) {
+    const lrm = '\u200E';
+
+    // Isolate common LTR math/physics segments so brackets and slashes do not flip in RTL context.
+    var fixed = text.replaceAllMapped(
+      RegExp(r'([A-Za-z0-9][A-Za-z0-9\s/\\+\-*=.,:;_%^]*[\)\]])'),
+      (m) => '${m.group(1)}$lrm',
+    );
+
+    // Also stabilize opening brackets that start LTR chunks like (F/m) or [v/t].
+    fixed = fixed.replaceAllMapped(
+      RegExp(r'([\(\[])([A-Za-z0-9])'),
+      (m) => '${m.group(1)}$lrm${m.group(2)}',
+    );
+
+    return fixed;
   }
 
   @override
@@ -125,8 +136,11 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
     final effectiveShowBorder = widget.showBorder;
 
     // تحديد الـ TextStyle المشترك
-    final textDirection = _resolveBaseDirection(_textController.text);
+    final textDirection = _resolveTextDirection(_textController.text);
     final isRtl = textDirection == TextDirection.rtl;
+    final displayDirection = _resolveTextDirection(widget.content);
+    final displayIsRtl = displayDirection == TextDirection.rtl;
+    final fixedDisplayText = _fixBidiBrackets(widget.content);
 
     final sharedStyle = TextStyle(
       color: widget.color,
@@ -200,18 +214,18 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
       contentWidget = Math.tex(widget.content, textStyle: sharedStyle);
     } else {
       // ── وضع العرض: نص عادي ───────────────────────────────────────────────
-      List<String> lines = widget.content.split('\n');
+      List<String> lines = fixedDisplayText.split('\n');
       if (lines.length <= 1) {
         contentWidget = Text(
-          widget.content,
+          fixedDisplayText,
           style: sharedStyle,
-          textDirection: isRtl ? TextDirection.rtl : TextDirection.ltr,
-          textAlign: isRtl ? TextAlign.right : TextAlign.left,
+          textDirection: displayIsRtl ? TextDirection.rtl : TextDirection.ltr,
+          textAlign: displayIsRtl ? TextAlign.right : TextAlign.left,
         );
       } else {
         contentWidget = Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: isRtl
+          crossAxisAlignment: displayIsRtl
               ? CrossAxisAlignment.end
               : CrossAxisAlignment.start,
           children: lines
@@ -219,8 +233,10 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
                 (line) => Text(
                   line,
                   style: sharedStyle,
-                  textDirection: isRtl ? TextDirection.rtl : TextDirection.ltr,
-                  textAlign: isRtl ? TextAlign.right : TextAlign.left,
+                  textDirection: displayIsRtl
+                      ? TextDirection.rtl
+                      : TextDirection.ltr,
+                  textAlign: displayIsRtl ? TextAlign.right : TextAlign.left,
                 ),
               )
               .toList(),
