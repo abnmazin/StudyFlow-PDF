@@ -953,23 +953,33 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                                 inactiveTrackColor: Colors.transparent,
                                                 thumbColor: const Color(0xFF64748B),
                                               ),
-                                              child: Slider(
-                                                min: 1.0,
-                                                max: _pdfController.pages.length
-                                                    .toDouble(),
-                                                value:
-                                                    (_pdfController.pageNumber
-                                                                ?.toDouble() ??
-                                                            1.0)
-                                                        .clamp(
-                                                          1.0,
-                                                          _pdfController.pages.length
-                                                              .toDouble(),
-                                                        ),
-                                                onChanged: (val) {
-                                                  setState(() {});
-                                                  _pdfController.goToPage(
-                                                    pageNumber: val.toInt(),
+                                              child: StatefulBuilder(
+                                                builder: (context, setSliderState) {
+                                                  final int pageCount = _pdfController.pages.length;
+                                                  final double min = 1.0;
+                                                  final double max = pageCount.toDouble();
+                                                  // Use a local variable to track slider value for instant feedback
+                                                  // Store it in the closure
+                                                  double? localSliderValue;
+                                                  return StatefulBuilder(
+                                                    builder: (context, setLocalState) {
+                                                      // If localSliderValue is null, initialize from controller
+                                                      localSliderValue ??= (pageCount - (_pdfController.pageNumber ?? 1) + 1).toDouble().clamp(min, max);
+                                                      return Slider(
+                                                        min: min,
+                                                        max: max,
+                                                        value: localSliderValue!,
+                                                        onChanged: (val) {
+                                                          setLocalState(() {
+                                                            localSliderValue = val;
+                                                          });
+                                                        },
+                                                        onChangeEnd: (val) {
+                                                          int page = (pageCount - val + 1).round().clamp(1, pageCount);
+                                                          _pdfController.goToPage(pageNumber: page);
+                                                        },
+                                                      );
+                                                    },
                                                   );
                                                 },
                                               ),

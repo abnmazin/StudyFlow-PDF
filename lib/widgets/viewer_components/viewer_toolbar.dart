@@ -149,7 +149,48 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
       setState(() => _isEditingZoom = false);
     }
   }
+Widget _buildEditableChip({
+  required bool isEditing,
+  required VoidCallback onTap,
+  required Widget displayChild,
+  required Widget editChild,
+  required Color backgroundColor,
+  required Color borderColor,
+  double width = 84,
+  double height = 40,
+}) {
+  return AnimatedContainer(
+    duration: const Duration(milliseconds: 180),
+    curve: Curves.easeOut,
+    width: width,
+    height: height,
+    decoration: BoxDecoration(
+      color: backgroundColor,
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(
+        color: isEditing ? const Color(0xFF3B82F6) : borderColor,
+        width: isEditing ? 1.4 : 1,
+      ),
 
+    ),
+    child: AnimatedSwitcher(
+      duration: const Duration(milliseconds: 160),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      child: isEditing
+          ? editChild
+          : Material(
+              key: const ValueKey('display'),
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: onTap,
+                child: displayChild,
+              ),
+            ),
+    ),
+  );
+}
   // ─── UNIFIED BUTTON BUILDER ───────────────────────────────────────
   Widget _buildToolButton({
     required IconData icon,
@@ -254,84 +295,67 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
 
                 // Page Counter
                 if (pdf != null)
-                  _isEditingPage
-                      ? SizedBox(
-                          width: 84,
-                          height: 40,
-                          child: TextField(
-                            controller: _pageInputController,
-                            autofocus: true,
-                            keyboardType: TextInputType.number,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color: textPrimary,
-                            ),
-                            decoration: InputDecoration(
-                              contentPadding: EdgeInsets.zero,
-                              isDense: true,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide(color: inputBorder),
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide(color: inputBorder),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: const BorderSide(
-                                  color: Color(0xFF3B82F6),
-                                ),
-                              ),
-                            ),
-                            onSubmitted: (val) {
-                              final int? page = int.tryParse(val);
-                              if (page != null &&
-                                  page >= 1 &&
-                                  page <= widget.pdfController.pages.length) {
-                                widget.pdfController.goToPage(pageNumber: page);
-                              }
-                              setState(() => _isEditingPage = false);
-                            },
-                            onTapOutside: (_) =>
-                                setState(() => _isEditingPage = false),
-                          ),
-                        )
-                      : InkWell(
-                          onTap: () {
-                            setState(() {
-                              _isEditingPage = true;
-                              _pageInputController.text =
-                                  (widget.pdfController.pageNumber ?? 1)
-                                      .toString();
-                            });
-                          },
-                          borderRadius: BorderRadius.circular(8),
-                          child: Container(
-                            height: 40,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            decoration: BoxDecoration(
-                              color: chipBg,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              widget.pdfController.isReady
-                                  ? '${widget.pdfController.pageNumber} / ${widget.pdfController.pages.length}'
-                                  : 'جارٍ التحميل...',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                                color: textPrimary,
-                              ),
-                            ),
-                          ),
-                        ),
-
+  _buildEditableChip(
+    isEditing: _isEditingPage,
+    width: 92,
+    height: 40,
+    backgroundColor: chipBg,
+    borderColor: inputBorder,
+    onTap: () {
+      setState(() {
+        _isEditingPage = true;
+        _pageInputController.text =
+            (widget.pdfController.pageNumber ?? 1).toString();
+      });
+    },
+    displayChild: Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        child: Text(
+          widget.pdfController.isReady
+              ? '${widget.pdfController.pageNumber} / ${widget.pdfController.pages.length}'
+              : '...',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: textPrimary,
+          ),
+        ),
+      ),
+    ),
+    editChild: Center(
+      child: SizedBox(
+        width: double.infinity,
+        child: TextField(
+          key: const ValueKey('pageField'),
+          controller: _pageInputController,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: textPrimary,
+          ),
+          decoration: const InputDecoration(
+            border: InputBorder.none,
+            isDense: true,
+            contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          ),
+          onSubmitted: (val) {
+            final int? page = int.tryParse(val);
+            if (page != null &&
+                page >= 1 &&
+                page <= widget.pdfController.pages.length) {
+              widget.pdfController.goToPage(pageNumber: page);
+            }
+            setState(() => _isEditingPage = false);
+          },
+          onTapOutside: (_) => setState(() => _isEditingPage = false),
+        ),
+      ),
+    ),
+  ),
                 const SizedBox(width: 8),
 
                 // Zoom Controls
@@ -351,77 +375,54 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                         iconMuted: iconMuted,
                       ),
                       const SizedBox(width: 4),
-                      _isEditingZoom
-                          ? SizedBox(
-                              width: 72,
-                              height: 36,
-                              child: TextField(
-                                controller: _zoomInputController,
-                                autofocus: true,
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: textPrimary,
-                                ),
-                                decoration: InputDecoration(
-                                  contentPadding: EdgeInsets.zero,
-                                  isDense: true,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                    borderSide: BorderSide(color: inputBorder),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                    borderSide: BorderSide(color: inputBorder),
-                                  ),
-                                  focusedBorder: const OutlineInputBorder(
-                                    borderRadius: BorderRadius.all(
-                                      Radius.circular(8),
-                                    ),
-                                    borderSide: BorderSide(
-                                      color: Color(0xFF3B82F6),
-                                    ),
-                                  ),
-                                ),
-                                onSubmitted: _submitZoomText,
-                                onTapOutside: (_) =>
-                                    _submitZoomText(_zoomInputController.text),
-                              ),
-                            )
-                          : InkWell(
-                              onTap: () {
-                                setState(() {
-                                  _isEditingZoom = true;
-                                  _zoomInputController.text =
-                                      (_currentZoomRatio() * 100)
-                                          .toStringAsFixed(0);
-                                });
-                              },
-                              borderRadius: BorderRadius.circular(8),
-                              child: Container(
-                                width: 72,
-                                height: 36,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  color: barBg,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: inputBorder),
-                                ),
-                                child: Text(
-                                  _currentZoomLabel(),
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: textPrimary,
-                                  ),
-                                ),
-                              ),
+                      _buildEditableChip(
+                        isEditing: _isEditingZoom,
+                        width: 76,
+                        height: 36,
+                        backgroundColor: barBg,
+                        borderColor: inputBorder,
+                        onTap: () {
+                          setState(() {
+                            _isEditingZoom = true;
+                            _zoomInputController.text =
+                                (_currentZoomRatio() * 100).toStringAsFixed(0);
+                          });
+                        },
+                        displayChild: Center(
+                          child: Text(
+                            _currentZoomLabel(),
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: textPrimary,
                             ),
+                          ),
+                        ),
+                        editChild: Center(
+                          child: SizedBox(
+                            width: double.infinity,
+                            child: TextField(
+                              key: const ValueKey('zoomField'),
+                              controller: _zoomInputController,
+                              autofocus: true,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: textPrimary,
+                              ),
+                              decoration: const InputDecoration(
+                                border: InputBorder.none,
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                              ),
+                              onSubmitted: _submitZoomText,
+                              onTapOutside: (_) => _submitZoomText(_zoomInputController.text),
+                            ),
+                          ),
+                        ),
+                      ),
                       const SizedBox(width: 4),
                       _buildToolButton(
                         icon: LucideIcons.zoomIn,
@@ -628,15 +629,6 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                 ),
                 const SizedBox(width: 4),
 
-                // Settings
-                _buildToolButton(
-                  icon: LucideIcons.settings,
-                  isActive: false,
-                  onTap: widget.onToggleSettings,
-                  tooltip: 'إعدادات المستند',
-                  iconMuted: iconMuted,
-                ),
-                const SizedBox(width: 4),
 
                 // Right Panel Toggle
                 _buildToolButton(

@@ -752,30 +752,7 @@ class StudyFlowRightPanel extends StatelessWidget {
                                         textPrimary: textPrimary,
                                         textMuted: textMuted,
                                       ),
-                                      _buildSettingsDivider(panelBorder),
-                                      _buildSettingsTile(
-                                        icon: LucideIcons.bot,
-                                        label: 'تصفير سجل AI لهذا الملف',
-                                        onTap: () {
-                                          if (activePdf == null) return;
-                                          _showBulkCleanupDialog(
-                                            context,
-                                            title: 'تصفير سجل AI؟',
-                                            message:
-                                                'سيتم حذف محادثة الذكاء الاصطناعي الخاصة بهذا الملف وإرجاع الرسالة الافتراضية.',
-                                            successMessage:
-                                                'تم تصفير سجل AI لهذا الملف.',
-                                            onConfirm: () =>
-                                                _clearAiConversationForPdf(
-                                                  activePdf!.id,
-                                                ),
-                                          );
-                                        },
-                                        isDanger: true,
-                                        textPrimary: textPrimary,
-                                        textMuted: textMuted,
-                                      ),
-                                    ],
+                                         ],
                                   ),
                                 ),
                                 const SizedBox(height: 16),
@@ -995,289 +972,341 @@ class StudyFlowRightPanel extends StatelessWidget {
       ),
     );
   }
-
-  Widget _buildSettingsView(
-    BuildContext context,
-    Color panelBg,
-    Color panelBorder,
-    Color headerBg,
-    Color headerBorder,
-    Color surfaceAlt,
-    Color textPrimary,
-    Color textMuted,
-  ) {
-    final app = context.watch<AppProvider>();
-    return Column(
-      children: [
-        // --- HEADER ---
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            color: headerBg,
-            border: Border(bottom: BorderSide(color: headerBorder)),
-          ),
-          child: Row(
-            children: [
-              Icon(LucideIcons.settings, size: 20, color: textPrimary),
-              const SizedBox(width: 8),
-              Text(
-                'إعدادات المستند',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: textPrimary,
-                ),
+Widget _buildSettingsView(
+  BuildContext context,
+  Color panelBg,
+  Color panelBorder,
+  Color headerBg,
+  Color headerBorder,
+  Color surfaceAlt,
+  Color textPrimary,
+  Color textMuted,
+) {
+  return Column(
+    children: [
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: headerBg,
+          border: Border(bottom: BorderSide(color: headerBorder)),
+        ),
+        child: Row(
+          children: [
+            Icon(LucideIcons.settings, size: 20, color: textPrimary),
+            const SizedBox(width: 8),
+            Text(
+              'إعدادات المستند',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: textPrimary,
               ),
+            ),
+          ],
+        ),
+      ),
+      Expanded(
+        child: _buildSettingsTabContent(
+          context,
+          surfaceAlt,
+          panelBorder,
+          textPrimary,
+          textMuted,
+        ),
+      ),
+    ],
+  );
+}
+Widget _buildSettingsTabContent(
+  BuildContext context,
+  Color surfaceAlt,
+  Color panelBorder,
+  Color textPrimary,
+  Color textMuted,
+) {
+  final app = context.watch<AppProvider>();
+
+  return SingleChildScrollView(
+    padding: const EdgeInsets.all(16),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (activePdf != null) ...[
+          _buildSettingsCard(
+            context,
+            surfaceAlt,
+            panelBorder,
+            textPrimary,
+            textMuted,
+           [
+    _buildSettingsTile(
+      icon: LucideIcons.filePlus,
+      label: 'إضافة صفحة فارغة',
+      onTap: () => onAddPage(activePdf!),
+      textPrimary: textPrimary,
+      textMuted: textMuted,
+    ),
+    _buildSettingsDivider(panelBorder),
+    _buildSettingsTile(
+      icon: LucideIcons.fileMinus,
+      label: 'حذف الصفحة الحالية',
+      onTap: () => onDeletePage(activePdf!),
+      isDanger: true,
+      textPrimary: textPrimary,
+      textMuted: textMuted,
+    ),
+    _buildSettingsDivider(panelBorder),
+    _buildSettingsTile(
+      icon: LucideIcons.printer,
+      label: 'طباعة المستند',
+      onTap: () => onPrint(activePdf!),
+      textPrimary: textPrimary,
+      textMuted: textMuted,
+    ),
+    _buildSettingsDivider(panelBorder),
+    _buildSettingsTile(
+      icon: LucideIcons.bot,
+      label: 'تصفير سجل AI لهذا الملف',
+      onTap: () {
+        if (activePdf == null) return;
+        _showBulkCleanupDialog(
+          context,
+          title: 'تصفير سجل AI؟',
+          message:
+              'سيتم حذف محادثة الذكاء الاصطناعي الخاصة بهذا الملف وإرجاع الرسالة الافتراضية.',
+          successMessage: 'تم تصفير سجل AI لهذا الملف.',
+          onConfirm: () => _clearAiConversationForPdf(activePdf!.id),
+        );
+      },
+      isDanger: true,
+      textPrimary: textPrimary,
+      textMuted: textMuted,
+    ),
+  ],
+          ),
+          const SizedBox(height: 16),
+        ],
+        _buildSessionCard(
+          context,
+          app,
+          surfaceAlt,
+          panelBorder,
+          textPrimary,
+          textMuted,
+        ),
+      ],
+    ),
+  );
+}
+Widget _buildCursorUtilitiesHub(
+  BuildContext context,
+  Color panelBg,
+  Color panelBorder,
+  Color surfaceAlt,
+  Color textPrimary,
+  Color textMuted,
+) {
+  final indicatorColor = const Color(0xFF3B82F6);
+  final tabBg = isDarkMode
+      ? const Color(0xFF111827)
+      : const Color(0xFFE2E8F0);
+
+  return DefaultTabController(
+    length: 4,
+    child: Column(
+      children: [
+        Container(
+          margin: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: tabBg,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: panelBorder),
+          ),
+          child: TabBar(
+            indicator: BoxDecoration(
+              color: indicatorColor.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: indicatorColor.withValues(alpha: 0.45),
+              ),
+            ),
+            labelColor: indicatorColor,
+            unselectedLabelColor: textMuted,
+            dividerColor: Colors.transparent,
+            indicatorSize: TabBarIndicatorSize.tab,
+            tabs: const [
+  Tab(
+    icon: Tooltip(
+      message: 'ذكاء اصطناعي',
+      child: Icon(LucideIcons.bot, size: 20),
+    ),
+  ),
+  Tab(
+    icon: Tooltip(
+      message: 'حاسبة',
+      child: Icon(LucideIcons.calculator, size: 20),
+    ),
+  ),
+  Tab(
+    icon: Tooltip(
+      message: 'صفحات مرجعية',
+      child: Icon(LucideIcons.bookmark, size: 20),
+    ),
+  ),
+  Tab(
+    icon: Tooltip(
+      message: 'الإعدادات',
+      child: Icon(LucideIcons.settings, size: 20),
+    ),
+  ),
             ],
           ),
         ),
-
-        // --- CONTENT ---
         Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (activePdf != null) ...[
-                  _buildSettingsCard(
-                    context,
-                    surfaceAlt,
-                    panelBorder,
-                    textPrimary,
-                    textMuted,
-                    [
-                      _buildSettingsTile(
-                        icon: LucideIcons.filePlus,
-                        label: 'إضافة صفحة فارغة',
-                        onTap: () => onAddPage(activePdf!),
-                        textPrimary: textPrimary,
-                        textMuted: textMuted,
+          child: TabBarView(
+            children: [
+              // AI Tab
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                child: _AiChatWidget(
+                  isDarkMode: isDarkMode,
+                  pdfId: activePdf?.id,
+                  pdfController: pdfController,
+                ),
+              ),
+
+              // Calculator Tab
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                child: const MiniCalculatorWidget(),
+              ),
+
+              // Bookmarks Tab
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                child: activePdf != null
+                    ? SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (activePdf!.bookmarks.isNotEmpty)
+                              ...activePdf!.bookmarks.map((bookmark) {
+                                return Card(
+                                  margin: const EdgeInsets.only(bottom: 8),
+                                  elevation: 1,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    side: BorderSide(color: panelBorder),
+                                  ),
+                                  color: surfaceAlt,
+                                  child: InkWell(
+                                    onTap: () {
+                                      if (pdfController.isReady) {
+                                        pdfController.goToPage(
+                                          pageNumber: bookmark.page,
+                                        );
+                                      }
+                                    },
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(12),
+                                      child: Row(
+                                        children: [
+                                          const Icon(
+                                            LucideIcons.bookmark,
+                                            size: 16,
+                                            color: Color(0xFF3B82F6),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  bookmark.name,
+                                                  style: TextStyle(
+                                                    fontSize: 14,
+                                                    fontWeight: FontWeight.w500,
+                                                    color: textPrimary,
+                                                  ),
+                                                ),
+                                                Text(
+                                                  'الصفحة ${bookmark.page}',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: textMuted,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          IconButton(
+                                            icon: const Icon(
+                                              LucideIcons.trash2,
+                                              size: 16,
+                                              color: Color(0xFFDC2626),
+                                            ),
+                                            onPressed: () {
+                                              context
+                                                  .read<AppProvider>()
+                                                  .deleteBookmark(
+                                                    activePdf!.id,
+                                                    bookmark.id,
+                                                  );
+                                            },
+                                            tooltip: 'حذف العلامة المرجعية',
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              })
+                            else
+                              Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.only(top: 32),
+                                  child: Text(
+                                    'لا توجد علامات مرجعية بعد\n\nاستخدم Ctrl+S لإضافة علامة مرجعية',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: textMuted,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      )
+                    : Center(
+                        child: Text(
+                          'لا يوجد مستند مفتوح',
+                          style: TextStyle(color: textMuted, fontSize: 14),
+                        ),
                       ),
-                      _buildSettingsDivider(panelBorder),
-                      _buildSettingsTile(
-                        icon: LucideIcons.fileMinus,
-                        label: 'حذف الصفحة الحالية',
-                        onTap: () => onDeletePage(activePdf!),
-                        isDanger: true,
-                        textPrimary: textPrimary,
-                        textMuted: textMuted,
-                      ),
-                      _buildSettingsDivider(panelBorder),
-                      _buildSettingsTile(
-                        icon: LucideIcons.printer,
-                        label: 'طباعة المستند',
-                        onTap: () => onPrint(activePdf!),
-                        textPrimary: textPrimary,
-                        textMuted: textMuted,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                ],
-                _buildSessionCard(
+              ),
+
+              // Settings Tab
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                child: _buildSettingsTabContent(
                   context,
-                  app,
                   surfaceAlt,
                   panelBorder,
                   textPrimary,
                   textMuted,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ],
-    );
-  }
-
-
-
-
-
-  Widget _buildCursorUtilitiesHub(
-    BuildContext context,
-    Color panelBg,
-    Color panelBorder,
-    Color surfaceAlt,
-    Color textPrimary,
-    Color textMuted,
-  ) {
-    final indicatorColor = const Color(0xFF3B82F6);
-    final tabBg = isDarkMode
-        ? const Color(0xFF111827)
-        : const Color(0xFFE2E8F0);
-
-    return DefaultTabController(
-      length: 3,
-      child: Column(
-        children: [
-          Container(
-            margin: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: tabBg,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: panelBorder),
-            ),
-            child: TabBar(
-              indicator: BoxDecoration(
-                color: indicatorColor.withValues(alpha: 0.18),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: indicatorColor.withValues(alpha: 0.45),
-                ),
-              ),
-              labelColor: indicatorColor,
-              unselectedLabelColor: textMuted,
-              dividerColor: Colors.transparent,
-              indicatorSize: TabBarIndicatorSize.tab,
-              tabs: const [
-                Tab(
-                  icon: Icon(LucideIcons.bookmark, size: 16),
-                  text: 'المرجعيات',
-                ),
-                Tab(
-                  icon: Icon(LucideIcons.calculator, size: 16),
-                  text: 'حاسبة',
-                ),
-                Tab(
-                  icon: Icon(LucideIcons.bot, size: 16),
-                  text: 'الذكاء الذكي',
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: TabBarView(
-              children: [
-                // Bookmarks Tab
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-                  child: activePdf != null
-                      ? SingleChildScrollView(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (activePdf!.bookmarks.isNotEmpty)
-                                ...activePdf!.bookmarks.map((bookmark) {
-                                  return Card(
-                                    margin: const EdgeInsets.only(bottom: 8),
-                                    elevation: 1,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                      side: BorderSide(color: panelBorder),
-                                    ),
-                                    color: surfaceAlt,
-                                    child: InkWell(
-                                      onTap: () {
-                                        if (pdfController.isReady) {
-                                          pdfController.goToPage(
-                                            pageNumber: bookmark.page,
-                                          );
-                                        }
-                                      },
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: Padding(
-                                        padding: const EdgeInsets.all(12),
-                                        child: Row(
-                                          children: [
-                                            const Icon(
-                                              LucideIcons.bookmark,
-                                              size: 16,
-                                              color: Color(0xFF3B82F6),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    bookmark.name,
-                                                    style: TextStyle(
-                                                      fontSize: 14,
-                                                      fontWeight:
-                                                          FontWeight.w500,
-                                                      color: textPrimary,
-                                                    ),
-                                                  ),
-                                                  Text(
-                                                    'الصفحة ${bookmark.page}',
-                                                    style: TextStyle(
-                                                      fontSize: 12,
-                                                      color: textMuted,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                            IconButton(
-                                              icon: const Icon(
-                                                LucideIcons.trash2,
-                                                size: 16,
-                                                color: Color(0xFFDC2626),
-                                              ),
-                                              onPressed: () {
-                                                context
-                                                    .read<AppProvider>()
-                                                    .deleteBookmark(
-                                                      activePdf!.id,
-                                                      bookmark.id,
-                                                    );
-                                              },
-                                              tooltip: 'حذف العلامة المرجعية',
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                })
-                              else
-                                Center(
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(top: 32),
-                                    child: Text(
-                                      'لا توجد علامات مرجعية بعد\n\nاستخدم Ctrl+S لإضافة علامة مرجعية',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        color: textMuted,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        )
-                      : Center(
-                          child: Text(
-                            'لا يوجد مستند مفتوح',
-                            style: TextStyle(color: textMuted, fontSize: 14),
-                          ),
-                        ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                  child: const MiniCalculatorWidget(),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                  child: _AiChatWidget(
-                    isDarkMode: isDarkMode,
-                    pdfId: activePdf?.id,
-                    pdfController: pdfController,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
+    ),
+  );
+}
   Widget _buildSettingsCard(
     BuildContext context,
     Color surfaceAlt,

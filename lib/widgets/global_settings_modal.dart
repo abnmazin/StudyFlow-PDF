@@ -729,95 +729,99 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
       ),
     ]);
   }
+Widget _buildCompactJoinCard(
+  BuildContext context,
+  AppProvider app,
+  Color surface,
+  Color border,
+  Color text,
+  Color muted,
+) {
+  final isDark = Theme.of(context).brightness == Brightness.dark;
 
-  Widget _buildCompactJoinCard(
-    BuildContext context,
-    AppProvider app,
-    Color surface,
-    Color border,
-    Color text,
-    Color muted,
-  ) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: border),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+    decoration: BoxDecoration(
+      color: surface,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(
+        color: border.withOpacity(0.9),
+        width: 1,
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(
-            child: SizedBox(
-              height: 36,
-              child: TextField(
-                controller: _joinCodeController,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.2,
-                  color: Colors.blue,
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(isDark ? 0.14 : 0.05),
+          blurRadius: 8,
+          offset: const Offset(0, 2),
+        ),
+      ],
+    ),
+    child: Row(
+      children: [
+        Expanded(
+          child: Container(
+            height: 36,
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF0F172A) : Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: border.withOpacity(0.9),
+              ),
+            ),
+            child: TextField(
+              controller: _joinCodeController,
+              textAlign: TextAlign.center,
+              textAlignVertical: TextAlignVertical.center,
+              textDirection: TextDirection.ltr,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.0,
+                color: text,
+              ),
+              decoration: InputDecoration(
+                hintText: 'أدخل الكود',
+                hintStyle: TextStyle(
+                  fontSize: 11,
+                  color: muted.withOpacity(0.7),
+                  fontWeight: FontWeight.w500,
                 ),
-                decoration: InputDecoration(
-                  hintText: 'الكود هنا...',
-                  hintStyle: TextStyle(
-                    fontSize: 10,
-                    letterSpacing: 0,
-                    color: muted.withOpacity(0.5),
-                    fontWeight: FontWeight.normal,
-                  ),
-                  isDense: true,
-                  filled: true,
-                  fillColor: Theme.of(context).brightness == Brightness.dark
-                      ? const Color(0xFF0F172A)
-                      : Colors.white,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: border),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: Colors.blue, width: 1.5),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 10,
-                  ),
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 9,
                 ),
               ),
             ),
           ),
-          const SizedBox(width: 8),
-          SizedBox(
-            height: 36,
-            child: FilledButton(
-              onPressed: _isJoining ? null : () => _joinMasterBundle(app),
-              style: FilledButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                minimumSize: const Size(54, 36),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                textStyle: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 11,
-                ),
+        ),
+        const SizedBox(width: 8),
+        SizedBox(
+          height: 36,
+          child: FilledButton(
+            onPressed: _isJoining ? null : () => _joinMasterBundle(app),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF2563EB),
+              disabledBackgroundColor: const Color(0xFF2563EB).withOpacity(0.6),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              minimumSize: const Size(60, 36),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
               ),
+              textStyle: const TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 11,
+              ),
+            ),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
               child: _isJoining
                   ? const SizedBox(
+                      key: ValueKey('loading'),
                       width: 14,
                       height: 14,
                       child: CircularProgressIndicator(
@@ -825,14 +829,17 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                         color: Colors.white,
                       ),
                     )
-                  : const Text('ربط'),
+                  : const Text(
+                      'ربط',
+                      key: ValueKey('text'),
+                    ),
             ),
           ),
-        ],
-      ),
-    );
-  }
-
+        ),
+      ],
+    ),
+  );
+}
   // ─── الهيلبرز المتبقية (بدون تغيير) ──────────────────────────────────────────
 
   Widget _buildMasterBundleCreator(
