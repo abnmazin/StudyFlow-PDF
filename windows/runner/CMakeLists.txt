@@ -34,6 +34,9 @@ target_compile_definitions(${BINARY_NAME} PRIVATE "NOMINMAX")
 # dependencies here.
 target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app)
 target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib")
+
+# 🚀 BUILD OPTIMIZATION: Silence missing PDB warnings (common with Firebase SDK)
+set_target_properties(${BINARY_NAME} PROPERTIES LINK_FLAGS "/ignore:4099")
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
 # Run the Flutter tool portions of the build. This must not be removed.

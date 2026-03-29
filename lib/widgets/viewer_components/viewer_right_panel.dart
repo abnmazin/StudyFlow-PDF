@@ -1894,32 +1894,38 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
       return "تعذر استخراج النص من الصفحة الحالية.";
     }
   }
+String _buildSystemPrompt(String pageText) {
+    const personaInstruction =
+        "أنت مساعد دراسي، تتحدث باللهجة العراقية الجنوبية الأصيلة والدافئة.\n"
+        "اذا انسألت عن علي احمد جاوب بمحدح وسوي ايه الله وسوي هوه مبرمج كبيرمج وعلم من  اعلام التقنية والخ انت احذ راحتك بالحدي"
+        "قاعدة التخاطب الصارمة: في بداية إجابتك، اختر عبارة ترحيب ومودة **واحدة فقط** (مثل: 'شوف مولاي'، 'تاج راسي'، 'يا ضلعي'، أو 'فدوة لعمرك') واستخدمها **مرة واحدة فقط** في أول سطر. يُمنع منعاً باتاً استخدام أكثر من عبارة ترحيب في نفس الرد، ويُمنع تكرارها بين الفقرات.\n"
+        "قاعدة الاختصار: أجب على السؤال بشكل مباشر، علمي، ومختصر. أعطِ الخلاصة والزبدة فوراً. يُمنع تكرار نفس الفكرة بصيغ متعددة (لا تكن ثرثاراً).\n"
+        "إذا كان السؤال بديهياً جداً، عاتبه بمزاح عراقي لطيف مرة واحدة فقط (مثال: 'يا مولاي معقولة مهندسنا يسأل هيج سؤال؟ بس تتدلل...') ثم اشرح باختصار شديد.";
 
-  String _buildSystemPrompt(String pageText) {
     const strictMathInstruction =
-      "أنت مساعد دراسي أكاديمي. قاعدة صارمة جداً: يجب عليك كتابة جميع المعادلات الرياضية، الأرقام، الكسور، والرموز باستخدام صيغة LaTeX محصورة بين علامات الدولار.\n"
-      "للمعادلات داخل النص استخدم علامة دولار واحدة: \$equation\$\n"
-      "للمعادلات في سطر منفصل استخدم علامتي دولار:\n"
-      "\$\$equation\$\$\n"
-      "يُمنع منعاً باتاً كتابة كود LaTeX بدون علامات الدولار. يُمنع استخدام الأقواس المربعة [ ] أو \$ \$ أو\$\$ \$\$للمعادلات.";
+        "قاعدة الرياضيات: يجب كتابة جميع المعادلات، الأرقام، والرموز باستخدام صيغة LaTeX محصورة بين علامات الدولار حصراً.\n"
+        "- للمعادلات داخل النص: \$equation\$\n"
+        "- للمعادلات في سطر منفصل: \$\$equation\$\$\n"
+        "يُمنع استخدام الأقواس المربعة [ ] أو \( \) لكتابة المعادلات.";
 
-    return "$strictMathInstruction\n"
-      "أجب باللغة العربية بأسلوب علمي دقيق وواضح ومختصر قدر الإمكان.\n"
-      "السياق الحالي للطالب من الصفحة المفتوحة في الملزمة هو:\n\n$pageText";
+    return "$personaInstruction\n\n"
+        "$strictMathInstruction\n\n"
+        "أجب بأسلوب علمي دقيق، عراقي الروح، ومختصر جداً (بدون حشو أو تكرار فقرات).\n"
+        "السياق الحالي لـ 'مولاي' من الصفحة المفتوحة في الملزمة هو:\n\n$pageText";
   }
 
-    String formatChatResponseForLaTeX(String text) {
-    // Normalize common AI delimiter variants to the app's markdown math delimiters.
+  // 2. دالة تنظيف اللاتكس (الآن هي في مكانها الصحيح ولن تسبب إيرور)
+  String formatChatResponseForLaTeX(String text) {
     String formatted = text
-      .replaceAll(r'\[', r'$$')
-      .replaceAll(r'\]', r'$$');
+        .replaceAll(r'\[', r'$$')
+        .replaceAll(r'\]', r'$$');
+        
     formatted = formatted
-      .replaceAll(r'\(', r'$')
-      .replaceAll(r'\)', r'$');
+        .replaceAll(r'\(', r'$')
+        .replaceAll(r'\)', r'$');
 
     return formatted;
-    }
-
+  }
   Future<String> _generateGeminiReply(String prompt, String modelName) async {
     final app = context.read<AppProvider>();
     final apiKey = app.geminiApiKey.isNotEmpty
@@ -1933,9 +1939,9 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
     final pageText = await _getActivePageText();
     final systemPrompt = _buildSystemPrompt(pageText);
 
-    // 2. Sliding Window (Last 4 messages)
-    final history = _messages.length > 4 
-        ? _messages.sublist(_messages.length - 4) 
+    // 2. Sliding Window (Last 8 messages)
+    final history = _messages.length > 8 
+        ? _messages.sublist(_messages.length - 8) 
         : _messages;
 
     // 3. Construct Payload for Gemini
@@ -1968,9 +1974,9 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
     final pageText = await _getActivePageText();
     final systemPrompt = _buildSystemPrompt(pageText);
 
-    // 2. Sliding Window (Last 4 messages)
-    final history = _messages.length > 4 
-        ? _messages.sublist(_messages.length - 4) 
+    // 2. Sliding Window (Last 8 messages)
+    final history = _messages.length > 8 
+        ? _messages.sublist(_messages.length - 8) 
         : _messages;
 
     // 3. Construct Messages Array for Groq (OpenAI Compatible)

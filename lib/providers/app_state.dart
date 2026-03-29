@@ -1,7 +1,5 @@
 import 'dart:io';
 import 'dart:isolate';
-import 'package:path_provider/path_provider.dart';
-import 'package:path/path.dart' as p;
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
@@ -9,31 +7,36 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart' hide PdfBookmark;
-import '../models/models.dart';
-import '../models/app_user.dart';
-import '../services/sync_service.dart';
-import '../services/file_hash_service.dart';
-import '../services/file_manager_service.dart';
-import '../models/isar_models.dart' hide PdfDocument;
 import 'package:isar/isar.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
+
+import '../models/models.dart';
+import '../models/app_user.dart';
+import '../models/isar_models.dart' hide PdfDocument;
+import '../services/sync_service.dart';
+import '../services/file_hash_service.dart';
+import '../services/file_manager_service.dart';
 import '../screens/auth/login_screen.dart';
 
 enum DrawingSyncStrategy { disabled, immediate, buffered, isolate }
 
-// Top-level function for Compute Isolate Serialization
-List<Map<String, dynamic>> _serializeAnnotationsForIsolate(Map<String, dynamic> data) {
-  final List<Highlight> highlights = data['highlights'] as List<Highlight>;
-  final List<PdfComment> comments = data['comments'] as List<PdfComment>;
-  
-  final hJson = highlights.map((h) => {...h.toJson(), 'kind': 'highlight'}).toList();
-  final cJson = comments.map((c) => {...c.toJson(), 'kind': 'comment'}).toList();
-  return [...hJson, ...cJson];
+class DevSettings {
+  int? trimDelayMs;
+  int? trimMinIntervalMs;
+  bool? telemetryEnabled;
+
+  DevSettings({
+    this.trimDelayMs,
+    this.trimMinIntervalMs,
+    this.telemetryEnabled,
+  });
 }
 
-// Action types for undo/redo
 class ActionRecord {
   final String pdfId;
   final String actionType;
@@ -65,6 +68,38 @@ extension ActionTypes on AppProvider {
 class AppProvider extends ChangeNotifier {
   final SyncService _syncService = SyncService();
 
+  AppProvider() {
+    _initConnectivity();
+    _initialize();
+  }
+
+  void _initConnectivity() {
+    _connectivitySub = Connectivity().onConnectivityChanged.listen((results) {
+      final isNowOffline = results.contains(ConnectivityResult.none);
+      if (_isOffline != isNowOffline) {
+        _isOffline = isNowOffline;
+        _notify();
+        debugPrint('🌐 Network Status Changed: ${_isOffline ? 'OFFLINE' : 'ONLINE'}');
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _connectivitySub?.cancel();
+    _stopKickListener();
+    _stopUserMonitor();
+    _syncDebounce?.cancel();
+    for (var timer in _syncTimers.values) {
+      timer?.cancel();
+    }
+    if (_saveTimer != null && _saveTimer!.isActive) {
+      _saveTimer!.cancel();
+      _saveState(); // Flush pending save immediately
+    }
+    super.dispose();
+  }
+
   // ─── STATE FIELDS ──────────────────────────────────────────────────────────
   List<ClassItem> _classes = [];
   String? _activeClassId;
@@ -89,8 +124,15 @@ class AppProvider extends ChangeNotifier {
   bool _isDarkMode = false;
   bool _isSettingsOpen = false;
   DrawingSyncStrategy _drawingSyncStrategy = DrawingSyncStrategy.disabled;
+  final DevSettings _devSettings = DevSettings();
+
+  // Connectivity State
+  bool _isOffline = false;
+  bool get isOffline => _isOffline;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
 
   DrawingSyncStrategy get drawingSyncStrategy => _drawingSyncStrategy;
+  DevSettings get devSettings => _devSettings;
 
   void setDrawingSyncStrategy(DrawingSyncStrategy strategy) {
     _drawingSyncStrategy = strategy;
@@ -109,6 +151,7 @@ class AppProvider extends ChangeNotifier {
   bool _needsSave = false;
   bool _isSyncing = false;
   bool get isSyncing => _isSyncing;
+  bool _hasUnsavedChanges = false;
   bool _isJoiningSession = false;
   bool get isJoiningSession => _isJoiningSession;
   Timer? _syncDebounce; // Debouncer for background sync
@@ -257,6 +300,7 @@ class AppProvider extends ChangeNotifier {
       }
 
       debugPrint('DEBUG: performBidirectionalSync done. Deleted: ${result.deletedCount}, Downloaded: ${result.downloadedCount}, Uploaded: ${result.uploadedCount}.');
+      _hasUnsavedChanges = false;
       
       if (result.uploadedCount >= 0) {
         // Successfully synced
@@ -274,6 +318,7 @@ class AppProvider extends ChangeNotifier {
   /// Triggers a debounced bidirectional sync (default 1.8s).
   /// Used for gestures and tool changes to avoid UI lag.
   void triggerDebouncedSync({bool silent = true}) {
+    if (!_hasUnsavedChanges) return;
     _syncDebounce?.cancel();
     _syncDebounce = Timer(const Duration(milliseconds: 1800), () {
       performBidirectionalSync(silent: silent);
@@ -283,6 +328,10 @@ class AppProvider extends ChangeNotifier {
   /// Cancels any pending debounced sync.
   void cancelDebouncedSync() {
     _syncDebounce?.cancel();
+  }
+
+  void _markUnsavedChanges() {
+    _hasUnsavedChanges = true;
   }
 
   void setCurrentTool(ToolType tool) {
@@ -342,17 +391,16 @@ class AppProvider extends ChangeNotifier {
         });
       }
       debugPrint('DEBUG: Drawing captured (Buffered). Size: ${pdf.highlights.isNotEmpty ? pdf.highlights.last.path.length : 0} points.');
-    } else if (_drawingSyncStrategy == DrawingSyncStrategy.isolate) {
-      // Offload JSON serialization to a separate Isolate
-      compute(_serializeAnnotationsForIsolate, {
-        'highlights': pdf.highlights,
-        'comments': pdf.comments,
-      }).then((serialized) {
-        _syncService.uploadSerializedDelta(code, fileHash, serialized).catchError((e) {
-          debugPrint('❌ Isolate Sync Error: $e');
-        });
+      // Rule #1: NO FIREBASE IN ISOLATES.
+      // Move model serialization to Main Isolate. JSON conversion is instant.
+      final hJson = pdf.highlights.map((h) => {...h.toJson(), 'kind': 'highlight'}).toList();
+      final cJson = pdf.comments.map((c) => {...c.toJson(), 'kind': 'comment'}).toList();
+      final serialized = [...hJson, ...cJson];
+      
+      _syncService.uploadSerializedDelta(code, fileHash, serialized).catchError((e) {
+        debugPrint('❌ Isolate Sync Error: $e');
       });
-      debugPrint('DEBUG: Drawing captured (Isolate). Size: ${pdf.highlights.isNotEmpty ? pdf.highlights.last.path.length : 0} points. Destination: sync_sessions/$code/annotations/$fileHash.');
+      debugPrint('DEBUG: Drawing captured (Main Isolate). Size: ${pdf.highlights.isNotEmpty ? pdf.highlights.last.path.length : 0} points.');
     }
   }
 
@@ -455,9 +503,7 @@ class AppProvider extends ChangeNotifier {
         sum + cls.pdfs.fold(0, (pdfSum, pdf) => pdfSum + pdf.comments.length),
   );
 
-  AppProvider() {
-    _initialize();
-  }
+
 
   Future<void> _initialize() async {
     await _loadState();
@@ -645,6 +691,7 @@ class AppProvider extends ChangeNotifier {
     _stopKickListener();
     _stopUserMonitor();
     _saveState();
+    _updateImageCacheGovernance();
     _notify();
   }
 
@@ -933,12 +980,9 @@ class AppProvider extends ChangeNotifier {
       if (savedClassId != null && _classes.any((c) => c.id == savedClassId)) {
         _activeClassId = savedClassId;
 
-        // Auto-open last active PDF for this class
-        final cls = _classes.firstWhere((c) => c.id == savedClassId);
-        if (cls.lastActivePdfId != null &&
-            cls.pdfs.any((p) => p.id == cls.lastActivePdfId)) {
-          _activePdfId = cls.lastActivePdfId;
-        }
+        // 🚀 OPTIMIZATION (Fast Startup): Redirect to Dashboard instead of last active PDF.
+        // Heavy PDF rendering is deferred until an item is explicitly selected.
+        _activePdfId = null;
       } else if (_classes.isNotEmpty) {
         // Default to first class if no saved active class
         _activeClassId = _classes.first.id;
@@ -954,32 +998,9 @@ class AppProvider extends ChangeNotifier {
       _geminiApiKey = prefs.getString(_prefsKeyGeminiApiKey) ?? '';
       _groqApiKey = prefs.getString(_prefsKeyGroqApiKey) ?? '';
 
-      // Recalculate missing hashes/pageCounts for existing files
-      for (var i = 0; i < _classes.length; i++) {
-        for (var j = 0; j < _classes[i].pdfs.length; j++) {
-          final pdf = _classes[i].pdfs[j];
-          if (pdf.fileHash == null || pdf.pageCount == null) {
-            try {
-              final file = File(pdf.path);
-              if (await file.exists()) {
-                final hash = await FileHashService.calculateFileHash(pdf.path);
-                final bytes = await file.readAsBytes();
-                final doc = PdfDocument(inputBytes: bytes);
-                final pCount = doc.pages.count;
-                doc.dispose();
-                
-                _classes[i].pdfs[j] = pdf.copyWith(
-                  fileHash: hash,
-                  pageCount: pCount,
-                );
-                debugPrint('✅ Computed missing metadata for ${pdf.name}');
-              }
-            } catch (e) {
-              debugPrint('⚠️ Failed to compute hash for ${pdf.name}: $e');
-            }
-          }
-        }
-      }
+      // 🚀 PERFORMANCE OPTIMIZATION: Removed heavy metadata calculation loop from startup.
+      // Metadata (Hashes/Page counts) should be calculated On-Demand when a file is opened.
+      // This prevents the 300MB+ RAM spike and CPU choking on large libraries.
 
       // Load session codes map
       final sessionCodesJson = prefs.getString(_prefsKeyPdfSessionCodes);
@@ -1173,6 +1194,7 @@ class AppProvider extends ChangeNotifier {
     }
 
     _saveState();
+    _updateImageCacheGovernance();
     _notify();
   }
 
@@ -1189,6 +1211,7 @@ class AppProvider extends ChangeNotifier {
     }
 
     _saveState();
+    _updateImageCacheGovernance();
     _notify();
 
     // AUTO-JOIN: If lecturer opens a PDF, look for an active session.
@@ -1227,6 +1250,22 @@ class AppProvider extends ChangeNotifier {
           });
         });
       }
+    }
+  }
+
+  void _updateImageCacheGovernance() {
+    // 🚀 PERFORMANCE GOVERNANCE: Dynamic Image Cache Expansion
+    // Dashboard only needs ~2MB. PDF Viewer needs ~50MB for smooth tiling.
+    if (_activePdfId != null) {
+      PaintingBinding.instance.imageCache.maximumSizeBytes = 50 * 1024 * 1024;
+      PaintingBinding.instance.imageCache.maximumSize = 25;
+      debugPrint('🚀 ImageCache Expanded: 50MB (PDF Active)');
+    } else {
+      PaintingBinding.instance.imageCache.clear();
+      PaintingBinding.instance.imageCache.clearLiveImages();
+      PaintingBinding.instance.imageCache.maximumSizeBytes = 2 * 1024 * 1024;
+      PaintingBinding.instance.imageCache.maximumSize = 5;
+      debugPrint('🛡️ ImageCache Throttled: 2MB (Dashboard Mode)');
     }
   }
   
@@ -1531,6 +1570,7 @@ class AppProvider extends ChangeNotifier {
         debugPrint('📝 Action recorded: highlight ${newH.id}');
         _redoHistory.clear();
         _notify();
+        _markUnsavedChanges();
         triggerDebouncedSync(silent: true);
         return;
       }
@@ -1633,6 +1673,7 @@ class AppProvider extends ChangeNotifier {
       _saveTimer?.cancel();
       _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
       
+      _markUnsavedChanges();
       triggerDebouncedSync(silent: true);
       return;
     }
@@ -1664,6 +1705,7 @@ class AppProvider extends ChangeNotifier {
           debugPrint('❌ deleteComment failed: $e');
         });
       } else {
+        _markUnsavedChanges();
         triggerDebouncedSync(silent: true);
       }
       return;
@@ -1717,6 +1759,7 @@ class AppProvider extends ChangeNotifier {
         debugPrint('DEBUG: Cleared server annotations for $fileHash (session: $sessionCode).');
       } else {
         // No session — standard buffered sync (will push empty list)
+        _markUnsavedChanges();
         triggerDebouncedSync(silent: true);
       }
       return;
@@ -1755,6 +1798,7 @@ class AppProvider extends ChangeNotifier {
       _notify();
       _saveTimer?.cancel();
       _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
+      _markUnsavedChanges();
       triggerDebouncedSync(silent: true);
       return;
     }
@@ -1782,6 +1826,7 @@ class AppProvider extends ChangeNotifier {
       _notify();
       _saveTimer?.cancel();
       _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
+      _markUnsavedChanges();
       triggerDebouncedSync(silent: true);
       return;
     }
@@ -1879,6 +1924,7 @@ class AppProvider extends ChangeNotifier {
             },
           },
         );
+        _markUnsavedChanges();
         triggerDebouncedSync(silent: true);
       }
       return;
@@ -2046,6 +2092,7 @@ class AppProvider extends ChangeNotifier {
     _saveTimer?.cancel();
     _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
     _notify();
+    _markUnsavedChanges();
     triggerDebouncedSync(silent: true);
   }
 
@@ -2192,6 +2239,7 @@ class AppProvider extends ChangeNotifier {
     _saveTimer?.cancel();
     _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
     _notify();
+    _markUnsavedChanges();
     triggerDebouncedSync(silent: true);
   }
 
@@ -2737,19 +2785,7 @@ class AppProvider extends ChangeNotifier {
     await FileManagerService().deleteTaskByUuid(uuid);
   }
 
-  @override
-  void dispose() {
-    _stopKickListener();
-    _stopUserMonitor();
-    for (var timer in _syncTimers.values) {
-      timer?.cancel();
-    }
-    if (_saveTimer != null && _saveTimer!.isActive) {
-      _saveTimer!.cancel();
-      _saveState(); // Flush pending save immediately
-    }
-    super.dispose();
-  }
+
 }
 
 extension ClassIdHelper on ClassItem {

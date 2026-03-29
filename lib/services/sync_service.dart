@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
@@ -15,36 +16,69 @@ class SyncService {
   final FirebaseFirestore _db;
 
   SyncService({FirebaseFirestore? firestore})
-      : _db = firestore ?? FirebaseFirestore.instance;
+    : _db = firestore ?? FirebaseFirestore.instance;
+
+  // 15-second global timeout for Firestore operations to prevent "Zombie" hangs.
+  static const Duration _defaultTimeout = Duration(seconds: 15);
+
+  /// Centralized wrapper for Firestore future operations
+  Future<T> _withTimeout<T>(Future<T> future, {String? operationName}) async {
+    try {
+      return await future.timeout(_defaultTimeout);
+    } on TimeoutException {
+      debugPrint(
+        '🚨 [SyncService] Timeout during: ${operationName ?? 'Unknown Operation'}',
+      );
+      rethrow;
+    } catch (e) {
+      debugPrint(
+        '🚨 [SyncService] Error during ${operationName ?? 'Unknown Operation'}: $e',
+      );
+      rethrow;
+    }
+  }
   // ─────────────────────────────────────────────
   // MASTER BUNDLE OPERATIONS (Phase 13)
   // ─────────────────────────────────────────────
 
   /// Stream of all master sessions for the developer dashboard.
   Stream<List<Map<String, dynamic>>> watchAllMasterBundles() {
-    return _db.collection('master_sessions').orderBy('createdAt', descending: true).snapshots().map((snap) {
-      return snap.docs.map((doc) => doc.data()).toList();
-    });
+    return _db
+        .collection('master_sessions')
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snap) {
+          return snap.docs.map((doc) => doc.data()).toList();
+        });
   }
 
   /// Creates a master session bundle and returns the generated 8-character code.
-  Future<String> createMasterBundle(String ownerName, List<Map<String, dynamic>> bundle) async {
+  Future<String> createMasterBundle(
+    String ownerName,
+    List<Map<String, dynamic>> bundle,
+  ) async {
     final code = _randomCode(8); // Master codes are 8 chars to distinguish
-    await _db.collection('master_sessions').doc(code).set({
-      'masterCode': code,
-      'ownerName': ownerName,
-      'bundle': bundle,
-      'isLocked': false,
-      'bannedUids': <String>[],
-      'createdAt': FieldValue.serverTimestamp(),
-    });
+    await _withTimeout(
+      _db.collection('master_sessions').doc(code).set({
+        'masterCode': code,
+        'ownerName': ownerName,
+        'bundle': bundle,
+        'isLocked': false,
+        'bannedUids': <String>[],
+        'createdAt': FieldValue.serverTimestamp(),
+      }),
+      operationName: 'createMasterBundle',
+    );
     return code;
   }
 
   /// Retrieves a master bundle by its code.
   Future<Map<String, dynamic>?> getMasterBundle(String code) async {
     try {
-      final snap = await _db.collection('master_sessions').doc(code).get();
+      final snap = await _withTimeout(
+        _db.collection('master_sessions').doc(code).get(),
+        operationName: 'getMasterBundle',
+      );
       if (snap.exists) {
         return snap.data();
       }
@@ -61,13 +95,16 @@ class SyncService {
   /// Searches for an existing active session for a given host and file hash.
   Future<String?> findExistingSession(String username, String fileHash) async {
     try {
-      final snap = await _db
-          .collection('sync_sessions')
-          .where('createdBy', isEqualTo: username) // Use Username
-          .where('fileHash', isEqualTo: fileHash)
-          .limit(1)
-          .get();
-          
+      final snap = await _withTimeout(
+        _db
+            .collection('sync_sessions')
+            .where('createdBy', isEqualTo: username) // Use Username
+            .where('fileHash', isEqualTo: fileHash)
+            .limit(1)
+            .get(),
+        operationName: 'findExistingSession',
+      );
+
       if (snap.docs.isNotEmpty) {
         return snap.docs.first.id;
       }
@@ -90,24 +127,40 @@ class SyncService {
     }
 
     final code = _randomCode(6);
-    await _db.collection('sync_sessions').doc(code).set({
-      'createdBy': ownerName, // Anchor to Username!
-      'ownerName': ownerName,
-      'fileHash': fileHash,
-      'pdfName': pdfName,
-      'pageCount': pageCount,
-      'isLocked': false,
-      'joinLocked': false,
-      'kicked_uids': <String>[],
-      'participants': <Map<String, dynamic>>[], // Cleaner: Participants list is for students only
-      'createdAt': FieldValue.serverTimestamp(),
-    });
+    await _withTimeout(
+      _db.collection('sync_sessions').doc(code).set({
+        'createdBy': ownerName, // Anchor to Username!
+        'ownerName': ownerName,
+        'fileHash': fileHash,
+        'pdfName': pdfName,
+        'pageCount': pageCount,
+        'isLocked': false,
+        'joinLocked': false,
+        'kicked_uids': <String>[],
+        'participants':
+            <
+              Map<String, dynamic>
+            >[], // Cleaner: Participants list is for students only
+        'createdAt': FieldValue.serverTimestamp(),
+      }),
+      operationName: 'generateSessionCode (Main Doc)',
+    );
 
     // Initialize annotations branch (sub-collection) so it's visible in Firestore Console
-    final annotDoc = _db.collection('sync_sessions').doc(code).collection('annotations').doc(fileHash);
-    final annotSnap = await annotDoc.get();
+    final annotDoc = _db
+        .collection('sync_sessions')
+        .doc(code)
+        .collection('annotations')
+        .doc(fileHash);
+    final annotSnap = await _withTimeout(
+      annotDoc.get(),
+      operationName: 'generateSessionCode (Annot Check)',
+    );
     if (!annotSnap.exists) {
-      await annotDoc.set({'data': []});
+      await _withTimeout(
+        annotDoc.set({'data': []}),
+        operationName: 'generateSessionCode (Annot Init)',
+      );
     }
 
     return code;
@@ -115,9 +168,10 @@ class SyncService {
 
   /// Toggles the drawing-lock state for all students.
   Future<void> setLocked(String code, {required bool locked}) async {
-    await _db.collection('sync_sessions').doc(code).update({
-      'isLocked': locked,
-    });
+    await _withTimeout(
+      _db.collection('sync_sessions').doc(code).update({'isLocked': locked}),
+      operationName: 'setLocked',
+    );
   }
 
   /// Toggles the join-lock state (prevents new students from joining).
@@ -147,7 +201,10 @@ class SyncService {
   /// One-off manual check for kick status (Second Line of Defense).
   Future<bool> isUserKicked(String code, String hardwareId) async {
     try {
-      final snap = await _db.collection('sync_sessions').doc(code).get();
+      final snap = await _withTimeout(
+        _db.collection('sync_sessions').doc(code).get(),
+        operationName: 'isUserKicked',
+      );
       if (!snap.exists) return false;
       final kicked = List<String>.from(snap.data()?['kicked_uuids'] ?? []);
       return kicked.contains(hardwareId);
@@ -157,7 +214,11 @@ class SyncService {
   }
 
   Stream<bool> watchUserExists(String uid) {
-    return _db.collection('users').doc(uid).snapshots().map((snap) => snap.exists);
+    return _db
+        .collection('users')
+        .doc(uid)
+        .snapshots()
+        .map((snap) => snap.exists);
   }
 
   /// Checks if a user document exists in the 'users' collection.
@@ -173,7 +234,10 @@ class SyncService {
   /// Checks if a hardwareId is in the 'blacklisted_devices' collection.
   Future<bool> isDeviceBlacklisted(String hardwareId) async {
     try {
-      final snap = await _db.collection('blacklisted_devices').doc(hardwareId).get();
+      final snap = await _db
+          .collection('blacklisted_devices')
+          .doc(hardwareId)
+          .get();
       return snap.exists;
     } catch (_) {
       return false;
@@ -182,7 +246,11 @@ class SyncService {
 
   /// Wipes all student annotations from the session document.
   Future<void> clearAllAnnotations(String code) async {
-    final snapshot = await _db.collection('sync_sessions').doc(code).collection('annotations').get();
+    final snapshot = await _db
+        .collection('sync_sessions')
+        .doc(code)
+        .collection('annotations')
+        .get();
     for (var doc in snapshot.docs) {
       await doc.reference.delete();
     }
@@ -206,13 +274,26 @@ class SyncService {
     // We must manually delete the annotations first (or run a cloud function, but doing it here is fine for small scale).
     try {
       // 1. Delete all annotation documents in the subcollection
-      final annotationsSnap = await _db.collection('sync_sessions').doc(code).collection('annotations').get();
+      final annotationsSnap = await _withTimeout(
+        _db
+            .collection('sync_sessions')
+            .doc(code)
+            .collection('annotations')
+            .get(),
+        operationName: 'deleteSession (Annots Fetch)',
+      );
       for (var doc in annotationsSnap.docs) {
-        await doc.reference.delete();
+        await _withTimeout(
+          doc.reference.delete(),
+          operationName: 'deleteSession (Annot Delete)',
+        );
       }
-      
+
       // 2. Delete the main session document
-      await _db.collection('sync_sessions').doc(code).delete();
+      await _withTimeout(
+        _db.collection('sync_sessions').doc(code).delete(),
+        operationName: 'deleteSession (Main)',
+      );
       debugPrint('DEBUG: Session $code permanently deleted from Firestore.');
     } catch (e) {
       debugPrint('DEBUG: Error deleting session $code: $e');
@@ -229,27 +310,39 @@ class SyncService {
 
   /// Wipe All Master Bundles (Admin Only)
   Future<void> deleteAllMasterBundles() async {
-    final snap = await _db.collection('master_sessions').get();
+    final snap = await _withTimeout(
+      _db.collection('master_sessions').get(),
+      operationName: 'deleteAllMasterBundles',
+    );
     for (var doc in snap.docs) {
-      await doc.reference.delete();
+      await _withTimeout(
+        doc.reference.delete(),
+        operationName: 'deleteAllMasterBundles (Item)',
+      );
     }
   }
 
   /// Toggle Master Bundle Lock (Prevents new joins/passive syncs)
   Future<void> toggleMasterBundleLock(String bundleId, bool isLocked) async {
-    await _db.collection('master_sessions').doc(bundleId).update({
-      'isLocked': isLocked,
-    });
+    await _withTimeout(
+      _db.collection('master_sessions').doc(bundleId).update({
+        'isLocked': isLocked,
+      }),
+      operationName: 'toggleMasterBundleLock',
+    );
   }
 
   /// Global Ban: Bans a Username from ALL sessions in a master bundle
   Future<void> banUserFromMasterBundle(String bundleId, String username) async {
-    final bundleDoc = await _db.collection('master_sessions').doc(bundleId).get();
+    final bundleDoc = await _db
+        .collection('master_sessions')
+        .doc(bundleId)
+        .get();
     if (!bundleDoc.exists) return;
 
     final data = bundleDoc.data()!;
     final List bundleItems = data['bundle'] as List? ?? [];
-    
+
     // 1. Add to bundle's own banned list (Username)
     await _db.collection('master_sessions').doc(bundleId).update({
       'bannedUsernames': FieldValue.arrayUnion([username]),
@@ -264,13 +357,19 @@ class SyncService {
   }
 
   /// Unban from all files in a bundle
-  Future<void> unbanUserFromMasterBundle(String bundleId, String username) async {
-     final bundleDoc = await _db.collection('master_sessions').doc(bundleId).get();
+  Future<void> unbanUserFromMasterBundle(
+    String bundleId,
+    String username,
+  ) async {
+    final bundleDoc = await _db
+        .collection('master_sessions')
+        .doc(bundleId)
+        .get();
     if (!bundleDoc.exists) return;
 
     final data = bundleDoc.data()!;
     final List bundleItems = data['bundle'] as List? ?? [];
-    
+
     // 1. Remove from bundle's own banned list
     await _db.collection('master_sessions').doc(bundleId).update({
       'bannedUsernames': FieldValue.arrayRemove([username]),
@@ -285,7 +384,10 @@ class SyncService {
   }
 
   /// Registers a student as having activated this bundle
-  Future<void> registerMasterBundleActivation(String bundleId, String username) async {
+  Future<void> registerMasterBundleActivation(
+    String bundleId,
+    String username,
+  ) async {
     await _db.collection('master_sessions').doc(bundleId).update({
       'activators': FieldValue.arrayUnion([username]),
     });
@@ -302,7 +404,10 @@ class SyncService {
     });
 
     // 2. Surgically remove from participants list
-    final snap = await _db.collection('sync_sessions').doc(code).get();
+    final snap = await _withTimeout(
+      _db.collection('sync_sessions').doc(code).get(),
+      operationName: 'kickParticipant (Snap)',
+    );
     if (snap.exists) {
       final raw = snap.data()?['participants'];
       if (raw is List) {
@@ -313,7 +418,12 @@ class SyncService {
           }
           return true;
         }).toList();
-        await _db.collection('sync_sessions').doc(code).update({'participants': updated});
+        await _withTimeout(
+          _db.collection('sync_sessions').doc(code).update({
+            'participants': updated,
+          }),
+          operationName: 'kickParticipant (Update)',
+        );
       }
     }
   }
@@ -334,7 +444,9 @@ class SyncService {
           }
           return p;
         }).toList();
-        await _db.collection('sync_sessions').doc(code).update({'participants': updated});
+        await _db.collection('sync_sessions').doc(code).update({
+          'participants': updated,
+        });
       }
     }
   }
@@ -342,30 +454,51 @@ class SyncService {
   /// Checks if a session document has any annotation data for the current PDF.
   /// Used for "Resumed Session" detection.
   Future<bool> hasAnnotations(String code, String fileHash) async {
-    final snap = await _db.collection('sync_sessions').doc(code).collection('annotations').doc(fileHash).get();
+    final snap = await _db
+        .collection('sync_sessions')
+        .doc(code)
+        .collection('annotations')
+        .doc(fileHash)
+        .get();
     if (!snap.exists) return false;
     final List data = snap.data()?['data'] as List? ?? [];
     return data.isNotEmpty;
   }
 
   /// Fetches the literal truth array of annotations from the server
-  Future<({List<dynamic> items, int lastDeletedAt})> getServerAnnotations(String code, String fileHash) async {
-    final snap = await _db.collection('sync_sessions').doc(code).collection('annotations').doc(fileHash).get();
-    if (!snap.exists || snap.data() == null) return (items: [], lastDeletedAt: 0);
-    
+  Future<({List<dynamic> items, int lastDeletedAt})> getServerAnnotations(
+    String code,
+    String fileHash,
+  ) async {
+    final snap = await _withTimeout(
+      _db
+          .collection('sync_sessions')
+          .doc(code)
+          .collection('annotations')
+          .doc(fileHash)
+          .get(),
+      operationName: 'getServerAnnotations',
+    );
+    if (!snap.exists || snap.data() == null)
+      return (items: [], lastDeletedAt: 0);
+
     final items = snap.data()!['data'];
     final lastDeletedAt = (snap.data()!['lastDeletedAt'] as num?)?.toInt() ?? 0;
-    
+
     if (items is List) return (items: items, lastDeletedAt: lastDeletedAt);
     return (items: [], lastDeletedAt: lastDeletedAt);
   }
 
   /// Surgically removes a single annotation from the server by its ID.
   /// This prevents "resurrection" by ensuring the server truth is updated immediately.
-  Future<void> deleteAnnotation(String code, String fileHash, String annotationId) async {
+  Future<void> deleteAnnotation(
+    String code,
+    String fileHash,
+    String annotationId,
+  ) async {
     final serverData = await getServerAnnotations(code, fileHash);
     final serverItems = serverData.items;
-    
+
     final updated = serverItems.where((item) {
       if (item is Map && item['id'] != null) {
         return item['id'].toString() != annotationId;
@@ -373,11 +506,21 @@ class SyncService {
       return true;
     }).toList();
 
-    await _db.collection('sync_sessions').doc(code).collection('annotations').doc(fileHash).set({
-      'data': updated,
-      'lastDeletedAt': DateTime.now().millisecondsSinceEpoch,
-    });
-    debugPrint('DEBUG: Deleted annotation $annotationId from server ($fileHash).');
+    await _withTimeout(
+      _db
+          .collection('sync_sessions')
+          .doc(code)
+          .collection('annotations')
+          .doc(fileHash)
+          .set({
+            'data': updated,
+            'lastDeletedAt': DateTime.now().millisecondsSinceEpoch,
+          }),
+      operationName: 'deleteAnnotation',
+    );
+    debugPrint(
+      'DEBUG: Deleted annotation $annotationId from server ($fileHash).',
+    );
   }
 
   /// Full Bidirectional Reconciliation – treats Firestore as the source of truth.
@@ -386,16 +529,19 @@ class SyncService {
   /// Phase 2  → Local-to-Server: remove local items missing from server (server-deleted orphans)
   /// Phase 3  → Server-to-Local: collect server items missing from local (to be injected by caller)
   /// Phase 4  → Push new local items that have never reached the server
-  Future<({
-    int deletedCount,
-    int uploadedCount,
-    int downloadedCount,
-    List<Map<String, dynamic>> toAddHighlights,
-    List<Map<String, dynamic>> toAddComments,
-    Set<String> serverIds,
-    Set<String> orphans,
-    int serverLastDeletedAt,
-  })> syncExistingAnnotations({
+  Future<
+    ({
+      int deletedCount,
+      int uploadedCount,
+      int downloadedCount,
+      List<Map<String, dynamic>> toAddHighlights,
+      List<Map<String, dynamic>> toAddComments,
+      Set<String> serverIds,
+      Set<String> orphans,
+      int serverLastDeletedAt,
+    })
+  >
+  syncExistingAnnotations({
     required String code,
     required String fileHash,
     required List<Highlight> highlights,
@@ -410,13 +556,15 @@ class SyncService {
     final serverById = <String, Map<String, dynamic>>{
       for (final item in serverItems)
         if (item is Map && item['id'] != null)
-          item['id'].toString(): Map<String, dynamic>.from(item)
+          item['id'].toString(): Map<String, dynamic>.from(item),
     };
     final serverIds = serverById.keys.toSet();
-    debugPrint('DEBUG: Found ${serverIds.length} items on server. LastDeleted: $serverLastDeletedAt');
+    debugPrint(
+      'DEBUG: Found ${serverIds.length} items on server. LastDeleted: $serverLastDeletedAt',
+    );
 
     // ── Phase 2: Reconciliation (Conflicts & Orphans) ────────────────────
-    
+
     // a. Identify orphans to delete locally
     final orphans = <String>{};
     for (final h in highlights) {
@@ -458,7 +606,9 @@ class SyncService {
 
     final deletedIds = {...orphans, ...locallyDeletedIds};
     if (deletedIds.isNotEmpty) {
-      debugPrint('DEBUG: Purging ${deletedIds.length} items (orphans + local-deleted).');
+      debugPrint(
+        'DEBUG: Purging ${deletedIds.length} items (orphans + local-deleted).',
+      );
     }
 
     // ── Phase 3: Server-to-Local (download missing or newer server items) ─
@@ -489,27 +639,66 @@ class SyncService {
       }
     }
 
-    final toAddHighlights = toDownload.where((e) => e['kind'] == 'highlight').toList();
-    final toAddComments   = toDownload.where((e) => e['kind'] == 'comment').toList();
+    final toAddHighlights = toDownload
+        .where((e) => e['kind'] == 'highlight')
+        .toList();
+    final toAddComments = toDownload
+        .where((e) => e['kind'] == 'comment')
+        .toList();
     if (toDownload.isNotEmpty) {
       debugPrint('DEBUG: Downloading ${toDownload.length} items.');
     }
 
     // ── Phase 4: Push new/modified local items ───────────────────────────
-    final newHighlights = highlights.where((h) => !orphans.contains(h.id) && (!serverIds.contains(h.id) || localModified.contains(h.id))).toList();
-    final newComments   = comments.where((c) => !orphans.contains(c.id) && (!serverIds.contains(c.id) || localModified.contains(c.id))).toList();
-    
+    final newHighlights = highlights
+        .where(
+          (h) =>
+              !orphans.contains(h.id) &&
+              (!serverIds.contains(h.id) || localModified.contains(h.id)),
+        )
+        .toList();
+    final newComments = comments
+        .where(
+          (c) =>
+              !orphans.contains(c.id) &&
+              (!serverIds.contains(c.id) || localModified.contains(c.id)),
+        )
+        .toList();
+
     if (newHighlights.isNotEmpty || newComments.isNotEmpty) {
-      debugPrint('DEBUG: Uploading ${newHighlights.length + newComments.length} items.');
+      debugPrint(
+        'DEBUG: Uploading ${newHighlights.length + newComments.length} items.',
+      );
     }
 
-    final newHJson = newHighlights.map((h) => {...h.toJson(isExisting: true), 'isSynced': true, 'kind': 'highlight'}).toList();
-    final newCJson = newComments.map((c) => {...c.toJson(isExisting: true), 'isSynced': true, 'kind': 'comment'}).toList();
+    final newHJson = newHighlights
+        .map(
+          (h) => {
+            ...h.toJson(isExisting: true),
+            'isSynced': true,
+            'kind': 'highlight',
+          },
+        )
+        .toList();
+    final newCJson = newComments
+        .map(
+          (c) => {
+            ...c.toJson(isExisting: true),
+            'isSynced': true,
+            'kind': 'comment',
+          },
+        )
+        .toList();
 
     // ── Phase 5: Build merged truth ──────────────────────────────────────
     // Retain all server items that weren't deleted AND weren't overridden by local mods
     final retained = serverItems
-        .where((item) => item is Map && !deletedIds.contains(item['id']?.toString()) && !localModified.contains(item['id']?.toString()))
+        .where(
+          (item) =>
+              item is Map &&
+              !deletedIds.contains(item['id']?.toString()) &&
+              !localModified.contains(item['id']?.toString()),
+        )
         .map((item) => item is Map ? {...item, 'isSynced': true} : item)
         .toList();
 
@@ -520,21 +709,28 @@ class SyncService {
       updatePayload['lastDeletedAt'] = DateTime.now().millisecondsSinceEpoch;
     }
 
-    await _db
-        .collection('sync_sessions')
-        .doc(code)
-        .collection('annotations')
-        .doc(fileHash)
-        .set(updatePayload, SetOptions(merge: true));
+    await _withTimeout(
+      _db
+          .collection('sync_sessions')
+          .doc(code)
+          .collection('annotations')
+          .doc(fileHash)
+          .set(updatePayload, SetOptions(merge: true)),
+      operationName: 'syncExistingAnnotations (Push)',
+    );
 
     return (
-      deletedCount:     deletedIds.length,
-      uploadedCount:    newHJson.length + newCJson.length,
-      downloadedCount:  toDownload.length,
-      toAddHighlights:  toAddHighlights,
-      toAddComments:    toAddComments,
-      serverIds:        {...serverIds, ...newHighlights.map((h) => h.id), ...newComments.map((c) => c.id)},
-      orphans:          orphans,
+      deletedCount: deletedIds.length,
+      uploadedCount: newHJson.length + newCJson.length,
+      downloadedCount: toDownload.length,
+      toAddHighlights: toAddHighlights,
+      toAddComments: toAddComments,
+      serverIds: {
+        ...serverIds,
+        ...newHighlights.map((h) => h.id),
+        ...newComments.map((c) => c.id),
+      },
+      orphans: orphans,
       serverLastDeletedAt: serverLastDeletedAt,
     );
   }
@@ -542,7 +738,6 @@ class SyncService {
   // ─────────────────────────────────────────────
   // STUDENT OPERATIONS
   // ─────────────────────────────────────────────
-
 
   /// Returns [null] on success, or an error message string on failure.
   Future<String?> joinSession({
@@ -552,11 +747,14 @@ class SyncService {
     required String studentFileHash,
     required int studentPageCount,
   }) async {
-    final snap = await _db.collection('sync_sessions').doc(code).get();
+    final snap = await _withTimeout(
+      _db.collection('sync_sessions').doc(code).get(),
+      operationName: 'joinSession (Metadata)',
+    );
     if (!snap.exists) return 'الجلسة غير موجودة.';
 
     final data = snap.data()!;
-    
+
     // FILE VALIDATION (MANDATORY)
     final sessionFileHash = data['fileHash'];
     final sessionPageCount = data['pageCount'];
@@ -607,13 +805,23 @@ class SyncService {
     List<Highlight> highlights,
     List<PdfComment> comments,
   ) async {
-    final hJson = highlights.map((h) => {...h.toJson(), 'kind': 'highlight'}).toList();
-    final cJson = comments.map((c) => {...c.toJson(), 'kind': 'comment'}).toList();
+    final hJson = highlights
+        .map((h) => {...h.toJson(), 'kind': 'highlight'})
+        .toList();
+    final cJson = comments
+        .map((c) => {...c.toJson(), 'kind': 'comment'})
+        .toList();
     final merged = [...hJson, ...cJson];
-    
-    await _db.collection('sync_sessions').doc(code).collection('annotations').doc(fileHash).set({
-      'data': merged,
-    });
+
+    await _withTimeout(
+      _db
+          .collection('sync_sessions')
+          .doc(code)
+          .collection('annotations')
+          .doc(fileHash)
+          .set({'data': merged}),
+      operationName: 'uploadDelta',
+    );
   }
 
   /// Uploads pre-serialized annotations to Firestore (used by Isolate Sync).
@@ -622,9 +830,15 @@ class SyncService {
     String fileHash,
     List<Map<String, dynamic>> serialized,
   ) async {
-    await _db.collection('sync_sessions').doc(code).collection('annotations').doc(fileHash).set({
-      'data': serialized,
-    });
+    await _withTimeout(
+      _db
+          .collection('sync_sessions')
+          .doc(code)
+          .collection('annotations')
+          .doc(fileHash)
+          .set({'data': serialized}),
+      operationName: 'uploadSerializedDelta',
+    );
   }
 
   // ─────────────────────────────────────────────
@@ -638,7 +852,11 @@ class SyncService {
 
   /// Stream of annotations subcollection for the session.
   Stream<QuerySnapshot<Map<String, dynamic>>> streamAnnotations(String code) {
-    return _db.collection('sync_sessions').doc(code).collection('annotations').snapshots();
+    return _db
+        .collection('sync_sessions')
+        .doc(code)
+        .collection('annotations')
+        .snapshots();
   }
 
   // ─────────────────────────────────────────────
@@ -648,18 +866,25 @@ class SyncService {
   static const _chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   String _randomCode(int length) {
     final rng = Random.secure();
-    return List.generate(length, (_) => _chars[rng.nextInt(_chars.length)])
-        .join();
+    return List.generate(
+      length,
+      (_) => _chars[rng.nextInt(_chars.length)],
+    ).join();
   }
+
   /// Watch all master bundles created by a specific owner
-  Stream<List<Map<String, dynamic>>> watchMasterBundlesByOwner(String username) {
+  Stream<List<Map<String, dynamic>>> watchMasterBundlesByOwner(
+    String username,
+  ) {
     return _db
         .collection('master_sessions')
         .where('ownerName', isEqualTo: username)
         .snapshots()
         .map((snap) {
           // Sort in memory to avoid requiring complex Firestore indexes
-          final docs = snap.docs.map((doc) => {...doc.data(), 'id': doc.id}).toList();
+          final docs = snap.docs
+              .map((doc) => {...doc.data(), 'id': doc.id})
+              .toList();
           docs.sort((a, b) {
             final aTime = a['createdAt'] as Timestamp?;
             final bTime = b['createdAt'] as Timestamp?;
@@ -675,16 +900,19 @@ class SyncService {
   // ─────────────────────────────────────────────
 
   /// Real-time stream of announcements, filtered by role and ordered by newest first.
-  Stream<List<Map<String, dynamic>>> watchAnnouncements(String currentUserRole) {
+  Stream<List<Map<String, dynamic>>> watchAnnouncements(
+    String currentUserRole,
+  ) {
     return _db
         .collection('announcements')
         .where('targetAudience', whereIn: ['all', currentUserRole])
         .orderBy('createdAt', descending: true)
         .limit(10)
         .snapshots()
-        .map((snap) => snap.docs
-            .map((doc) => {...doc.data(), 'id': doc.id})
-            .toList());
+        .map(
+          (snap) =>
+              snap.docs.map((doc) => {...doc.data(), 'id': doc.id}).toList(),
+        );
   }
 
   /// Publishes a new announcement to Firestore.
@@ -695,14 +923,17 @@ class SyncService {
     required String authorName,
     String targetAudience = 'all', // 'all', 'student', 'lecturer'
   }) async {
-    await _db.collection('announcements').add({
-      'title': title,
-      'body': body,
-      'type': type,
-      'authorName': authorName,
-      'targetAudience': targetAudience,
-      'createdAt': FieldValue.serverTimestamp(),
-    });
+    await _withTimeout(
+      _db.collection('announcements').add({
+        'title': title,
+        'body': body,
+        'type': type,
+        'authorName': authorName,
+        'targetAudience': targetAudience,
+        'createdAt': FieldValue.serverTimestamp(),
+      }),
+      operationName: 'publishAnnouncement',
+    );
   }
 
   /// Deletes an announcement by its document ID.

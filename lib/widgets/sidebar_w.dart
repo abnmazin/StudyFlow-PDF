@@ -84,17 +84,36 @@ class _SidebarState extends State<Sidebar> {
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppProvider>();
-    final isMobile = MediaQuery.of(context).size.width < 768;
-    final scheme = Theme.of(context).colorScheme;
-    final sidebarBg = app.isDarkMode ? const Color(0xFF0F172A) : scheme.surface;
-    final separatorColor = app.isDarkMode
+    return Selector<AppProvider, ({
+      bool isDarkMode, 
+      List<ClassItem> classes, 
+      String? activeClassId, 
+      String? activePdfId, 
+      bool isCollapsed
+    })>(
+      selector: (_, app) => (
+        isDarkMode: app.isDarkMode,
+        classes: app.classes,
+        activeClassId: app.activeClassId,
+        activePdfId: app.activePdfId,
+        isCollapsed: app.isSidebarCollapsed,
+      ),
+      builder: (context, data, _) {
+        final app = context.read<AppProvider>();
+        final isDarkMode = data.isDarkMode;
+        final classes = data.classes;
+        final isCollapsed = data.isCollapsed;
+
+        final isMobile = MediaQuery.of(context).size.width < 768;
+        final scheme = Theme.of(context).colorScheme;
+    final sidebarBg = isDarkMode ? const Color(0xFF0F172A) : scheme.surface;
+    final separatorColor = isDarkMode
         ? Colors.white.withOpacity(0.1)
         : Colors.black.withOpacity(0.05);
-    final textPrimary = app.isDarkMode
+    final textPrimary = isDarkMode
         ? const Color(0xFFF1F5F9)
         : scheme.onSurface;
-    final textMuted = app.isDarkMode
+    final textMuted = isDarkMode
         ? const Color(0xFF94A3B8)
         : scheme.onSurfaceVariant;
 
@@ -120,7 +139,7 @@ class _SidebarState extends State<Sidebar> {
               children: [
                 Row(
                   children: [
-                    Icon(LucideIcons.book, color: Color(0xFF60A5FA), size: 24),
+                    const Icon(LucideIcons.book, color: Color(0xFF60A5FA), size: 24),
                     SizedBox(width: 8),
                     Text(
                       'StudyFlow pdf',
@@ -137,8 +156,11 @@ class _SidebarState extends State<Sidebar> {
                     if (!isMobile)
                       IconButton(
                         onPressed: () => app.toggleSidebar(),
-                        icon: Icon(LucideIcons.chevronLeft, color: textMuted),
-                        tooltip: 'طي القائمة',
+                        icon: Icon(
+                          isCollapsed ? LucideIcons.chevronRight : LucideIcons.chevronLeft, 
+                          color: textMuted
+                        ),
+                        tooltip: isCollapsed ? 'فتح القائمة' : 'طي القائمة',
                       ),
                     if (isMobile)
                       IconButton(
@@ -268,13 +290,10 @@ class _SidebarState extends State<Sidebar> {
                           child: Builder(
                             builder: (ctx) {
                               final scheme = Theme.of(ctx).colorScheme;
-                              final isDark = context
-                                  .watch<AppProvider>()
-                                  .isDarkMode;
-                              final inputBg = isDark
+                              final inputBg = isDarkMode
                                   ? const Color(0xFF1E293B)
                                   : scheme.surfaceContainerHigh;
-                              final inputText = isDark
+                              final inputText = isDarkMode
                                   ? Colors.white
                                   : scheme.onSurface;
                               return TextField(
@@ -286,13 +305,13 @@ class _SidebarState extends State<Sidebar> {
                                 ),
                                 decoration: InputDecoration(
                                   hintText: 'اسم القسم...',
-                                  hintStyle: TextStyle(
-                                    color: isDark
-                                        ? Colors.white.withOpacity(0.5)
-                                        : scheme.onSurfaceVariant.withOpacity(
-                                            0.6,
-                                          ),
-                                  ),
+                                 hintStyle: TextStyle(
+                                   color: isDarkMode
+                                       ? Colors.white.withOpacity(0.5)
+                                       : scheme.onSurfaceVariant.withOpacity(
+                                           0.6,
+                                         ),
+                                 ),
                                   filled: true,
                                   fillColor: inputBg,
                                   border: OutlineInputBorder(
@@ -337,7 +356,7 @@ class _SidebarState extends State<Sidebar> {
                 // Class List (custom drag/drop for folders)
                 Column(
                   children: [
-                    for (final entry in app.classes.asMap().entries)
+                    for (final entry in classes.asMap().entries)
                       _buildClassItem(context, entry.value, app, entry.key),
                   ],
                 ),
@@ -360,7 +379,7 @@ class _SidebarState extends State<Sidebar> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       decoration: BoxDecoration(
-                        color: app.isDarkMode ? const Color(0xFF1E293B) : scheme.surfaceContainerHighest,
+                        color: isDarkMode ? const Color(0xFF1E293B) : scheme.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: separatorColor),
                       ),
@@ -368,7 +387,7 @@ class _SidebarState extends State<Sidebar> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(LucideIcons.info, size: 16, color: app.isDarkMode ? const Color(0xFF60A5FA) : scheme.primary),
+                            Icon(LucideIcons.info, size: 16, color: isDarkMode ? const Color(0xFF60A5FA) : scheme.primary),
                             const SizedBox(width: 8),
                             Text(
                               'الحقوق',
@@ -392,7 +411,7 @@ class _SidebarState extends State<Sidebar> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       decoration: BoxDecoration(
-                        color: app.isDarkMode ? const Color(0xFF1E293B) : scheme.surfaceContainerHighest,
+                        color: isDarkMode ? const Color(0xFF1E293B) : scheme.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: separatorColor),
                       ),
@@ -400,7 +419,7 @@ class _SidebarState extends State<Sidebar> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(LucideIcons.settings, size: 16, color: app.isDarkMode ? const Color(0xFF60A5FA) : scheme.primary),
+                            Icon(LucideIcons.settings, size: 16, color: isDarkMode ? const Color(0xFF60A5FA) : scheme.primary),
                             const SizedBox(width: 8),
                             Text(
                               'الإعدادات',
@@ -421,6 +440,8 @@ class _SidebarState extends State<Sidebar> {
           ),
         ],
       ),
+    );
+     },
     );
   }
 
@@ -514,7 +535,6 @@ class _SidebarState extends State<Sidebar> {
                       height: 24,
                       width: 24,
                       child: IconButton(
-                        padding: EdgeInsets.zero,
                         icon: Icon(
                           LucideIcons.upload,
                           size: 14,
@@ -591,8 +611,7 @@ class _SidebarState extends State<Sidebar> {
                       height: 24,
                       width: 24,
                       child: IconButton(
-                        padding: EdgeInsets.zero,
-                        icon: Icon(
+                        icon: const Icon(
                           LucideIcons.trash2,
                           size: 16,
                           color: Color(0xFFF87171),
@@ -661,7 +680,7 @@ class _SidebarState extends State<Sidebar> {
               LucideIcons.fileText,
               size: 14,
               color: isActive
-                  ? const Color(0xFFBFDBFE)
+              ? const Color(0xFFBFDBFE)
                   : const Color(0xFF94A3B8),
             ),
             const SizedBox(width: 8),

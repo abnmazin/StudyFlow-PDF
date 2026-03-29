@@ -2,10 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:cross_file/cross_file.dart';
@@ -17,6 +16,7 @@ import 'widgets/pdf_viewer_widget_w.dart';
 import 'widgets/developer_modal_w.dart';
 import 'widgets/global_settings_modal.dart'; // NEW
 import 'screens/auth/login_screen.dart';
+import 'models/app_user.dart';
 import 'firebase_options.dart';
 
 const int _kSingleInstancePort = 45678;
@@ -139,23 +139,20 @@ Future<void> _startSingleInstanceServer() async {
 
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // Load .env file if it exists (graceful error handling)
   try {
     await dotenv.load(fileName: '.env');
   } catch (e) {
-    print('Warning: .env file not found. Using defaults or environment variables.');
+    debugPrint('⚠️ [Boot] .env load skipped: $e');
   }
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-
-
-  // 🚀 OPTIMIZATION: منع استهلاك الرام العالي (ت    حديد الذاكرة بـ 50 ميجا)
-  PaintingBinding.instance.imageCache.maximumSizeBytes = 10 * 1024 * 1024;
-  PaintingBinding.instance.imageCache.maximumSize = 20;
+  // 🚀 OPTIMIZATION: Ultra-lean startup RAM (Set to 2MB for Dashboard)
+  // This will be expanded to 50MB in AppProvider when a PDF is opened.
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 2 * 1024 * 1024;
+  PaintingBinding.instance.imageCache.maximumSize = 10;
 
   // Initialize file storage layer before the first frame
   final fileManager = FileManagerService();
@@ -216,21 +213,22 @@ class RootWrapper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Watch AppProvider to rebuild when currentUser changes (e.g. logout)
-    final app = context.watch<AppProvider>();
-    
+    // Phase 2 Optimization: Use granular selection to prevent global rebuilds
+    final initialized = context.select<AppProvider, Future<void>?>((p) => p.initialized);
+    final currentUser = context.select<AppProvider, AppUser?>((p) => p.currentUser);
+
     return FutureBuilder(
-      future: app.initialized,
+      future: initialized,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.done) {
           // Initialization complete, check if we have a user
-          if (app.currentUser != null) {
+          if (currentUser != null) {
             return const MainLayout();
           } else {
             return const LoginScreen();
           }
         }
-        
+
         // Splash / Loading state
         return const Scaffold(
           body: Center(
@@ -241,7 +239,9 @@ class RootWrapper extends StatelessWidget {
                   width: 50,
                   height: 50,
                   child: CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.blueAccent),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      Colors.blueAccent,
+                    ),
                     strokeWidth: 3,
                   ),
                 ),
@@ -296,7 +296,7 @@ class _MainLayoutState extends State<MainLayout> {
   @override
   void initState() {
     super.initState();
-    
+
     // Phase 11: Real-time Security Listener
     _appProvider = context.read<AppProvider>();
     _appProvider.addListener(_securityListener);
@@ -344,12 +344,17 @@ class _MainLayoutState extends State<MainLayout> {
         SnackBar(
           content: Text(
             reason ?? 'لقد تم إنهاء وصولك لهذه الجلسة',
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
           ),
           backgroundColor: const Color(0xFFEF4444), // Intense Red
           duration: const Duration(seconds: 6),
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
         ),
       );
 
@@ -360,14 +365,25 @@ class _MainLayoutState extends State<MainLayout> {
           (route) => false,
         );
       }
-      // Note: If session-only kick, we stay on the current screen (Viewer) 
+      // Note: If session-only kick, we stay on the current screen (Viewer)
       // but it will automatically show the "Join" UI because currentSessionCode is cleared.
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppProvider>();
+    final isSidebarCollapsed = context.select<AppProvider, bool>(
+      (p) => p.isSidebarCollapsed,
+    );
+    final isMobileOpen = context.select<AppProvider, bool>(
+      (p) => p.isMobileOpen,
+    );
+    final showDevInfo = context.select<AppProvider, bool>((p) => p.showDevInfo);
+    final isSettingsOpen = context.select<AppProvider, bool>(
+      (p) => p.isSettingsOpen,
+    );
+    final isOffline = context.select<AppProvider, bool>((p) => p.isOffline);
+
     final isMobile = MediaQuery.of(context).size.width < 768;
 
     return Scaffold(
@@ -393,19 +409,19 @@ class _MainLayoutState extends State<MainLayout> {
             Row(
               children: [
                 // Sidebar (Desktop)
-                if (!isMobile && !app.isSidebarCollapsed) const Sidebar(),
+                if (!isMobile && !isSidebarCollapsed) const Sidebar(),
 
                 // Main Content
-                Expanded(child: PDFViewerWidget()),
+                Expanded(child: RepaintBoundary(child: PDFViewerWidget())),
               ],
             ),
 
             // Mobile Drawer Overlay
-            if (isMobile && app.isMobileOpen)
+            if (isMobile && isMobileOpen)
               Stack(
                 children: [
                   GestureDetector(
-                    onTap: () => app.toggleMobile(),
+                    onTap: () => context.read<AppProvider>().toggleMobile(),
                     child: Container(color: Colors.black.withOpacity(0.5)),
                   ),
                   const Sidebar(),
@@ -446,17 +462,18 @@ class _MainLayoutState extends State<MainLayout> {
 
             // Setup Modal
             DeveloperModal(
-              isOpen: app.showDevInfo,
-              onClose: () => app.toggleDevInfo(false),
+              isOpen: showDevInfo,
+              onClose: () => context.read<AppProvider>().toggleDevInfo(false),
             ),
 
             // Global Settings Modal (Drawer style from right)
-            if (app.isSettingsOpen)
+            if (isSettingsOpen)
               Positioned.fill(
                 child: Stack(
                   children: [
                     GestureDetector(
-                      onTap: () => app.toggleSettings(false),
+                      onTap: () =>
+                          context.read<AppProvider>().toggleSettings(false),
                       child: Container(color: Colors.black.withOpacity(0.4)),
                     ),
                     const Align(
@@ -468,6 +485,32 @@ class _MainLayoutState extends State<MainLayout> {
               ),
           ],
         ),
+      ),
+      // --- Phase 2: Offline Status Banner ---
+      bottomNavigationBar: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        height: isOffline ? 36 : 0,
+        color: const Color(0xFFF59E0B), // Amber-500
+        child: isOffline
+            ? const Center(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.cloud_off, size: 16, color: Colors.white),
+                    SizedBox(width: 8),
+                    Text(
+                      'وضع الأوفلاين - التغييرات محفوظة محلياً ولن تتمزامنة',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'Segoe UI',
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            : const SizedBox.shrink(),
       ),
     );
   }

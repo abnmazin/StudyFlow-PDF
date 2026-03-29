@@ -1,5 +1,38 @@
 ﻿part of 'pdf_viewer_widget_w.dart';
 
+class _WinMemoryTrimmer {
+  _WinMemoryTrimmer._();
+  static final _WinMemoryTrimmer _instance = _WinMemoryTrimmer._();
+  factory _WinMemoryTrimmer() => _instance;
+
+  late final DynamicLibrary _kernel32 = DynamicLibrary.open('kernel32.dll');
+  late final int Function() _getCurrentProcess = _kernel32.lookupFunction<
+    IntPtr Function(),
+    int Function()
+  >('GetCurrentProcess');
+  late final bool Function(int) _emptyWorkingSet = _kernel32.lookupFunction<
+    Bool Function(IntPtr),
+    bool Function(int)
+  >('K32EmptyWorkingSet');
+
+  int trimsCount = 0;
+  Duration lastDuration = Duration.zero;
+
+  void trim({bool telemetry = false}) {
+    final handle = _getCurrentProcess();
+    final sw = Stopwatch()..start();
+    _emptyWorkingSet(handle);
+    sw.stop();
+    trimsCount++;
+    lastDuration = sw.elapsed;
+    if (telemetry) {
+      debugPrint(
+        '[RAM] Windows trim #$trimsCount took ${lastDuration.inMilliseconds} ms',
+      );
+    }
+  }
+}
+
 //  UTILITY ACTIONS EXTENSION
 // All methods here are extension methods on _PDFViewerWidgetState.
 // Being in the same library (via `part of`) gives full access to:
@@ -131,17 +164,10 @@ extension _PDFViewerWidgetStateActions on _PDFViewerWidgetState {
   void _trimWindowsMemory() {
     if (!Platform.isWindows) return;
     try {
-      final kernel32 = DynamicLibrary.open('kernel32.dll');
-      final getCurrentProcess = kernel32
-          .lookupFunction<IntPtr Function(), int Function()>(
-            'GetCurrentProcess',
-          );
-      final emptyWorkingSet = kernel32
-          .lookupFunction<Bool Function(IntPtr), bool Function(int)>(
-            'K32EmptyWorkingSet',
-          );
-      final handle = getCurrentProcess();
-      emptyWorkingSet(handle);
+      final settings = context.read<AppProvider>().devSettings;
+      _WinMemoryTrimmer().trim(
+        telemetry: settings.telemetryEnabled ?? false,
+      );
     } catch (e) {
       // Silently ignore  non-critical trim
       debugPrint('Memory trim skipped: $e');

@@ -3,114 +3,236 @@ part of 'pdf_viewer_widget_w.dart';
 // ─── DASHBOARD COMMAND CENTER ───────────────────────────────────────────────
 
 Widget _buildDashboard(BuildContext context) {
-  return Consumer<AppProvider>(
-    builder: (context, app, _) {
-      final isDarkMode = app.isDarkMode;
-      
-      // Admin if role is developer or lecturer
-      final role = app.currentUser?.role ?? '';
-      final bool isAdmin = role == 'developer' || role == 'lecturer';
+  return Selector<AppProvider, ({bool isDarkMode, int pdfCount, int highlightCount, AppUser? user})>(
+    selector: (_, app) => (
+      isDarkMode: app.isDarkMode, 
+      pdfCount: app.totalPdfs,
+      highlightCount: app.totalHighlights,
+      user: app.currentUser,
+    ),
+    shouldRebuild: (prev, next) => 
+        prev.isDarkMode != next.isDarkMode || 
+        prev.pdfCount != next.pdfCount || 
+        prev.highlightCount != next.highlightCount ||
+        prev.user?.uid != next.user?.uid,
+    builder: (context, data, _) => _DashboardWrapper(
+      isDarkMode: data.isDarkMode,
+      app: context.read<AppProvider>(),
+      isAdmin: data.user?.role == 'developer' || data.user?.role == 'lecturer',
+    ),
+  );
+}
 
-      final rootBg = isDarkMode ? const Color(0xFF020617) : const Color(0xFFE2E8F0);
-      final canvasBg = isDarkMode ? const Color(0xFF0F172A) : Colors.white;
-      final canvasBorder = isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFCBD5E1);
+class _DashboardWrapper extends StatefulWidget {
+  final bool isDarkMode;
+  final AppProvider app;
+  final bool isAdmin;
 
-      return ColoredBox(
-        color: rootBg,
-        child: SafeArea(
-          left: false,
-          right: false,
-          bottom: false,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final isWide = constraints.maxWidth > 900;
-              final padding = constraints.maxWidth < 600 ? 12.0 : 20.0;
+  const _DashboardWrapper({
+    required this.isDarkMode,
+    required this.app,
+    required this.isAdmin,
+  });
 
-              return FutureBuilder<List<dynamic>>(
-                future: Future.wait([
-                  context.read<FileManagerService>().getRecentDocuments(limit: 5),
-                  context.read<FileManagerService>().getAllDocuments(),
-                ]),
+  @override
+  State<_DashboardWrapper> createState() => _DashboardWrapperState();
+}
+
+class _DashboardWrapperState extends State<_DashboardWrapper> {
+  late Future<List<PdfDocument>> _recentDocsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    // MEMOIZATION: Future only created once per widget lifecycle
+    _recentDocsFuture = context.read<FileManagerService>().getRecentDocuments(limit: 6);
+  }
+
+  int _estimateReadingTime(List<PdfDocument> allDocs) {
+    int totalMinutes = 0;
+    for (var doc in allDocs) {
+      final lastPage = doc.lastPage;
+      if (lastPage > 0) {
+        totalMinutes += lastPage * 2;
+      }
+    }
+    return totalMinutes;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDarkMode = widget.isDarkMode;
+    final app = widget.app;
+    final isAdmin = widget.isAdmin;
+
+    final rootBg = isDarkMode ? const Color(0xFF020617) : const Color(0xFFE2E8F0);
+    final canvasBg = isDarkMode ? const Color(0xFF0F172A) : Colors.white;
+    final canvasBorder = isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFCBD5E1);
+
+    return ColoredBox(
+      color: rootBg,
+      child: SafeArea(
+        left: false, right: false, bottom: false,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final padding = constraints.maxWidth < 600 ? 12.0 : 20.0;
+            final isWide = constraints.maxWidth > 900;
+
+            return Container(
+              margin: EdgeInsets.all(padding),
+              decoration: BoxDecoration(
+                color: canvasBg,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: canvasBorder.withValues(alpha: 0.5)),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x33000000),
+                    blurRadius: 30,
+                    offset: Offset(0, 10),
+                  ),
+                ],
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: FutureBuilder<List<PdfDocument>>(
+                future: _recentDocsFuture,
                 builder: (context, snapshot) {
-                  final recentDocs = snapshot.data != null ? snapshot.data![0] as List<PdfDocument> : <PdfDocument>[];
-                  
+                  final recentDocs = snapshot.data ?? <PdfDocument>[];
+                  final readingTimeEstimate = _estimateReadingTime(recentDocs); // Using recentDocs for now or pass allDocs if available
+
                   return SingleChildScrollView(
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                      child: Container(
-                        margin: EdgeInsets.all(padding),
-                        decoration: BoxDecoration(
-                          color: canvasBg,
-                          borderRadius: BorderRadius.circular(24),
-                          border: Border.all(color: canvasBorder.withValues(alpha: 0.5)),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: isDarkMode ? 0.4 : 0.08),
-                              blurRadius: 30,
-                              offset: const Offset(0, 10),
-                            ),
-                          ],
+                    padding: const EdgeInsets.all(32),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildHeroSection(context, app),
+                        const SizedBox(height: 32),
+                        
+                        _buildMainContentArea(
+                          context, 
+                          app, 
+                          isDarkMode, 
+                          recentDocs, 
+                          readingTimeEstimate, 
+                          isWide
                         ),
-                        clipBehavior: Clip.antiAlias,
-                        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 32),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _buildHeroSection(context, app),
-                            const SizedBox(height: 32),
-                            
-                            if (isWide)
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Expanded(
-                                    flex: 2,
-                                    child: _buildPrimaryColumn(context, app, isDarkMode),
-                                  ),
-                                  const SizedBox(width: 32),
-                                  Expanded(
-                                    flex: 1,
-                                    child: _buildSecondaryColumn(context, app, isDarkMode),
-                                  ),
-                                ],
-                              )
-                            else
-                              Column(
-                                children: [
-                                  _buildPrimaryColumn(context, app, isDarkMode),
-                                  const SizedBox(height: 32),
-                                  _buildSecondaryColumn(context, app, isDarkMode),
-                                ],
-                              ),
-                            
-                            const SizedBox(height: 48),
-                            
-                            // Bottom Area: Dynamic Admin View vs User View
-                            _buildSectionHeader(
-                              isAdmin ? 'لوحة تحكم المطور - نشر الإعلانات' : 'الكتب الأخيرة', 
-                              isDarkMode
-                            ),
-                            const SizedBox(height: 20),
-                            
-                            if (isAdmin) 
-                              _buildAdminAnnouncementSender(isDarkMode, app.currentUser?.username ?? 'Admin')
-                            else 
-                              _buildRecentVerticalList(context, recentDocs, isDarkMode),
-                            
-                            const SizedBox(height: 24),
-                          ],
+                        
+                        const SizedBox(height: 48),
+                        
+                        _buildSectionHeader(
+                          isAdmin ? 'لوحة تحكم المطور - نشر الإعلانات' : 'الكتب الأخيرة', 
+                          isDarkMode
                         ),
-                      ),
+                        const SizedBox(height: 20),
+                        
+                        if (isAdmin) 
+                          _buildAdminAnnouncementSender(isDarkMode, app.currentUser?.username ?? 'Admin')
+                        else 
+                          _buildRecentVerticalList(context, recentDocs, isDarkMode),
+                        
+                        const SizedBox(height: 24),
+                      ],
                     ),
                   );
                 },
-              );
-            },
-          ),
+              ),
+            );
+          },
         ),
-      );
-    },
-  );
+      ),
+    );
+  }
+}
+
+Widget _buildMainContentArea(
+  BuildContext context,
+  AppProvider app,
+  bool isDarkMode,
+  List<PdfDocument> recentDocs,
+  int readingTimeEstimate,
+  bool isWide,
+) {
+  final content = [
+    // Left/Primary Column Logic
+    Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _buildSectionHeader('مجلداتي', isDarkMode),
+            TextButton.icon(
+              onPressed: () => _showCreateFolderDialog(context),
+              icon: const Icon(LucideIcons.plus, size: 16),
+              label: const Text('مجلد جديد'),
+              style: TextButton.styleFrom(foregroundColor: Colors.blue[600]),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        _buildRealFolderGrid(isDarkMode),
+        const SizedBox(height: 32),
+        _buildSectionHeader('إجراءات سريعة', isDarkMode),
+        const SizedBox(height: 16),
+        _buildQuickActionChips(context, isDarkMode),
+      ],
+    ),
+    
+    if (isWide) const SizedBox(width: 32) else const SizedBox(height: 32),
+
+    // Right/Secondary Column Logic
+    Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(LucideIcons.bell, size: 20, color: Color(0xFFD97706)),
+            const SizedBox(width: 8),
+            _buildSectionHeader('إعلانات هامة', isDarkMode),
+          ],
+        ),
+        const SizedBox(height: 16),
+        _buildAnnouncementsSection(isDarkMode),
+        const SizedBox(height: 32),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                const Icon(LucideIcons.checkSquare, size: 20, color: Color(0xFF2563EB)),
+                const SizedBox(width: 8),
+                _buildSectionHeader('مهام اليوم', isDarkMode),
+              ],
+            ),
+            TextButton(
+              onPressed: () => _showAddTaskDialog(context),
+              child: const Text('إضافة مهمة', style: TextStyle(fontSize: 12)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _buildToDoListMock(isDarkMode),
+      ],
+    ),
+  ];
+
+  if (isWide) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(flex: 2, child: content[0]),
+        content[1],
+        Expanded(flex: 1, child: content[2]),
+      ],
+    );
+  } else {
+    return Column(
+      children: [
+        content[0],
+        content[1],
+        content[2],
+      ],
+    );
+  }
 }
 
 // ─── ADMIN ANNOUNCEMENT SENDER ──────────────────────────────────────────────
@@ -286,83 +408,7 @@ Widget _buildAdminAnnouncementSender(bool isDarkMode, String authorName) {
   return _AdminAnnouncementSender(isDarkMode: isDarkMode, authorName: authorName);
 }
 
-// ─── PRIMARY COLUMN (FOLDERS & ACTIONS) ─────────────────────────────────────
-
-Widget _buildPrimaryColumn(
-  BuildContext context,
-  AppProvider app,
-  bool isDarkMode,
-) {
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          _buildSectionHeader('مجلداتي', isDarkMode),
-          TextButton.icon(
-            onPressed: () => _showCreateFolderDialog(context),
-            icon: const Icon(LucideIcons.plus, size: 16),
-            label: const Text('مجلد جديد'),
-            style: TextButton.styleFrom(foregroundColor: Colors.blue[600]),
-          ),
-        ],
-      ),
-      const SizedBox(height: 16),
-      _buildRealFolderGrid(isDarkMode),
-      const SizedBox(height: 32),
-      _buildSectionHeader('إجراءات سريعة', isDarkMode),
-      const SizedBox(height: 16),
-      _buildQuickActionChips(context, isDarkMode),
-    ],
-  );
-}
-
-// ─── SECONDARY COLUMN (ANNOUNCEMENTS & TO-DO) ──────────────────────────────
-
-Widget _buildSecondaryColumn(
-  BuildContext context,
-  AppProvider app,
-  bool isDarkMode,
-) {
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      // 1. الإعلانات في الأعلى
-      Row(
-        children: [
-          Icon(LucideIcons.bell, size: 20, color: isDarkMode ? Colors.amber[400] : Colors.amber[600]),
-          const SizedBox(width: 8),
-          _buildSectionHeader('إعلانات هامة', isDarkMode),
-        ],
-      ),
-      const SizedBox(height: 16),
-      _buildAnnouncementsSection(isDarkMode),
-
-      const SizedBox(height: 32),
-
-      // 2. قائمة المهام اليومية (To-Do)
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            children: [
-              Icon(LucideIcons.checkSquare, size: 20, color: isDarkMode ? Colors.blue[400] : Colors.blue[600]),
-              const SizedBox(width: 8),
-              _buildSectionHeader('مهام اليوم', isDarkMode),
-            ],
-          ),
-          TextButton(
-            onPressed: () => _showAddTaskDialog(context),
-            child: const Text('إضافة مهمة', style: TextStyle(fontSize: 12)),
-          ),
-        ],
-      ),
-      const SizedBox(height: 12),
-      _buildToDoListMock(isDarkMode),
-    ],
-  );
-}
+// REMOVED: Replaced by unified _buildMainContentArea
 
 // ─── HERO SECTION (WELCOME & JOIN) ──────────────────────────────────────────
 
@@ -468,9 +514,9 @@ class _JoinSessionBarState extends State<JoinSessionBar> {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          Icon(
+          const Icon(
             LucideIcons.radio,
-            color: isDarkMode ? Colors.blue[400] : Colors.blue[600],
+            color: Color(0xFF2563EB), // Default blue-600
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -705,10 +751,10 @@ Widget _buildToDoListMock(bool isDarkMode) {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
+                const Icon(
                 LucideIcons.listTodo,
                 size: 32,
-                color: isDarkMode ? Colors.white24 : Colors.black12,
+                color: Color(0x1F000000), // Default black12
               ),
               const SizedBox(height: 12),
               Text(

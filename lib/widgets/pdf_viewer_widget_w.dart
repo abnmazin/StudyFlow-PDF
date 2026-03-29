@@ -2,6 +2,7 @@ import 'package:pdfrx/pdfrx.dart' hide PdfDocument;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/rendering.dart';
 
 import 'package:provider/provider.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -12,6 +13,7 @@ import 'dart:io';
 
 import '../providers/app_state.dart';
 import '../models/models.dart';
+import '../models/app_user.dart';
 import '../models/print_settings.dart'; // NEW
 import '../services/print_service.dart'; // NEW
 import 'viewer_components/viewer_toolbar.dart';
@@ -119,6 +121,14 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   int _lastReportedPage = 0;
   int _pagesSinceLastFlush = 0;
   int _lastMemoryTrimAt = 0;
+    static const int _defaultTrimDelayMs = 500;
+    static const int _defaultTrimMinIntervalMs = 6000;
+    int get _trimDelayMs =>
+      context.read<AppProvider>().devSettings.trimDelayMs ??
+      _defaultTrimDelayMs;
+    int get _trimMinIntervalMs =>
+      context.read<AppProvider>().devSettings.trimMinIntervalMs ??
+      _defaultTrimMinIntervalMs;
   Size? _lastPdfViewSize;
   bool _isAutoFitting = false;
   bool _autoFitEnabled = true;
@@ -376,9 +386,30 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     _scrollMaintenanceDebounce = Timer(const Duration(milliseconds: 900), () {
       if (!mounted) return;
 
-      // Keep this conservative to prioritize smoothness over aggressive trimming.
-      _maybeTrimWindowsMemory(minIntervalMs: 6000);
-      _pagesSinceLastFlush = 0;
+      PaintingBinding.instance.imageCache.clear();
+      PaintingBinding.instance.imageCache.clearLiveImages();
+
+      Future.delayed(Duration(milliseconds: _trimDelayMs), () {
+        if (!mounted) return;
+
+        bool isStillScrolling = false;
+        try {
+          final dynamic controller = _pdfController;
+          final Iterable<dynamic> positions =
+              (controller.positions as Iterable<dynamic>? ?? const []);
+          isStillScrolling = positions.any(
+            (p) => p.userScrollDirection != ScrollDirection.idle,
+          );
+        } catch (_) {
+          // Some pdfrx controller builds do not expose `positions`.
+          isStillScrolling = false;
+        }
+
+        if (isStillScrolling) return;
+
+        _maybeTrimWindowsMemory(minIntervalMs: _trimMinIntervalMs);
+        _pagesSinceLastFlush = 0;
+      });
     });
   }
 
@@ -609,7 +640,6 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                   },
                   onAddBookmark: (pdf) => _showAddBookmarkDialog(pdf),
                 ),
-
                 // 2. Main Content Area (Viewer + Right Panel)
                 Expanded(
                   child: Row(
@@ -621,333 +651,335 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                 color: const Color(0xFFE2E8F0),
                                 child: _buildPrintLoadingScreen(),
                               )
-                            : Stack(
-                                children: [
-                                  // Background & PDF View
-                                  Container(
-                                    // Always keep the PDF paper/background light
-                                    color: const Color(0xFFE2E8F0),
-                                    child: pdf == null
-                                        ? _buildNoFilePlaceholder()
-                                        : _buildPdfViewerCore(pdf),
-                                  ),
-
-                                  // Search Bar Overlay
-                                  if (_isSearchVisible && pdf != null)
-                                    Positioned(
-                                      top: 80,
-                                      right: 16,
-                                      child: Card(
-                                        elevation: 4,
-                                        child: Padding(
-                                          padding: const EdgeInsets.all(8.0),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              SizedBox(
-                                                width: 200,
-                                                child: TextField(
-                                                  autofocus: true,
-                                                  decoration:
-                                                      const InputDecoration(
-                                                        hintText: 'بحث...',
-                                                        border:
-                                                            InputBorder.none,
-                                                        isDense: true,
-                                                      ),
-                                                  onChanged: (val) {
-                                                    _textSearcher
-                                                        ?.startTextSearch(val);
-                                                  },
-                                                ),
-                                              ),
-                                              IconButton(
-                                                icon: const Icon(
-                                                  LucideIcons.chevronUp,
-                                                ),
-                                                onPressed: () => _textSearcher
-                                                    ?.goToPrevMatch(),
-                                                tooltip: 'السابق',
-                                              ),
-                                              IconButton(
-                                                icon: const Icon(
-                                                  LucideIcons.chevronDown,
-                                                ),
-                                                onPressed: () => _textSearcher
-                                                    ?.goToNextMatch(),
-                                                tooltip: 'التالي',
-                                              ),
-                                              IconButton(
-                                                icon:
-                                                    const Icon(LucideIcons.x),
-                                                onPressed: () {
-                                                  _textSearcher
-                                                      ?.resetTextSearch();
-                                                  setState(
-                                                    () => _isSearchVisible =
-                                                        false,
-                                                  );
-                                                },
-                                                tooltip: 'إغلاق',
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
+                            : RepaintBoundary(
+                                child: Stack(
+                                  children: [
+                                    // Background & PDF View
+                                    Container(
+                                      // Always keep the PDF paper/background light
+                                      color: const Color(0xFFE2E8F0),
+                                      child: pdf == null
+                                          ? _buildNoFilePlaceholder()
+                                          : _buildPdfViewerCore(pdf),
                                     ),
 
-                            if (_isShapesPaletteVisible)
-                              Positioned(
-                                left: 20,
-                                bottom: 50,
-                                child: TapRegion(
-                                  onTapOutside: (_) {
-                                    // Only auto-dismiss when in cursor mode.
-                                    // When a shape tool is active the user is
-                                    // likely drawing, so keep the palette visible.
-                                    if (mounted &&
-                                        _tool != ToolType.arrow &&
-                                        _tool != ToolType.rectangle &&
-                                        _tool != ToolType.circle &&
-                                        _tool != ToolType.pen &&
-                                        _tool != ToolType.highlight) {
-                                      setState(() {
-                                        _isShapesPaletteVisible = false;
-                                      });
-                                    }
-                                  },
-                                  child: Material(
-                                    elevation: 4,
-                                    color: Colors.transparent,
-                                    borderRadius: BorderRadius.circular(14),
-                                    child: Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        color: isDarkMode
-                                            ? const Color(0xFF1E293B)
-                                            : Colors.white,
-                                        borderRadius: BorderRadius.circular(14),
-                                        border: Border.all(
-                                          color: isDarkMode
-                                              ? const Color(0xFF334155)
-                                              : const Color(0xFFE2E8F0),
-                                        ),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          IconButton(
-                                            tooltip: 'مستطيل',
-                                            icon: const Icon(
-                                              LucideIcons.square,
-                                            ),
-                                            color: _tool == ToolType.rectangle
-                                                ? const Color(0xFF3B82F6)
-                                                : (isDarkMode
-                                                      ? const Color(0xFF94A3B8)
-                                                      : const Color(
-                                                          0xFF64748B,
-                                                        )),
-                                            onPressed: () {
-                                              setState(() {
-                                                _activateTool(ToolType.rectangle);
-                                              });
-                                            },
-                                          ),
-                                          IconButton(
-                                            tooltip: 'دائرة',
-                                            icon: const Icon(
-                                              LucideIcons.circle,
-                                            ),
-                                            color: _tool == ToolType.circle
-                                                ? const Color(0xFF3B82F6)
-                                                : (isDarkMode
-                                                      ? const Color(0xFF94A3B8)
-                                                      : const Color(
-                                                          0xFF64748B,
-                                                        )),
-                                            onPressed: () {
-                                              setState(() {
-                                                _activateTool(ToolType.circle);
-                                              });
-                                            },
-                                          ),
-                                          IconButton(
-                                            tooltip: 'سهم',
-                                            icon: const Icon(
-                                              LucideIcons.arrowUpRight,
-                                            ),
-                                            color: _tool == ToolType.arrow
-                                                ? const Color(0xFF3B82F6)
-                                                : (isDarkMode
-                                                      ? const Color(0xFF94A3B8)
-                                                      : const Color(
-                                                          0xFF64748B,
-                                                        )),
-                                            onPressed: () {
-                                              setState(() {
-                                                _activateTool(ToolType.arrow);
-                                              });
-                                            },
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-
-                            // Text Selection Menu
-                            if (_isTextSelectionMenuVisible &&
-                                _textSelection != null)
-                              Positioned(
-                                bottom: 32,
-                                left: 0,
-                                right: 0,
-                                child: GestureDetector(
-                                  behavior: HitTestBehavior.opaque,
-                                  onTap:
-                                      () {}, // Absorb taps — stop bleed-through to pdfrx
-                                  child: Center(
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius: BorderRadius.circular(12),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: Colors.black.withValues(
-                                              alpha: 0.1,
-                                            ),
-                                            blurRadius: 10,
-                                            offset: const Offset(0, 4),
-                                          ),
-                                        ],
-                                      ),
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 16,
-                                        vertical: 8,
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          ...[
-                                            const Color(0xFFFEF08A), // Yellow
-                                            const Color(0xFFBBF7D0), // Green
-                                            const Color(0xFFBFDBFE), // Blue
-                                            const Color(0xFFFBCFE8), // Pink
-                                            const Color(0xFFDDD6FE), // Purple
-                                          ].map(
-                                            (c) => GestureDetector(
-                                              onTap: () => _addTextHighlight(c),
-                                              child: Container(
-                                                width: 24,
-                                                height: 24,
-                                                margin: const EdgeInsets.only(
-                                                  right: 12,
-                                                ),
-                                                decoration: BoxDecoration(
-                                                  color: c,
-                                                  shape: BoxShape.circle,
-                                                  border: Border.all(
-                                                    color: const Color(
-                                                      0xFFE2E8F0,
-                                                    ),
-                                                    width: 1,
+                                    // Search Bar Overlay
+                                    if (_isSearchVisible && pdf != null)
+                                      Positioned(
+                                        top: 80,
+                                        right: 16,
+                                        child: Card(
+                                          elevation: 4,
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(8.0),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                SizedBox(
+                                                  width: 200,
+                                                  child: TextField(
+                                                    autofocus: true,
+                                                    decoration:
+                                                        const InputDecoration(
+                                                          hintText: 'بحث...',
+                                                          border:
+                                                              InputBorder.none,
+                                                          isDense: true,
+                                                        ),
+                                                    onChanged: (val) {
+                                                      _textSearcher
+                                                          ?.startTextSearch(val);
+                                                    },
                                                   ),
                                                 ),
+                                                IconButton(
+                                                  icon: const Icon(
+                                                    LucideIcons.chevronUp,
+                                                  ),
+                                                  onPressed: () => _textSearcher
+                                                      ?.goToPrevMatch(),
+                                                  tooltip: 'السابق',
+                                                ),
+                                                IconButton(
+                                                  icon: const Icon(
+                                                    LucideIcons.chevronDown,
+                                                  ),
+                                                  onPressed: () => _textSearcher
+                                                      ?.goToNextMatch(),
+                                                  tooltip: 'التالي',
+                                                ),
+                                                IconButton(
+                                                  icon:
+                                                      const Icon(LucideIcons.x),
+                                                  onPressed: () {
+                                                    _textSearcher
+                                                        ?.resetTextSearch();
+                                                    setState(
+                                                      () => _isSearchVisible =
+                                                          false,
+                                                    );
+                                                  },
+                                                  tooltip: 'إغلاق',
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+
+                                    if (_isShapesPaletteVisible)
+                                      Positioned(
+                                        left: 20,
+                                        bottom: 50,
+                                        child: TapRegion(
+                                          onTapOutside: (_) {
+                                            // Only auto-dismiss when in cursor mode.
+                                            // When a shape tool is active the user is
+                                            // likely drawing, so keep the palette visible.
+                                            if (mounted &&
+                                                _tool != ToolType.arrow &&
+                                                _tool != ToolType.rectangle &&
+                                                _tool != ToolType.circle &&
+                                                _tool != ToolType.pen &&
+                                                _tool != ToolType.highlight) {
+                                              setState(() {
+                                                _isShapesPaletteVisible = false;
+                                              });
+                                            }
+                                          },
+                                          child: Material(
+                                            elevation: 4,
+                                            color: Colors.transparent,
+                                            borderRadius: BorderRadius.circular(14),
+                                            child: Container(
+                                              padding: const EdgeInsets.all(8),
+                                              decoration: BoxDecoration(
+                                                color: isDarkMode
+                                                    ? const Color(0xFF1E293B)
+                                                    : Colors.white,
+                                                borderRadius: BorderRadius.circular(14),
+                                                border: Border.all(
+                                                  color: isDarkMode
+                                                      ? const Color(0xFF334155)
+                                                      : const Color(0xFFE2E8F0),
+                                                ),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  IconButton(
+                                                    tooltip: 'مستطيل',
+                                                    icon: const Icon(
+                                                      LucideIcons.square,
+                                                    ),
+                                                    color: _tool == ToolType.rectangle
+                                                        ? const Color(0xFF3B82F6)
+                                                        : (isDarkMode
+                                                              ? const Color(0xFF94A3B8)
+                                                              : const Color(
+                                                                  0xFF64748B,
+                                                                )),
+                                                    onPressed: () {
+                                                      setState(() {
+                                                        _activateTool(ToolType.rectangle);
+                                                      });
+                                                    },
+                                                  ),
+                                                  IconButton(
+                                                    tooltip: 'دائرة',
+                                                    icon: const Icon(
+                                                      LucideIcons.circle,
+                                                    ),
+                                                    color: _tool == ToolType.circle
+                                                        ? const Color(0xFF3B82F6)
+                                                        : (isDarkMode
+                                                              ? const Color(0xFF94A3B8)
+                                                              : const Color(
+                                                                  0xFF64748B,
+                                                                )),
+                                                    onPressed: () {
+                                                      setState(() {
+                                                        _activateTool(ToolType.circle);
+                                                      });
+                                                    },
+                                                  ),
+                                                  IconButton(
+                                                    tooltip: 'سهم',
+                                                    icon: const Icon(
+                                                      LucideIcons.arrowUpRight,
+                                                    ),
+                                                    color: _tool == ToolType.arrow
+                                                        ? const Color(0xFF3B82F6)
+                                                        : (isDarkMode
+                                                              ? const Color(0xFF94A3B8)
+                                                              : const Color(
+                                                                  0xFF64748B,
+                                                                )),
+                                                    onPressed: () {
+                                                      setState(() {
+                                                        _activateTool(ToolType.arrow);
+                                                      });
+                                                    },
+                                                  ),
+                                                ],
                                               ),
                                             ),
                                           ),
-                                          Container(
-                                            width: 1,
-                                            height: 24,
-                                            color: const Color(0xFFE2E8F0),
-                                            margin: const EdgeInsets.only(
-                                              right: 8,
-                                            ),
-                                          ),
-                                          IconButton(
-                                            icon: const Icon(
-                                              LucideIcons.x,
-                                              size: 20,
-                                            ),
-                                            onPressed: () {
-                                              _clearCurrentTextSelection();
-                                            },
-                                            tooltip: 'مسح التحديد',
-                                            color: const Color(0xFF64748B),
-                                            padding: EdgeInsets.zero,
-                                            constraints: const BoxConstraints(
-                                              minWidth: 32,
-                                              minHeight: 32,
-                                            ),
-                                          ),
-                                        ],
+                                        ),
                                       ),
-                                    ),
-                                  ),
-                                ),
-                              ),
 
-                            // Vertical Slider
-                            if (_pdfController.isReady &&
-                                _pdfController.pages.length > 1)
-                              Positioned(
-                                right: 12,
-                                top: 100,
-                                bottom: 100,
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withValues(alpha: 0.04),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 8,
-                                  ),
-                                  child: RotatedBox(
-                                    quarterTurns: 1,
-                                    child: SliderTheme(
-                                      data: SliderTheme.of(context).copyWith(
-                                        trackHeight: 4,
-                                        thumbShape: const RoundSliderThumbShape(
-                                          enabledThumbRadius: 6,
-                                        ),
-                                        overlayShape:
-                                            const RoundSliderOverlayShape(
-                                              overlayRadius: 14,
+                                    // Text Selection Menu
+                                    if (_isTextSelectionMenuVisible &&
+                                        _textSelection != null)
+                                      Positioned(
+                                        bottom: 32,
+                                        left: 0,
+                                        right: 0,
+                                        child: GestureDetector(
+                                          behavior: HitTestBehavior.opaque,
+                                          onTap:
+                                              () {}, // Absorb taps — stop bleed-through to pdfrx
+                                          child: Center(
+                                            child: Container(
+                                              decoration: BoxDecoration(
+                                                color: Colors.white,
+                                                borderRadius: BorderRadius.circular(12),
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: Colors.black.withValues(
+                                                      alpha: 0.1,
+                                                    ),
+                                                    blurRadius: 10,
+                                                    offset: const Offset(0, 4),
+                                                  ),
+                                                ],
+                                              ),
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 16,
+                                                vertical: 8,
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  ...[
+                                                    const Color(0xFFFEF08A), // Yellow
+                                                    const Color(0xFFBBF7D0), // Green
+                                                    const Color(0xFFBFDBFE), // Blue
+                                                    const Color(0xFFFBCFE8), // Pink
+                                                    const Color(0xFFDDD6FE), // Purple
+                                                  ].map(
+                                                    (c) => GestureDetector(
+                                                      onTap: () => _addTextHighlight(c),
+                                                      child: Container(
+                                                        width: 24,
+                                                        height: 24,
+                                                        margin: const EdgeInsets.only(
+                                                          right: 12,
+                                                        ),
+                                                        decoration: BoxDecoration(
+                                                          color: c,
+                                                          shape: BoxShape.circle,
+                                                          border: Border.all(
+                                                            color: const Color(
+                                                              0xFFE2E8F0,
+                                                            ),
+                                                            width: 1,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  Container(
+                                                    width: 1,
+                                                    height: 24,
+                                                    color: const Color(0xFFE2E8F0),
+                                                    margin: const EdgeInsets.only(
+                                                      right: 8,
+                                                    ),
+                                                  ),
+                                                  IconButton(
+                                                    icon: const Icon(
+                                                      LucideIcons.x,
+                                                      size: 20,
+                                                    ),
+                                                    onPressed: () {
+                                                      _clearCurrentTextSelection();
+                                                    },
+                                                    tooltip: 'مسح التحديد',
+                                                    color: const Color(0xFF64748B),
+                                                    padding: EdgeInsets.zero,
+                                                    constraints: const BoxConstraints(
+                                                      minWidth: 32,
+                                                      minHeight: 32,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
                                             ),
-                                        activeTrackColor: const Color(
-                                          0xFF94A3B8,
+                                          ),
                                         ),
-                                        inactiveTrackColor: Colors.transparent,
-                                        thumbColor: const Color(0xFF64748B),
                                       ),
-                                      child: Slider(
-                                        min: 1.0,
-                                        max: _pdfController.pages.length
-                                            .toDouble(),
-                                        value:
-                                            (_pdfController.pageNumber
-                                                        ?.toDouble() ??
-                                                    1.0)
-                                                .clamp(
-                                                  1.0,
-                                                  _pdfController.pages.length
-                                                      .toDouble(),
+
+                                    // Vertical Slider
+                                    if (_pdfController.isReady &&
+                                        _pdfController.pages.length > 1)
+                                      Positioned(
+                                        right: 12,
+                                        top: 100,
+                                        bottom: 100,
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            color: Colors.black.withValues(alpha: 0.04),
+                                            borderRadius: BorderRadius.circular(20),
+                                          ),
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 8,
+                                          ),
+                                          child: RotatedBox(
+                                            quarterTurns: 1,
+                                            child: SliderTheme(
+                                              data: SliderTheme.of(context).copyWith(
+                                                trackHeight: 4,
+                                                thumbShape: const RoundSliderThumbShape(
+                                                  enabledThumbRadius: 6,
                                                 ),
-                                        onChanged: (val) {
-                                          setState(() {});
-                                          _pdfController.goToPage(
-                                            pageNumber: val.toInt(),
-                                          );
-                                        },
+                                                overlayShape:
+                                                    const RoundSliderOverlayShape(
+                                                      overlayRadius: 14,
+                                                    ),
+                                                activeTrackColor: const Color(
+                                                  0xFF94A3B8,
+                                                ),
+                                                inactiveTrackColor: Colors.transparent,
+                                                thumbColor: const Color(0xFF64748B),
+                                              ),
+                                              child: Slider(
+                                                min: 1.0,
+                                                max: _pdfController.pages.length
+                                                    .toDouble(),
+                                                value:
+                                                    (_pdfController.pageNumber
+                                                                ?.toDouble() ??
+                                                            1.0)
+                                                        .clamp(
+                                                          1.0,
+                                                          _pdfController.pages.length
+                                                              .toDouble(),
+                                                        ),
+                                                onChanged: (val) {
+                                                  setState(() {});
+                                                  _pdfController.goToPage(
+                                                    pageNumber: val.toInt(),
+                                                  );
+                                                },
+                                              ),
+                                            ),
+                                          ),
+                                        ),
                                       ),
-                                    ),
+                                    ],
                                   ),
                                 ),
-                              ),
-                                ],
-                              ),
                       ),
 
                       // 3. Right Panel (Side-by-Side)
@@ -961,6 +993,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                           fontFamily: _textFontFamily,
                           fontOptions: const [
                             'Segoe UI',
+                            'Times New Roman',
                             'Tahoma',
                             'Arial',
                             'Noto Naskh Arabic',
@@ -1070,7 +1103,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
         ),
         controller: _pdfController,
         params: PdfViewerParams(
-          maxImageBytesCachedOnMemory: 40 * 1024 * 1024,
+          maxImageBytesCachedOnMemory: 100 * 1024 * 1024,
           maxScale: 4.0,
           minScale: 0.5,
           scrollByMouseWheel: 0.8,
