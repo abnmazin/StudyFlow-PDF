@@ -92,8 +92,9 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
   }
 
   Future<void> _generateCode() async {
+    // Removed hardwareId empty check because it silently blocked session creation
+    // and hostHardwareId is no longer strictly required by sync_service's generateSessionCode.
     final hardwareId = widget.app.currentUser?.hardwareId ?? '';
-    if (hardwareId.isEmpty) return;
     
     final activePdfId = widget.app.activePdfId;
     if (activePdfId == null) {

@@ -63,7 +63,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   Color _highlightColor = const Color(0xFFFFFF00);
   Color _shapeStrokeColor = const Color(0xFF000000); // arrow/rect/circle
   Color _textColor = const Color(0xFF000000);
-  String _textFontFamily = 'Segoe UI';
+  String _textFontFamily = 'Times New Roman';
 
   /// Current stroke/main color for whatever tool is active.
   Color get _currentColor {
@@ -953,32 +953,53 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                                 inactiveTrackColor: Colors.transparent,
                                                 thumbColor: const Color(0xFF64748B),
                                               ),
-                                              child: StatefulBuilder(
-                                                builder: (context, setSliderState) {
+                                              child: ListenableBuilder(
+                                                listenable: _pdfController,
+                                                builder: (context, _) {
                                                   final int pageCount = _pdfController.pages.length;
+                                                  if (pageCount < 1) return const SizedBox.shrink();
+
                                                   final double min = 1.0;
-                                                  final double max = pageCount.toDouble();
-                                                  // Use a local variable to track slider value for instant feedback
-                                                  // Store it in the closure
-                                                  double? localSliderValue;
+                                                  final double max = pageCount.toDouble().clamp(min, double.infinity);
+                                                  
+                                                  bool isDragging = false;
+                                                  double dragValue = min;
+
                                                   return StatefulBuilder(
                                                     builder: (context, setLocalState) {
-                                                      // If localSliderValue is null, initialize from controller
-                                                      localSliderValue ??= (pageCount - (_pdfController.pageNumber ?? 1) + 1).toDouble().clamp(min, max);
+                                                      final int currentPage = _pdfController.pageNumber ?? 1;
+                                                      final double controllerVal = (pageCount - currentPage + 1).toDouble().clamp(min, max);
+                                                      final double displayValue = isDragging ? dragValue : controllerVal;
+
                                                       return Slider(
                                                         min: min,
                                                         max: max,
-                                                        value: localSliderValue!,
-                                                        onChanged: (val) {
+                                                        divisions: pageCount > 1 ? pageCount - 1 : null,
+                                                        value: displayValue.clamp(min, max),
+                                                        onChangeStart: (val) {
                                                           setLocalState(() {
-                                                            localSliderValue = val;
+                                                            isDragging = true;
+                                                            dragValue = val;
                                                           });
                                                         },
+                                                        onChanged: (val) {
+                                                          setLocalState(() {
+                                                            dragValue = val;
+                                                          });
+                                                          int page = (pageCount - val + 1).round().clamp(1, pageCount);
+                                                          if (page != currentPage) {
+                                                            _pdfController.goToPage(pageNumber: page);
+                                                          }
+                                                        },
                                                         onChangeEnd: (val) {
+                                                          setLocalState(() {
+                                                            isDragging = false;
+                                                          });
                                                           int page = (pageCount - val + 1).round().clamp(1, pageCount);
                                                           _pdfController.goToPage(pageNumber: page);
                                                         },
                                                       );
+
                                                     },
                                                   );
                                                 },

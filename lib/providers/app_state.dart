@@ -121,7 +121,7 @@ class AppProvider extends ChangeNotifier {
   bool _isMobileOpen = false;
   bool _showDevInfo = false;
   bool _isSidebarCollapsed = false;
-  bool _isDarkMode = false;
+  bool _isDarkMode = true;
   bool _isSettingsOpen = false;
   DrawingSyncStrategy _drawingSyncStrategy = DrawingSyncStrategy.disabled;
   final DevSettings _devSettings = DevSettings();
@@ -616,7 +616,39 @@ class AppProvider extends ChangeNotifier {
     _currentUser = user;
     if (user.username != 'abn') _startUserMonitor(user.uid);
     _saveState(); // PERSISTENT LOGIN: Save user on set
+    
+    if (user.role == 'lecturer') {
+      _preloadLecturerSessions(user.username);
+    }
+    
     _notify();
+  }
+
+  Future<void> _preloadLecturerSessions(String username) async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('sync_sessions')
+          .where('createdBy', isEqualTo: username)
+          .get();
+      
+      bool updated = false;
+      for (var doc in snap.docs) {
+        final hash = doc.data()['fileHash'] as String?;
+        if (hash != null) {
+          if (_pdfSessionCodes[hash] != doc.id) {
+            _pdfSessionCodes[hash] = doc.id;
+            updated = true;
+          }
+        }
+      }
+      if (updated) {
+        _saveState();
+        _notify();
+        debugPrint('DEBUG: Pre-loaded ${snap.docs.length} active sessions upon login.');
+      }
+    } catch (e) {
+      debugPrint('DEBUG: Error pre-loading lecturer sessions: $e');
+    }
   }
 
   void setSessionCode(String? code) {
@@ -989,7 +1021,7 @@ class AppProvider extends ChangeNotifier {
       }
 
       // Load dark mode preference
-      _isDarkMode = prefs.getBool(_prefsKeyDarkMode) ?? false;
+      _isDarkMode = prefs.getBool(_prefsKeyDarkMode) ?? true;
       _aiProvider = prefs.getString(_prefsKeyAiProvider) ?? 'groq';
       _geminiModel =
           prefs.getString(_prefsKeyGeminiModel) ?? 'gemini-2.5-flash';
@@ -1214,17 +1246,15 @@ class AppProvider extends ChangeNotifier {
     _updateImageCacheGovernance();
     _notify();
 
-    // AUTO-JOIN: If lecturer opens a PDF, look for an active session.
+    // AUTO-JOIN: If lecturer opens a PDF, look for an active session immediately. (Removed 2.5s delay)
     final hash = activePdf?.fileHash;
     final username = _currentUser?.username;
     if (_currentUser?.role == 'lecturer' && hash != null && username != null) {
-      Future.delayed(const Duration(milliseconds: 2500), () {
-        _syncService.findExistingSession(username, hash).then((existingCode) {
-          if (existingCode != null) {
-            setSessionCode(existingCode);
-            debugPrint('DEBUG: Auto-joined existing session ($existingCode) for $hash.');
-          }
-        });
+      _syncService.findExistingSession(username, hash).then((existingCode) {
+        if (existingCode != null) {
+          setSessionCode(existingCode);
+          debugPrint('DEBUG: Auto-joined existing session ($existingCode) for $hash.');
+        }
       });
     }
 
@@ -1232,22 +1262,20 @@ class AppProvider extends ChangeNotifier {
     if (_currentUser?.role != 'lecturer' && hash != null && username != null && _currentUser?.uid != null) {
       final savedCode = _pdfSessionCodes[hash];
       if (savedCode != null && savedCode.isNotEmpty) {
-        // Only trigger if we aren't already actively in this session
-        Future.delayed(const Duration(milliseconds: 1500), () {
-          _syncService.joinSession(
-            code: savedCode,
-            uid: _currentUser!.uid,
-            username: username,
-            studentFileHash: hash,
-            studentPageCount: activePdf?.pageCount ?? 0,
-          ).then((error) {
-            if (error == null) {
-              setSessionCode(savedCode);
-              debugPrint('DEBUG: Passive Master Bundle Auto-Join Success ($savedCode) for $hash.');
-            } else {
-              debugPrint('DEBUG: Passive Auto-Join Failed: $error');
-            }
-          });
+        // Automatically join the session right away to restore real-time connection
+        _syncService.joinSession(
+          code: savedCode,
+          uid: _currentUser!.uid,
+          username: username,
+          studentFileHash: hash,
+          studentPageCount: activePdf?.pageCount ?? 0,
+        ).then((error) {
+          if (error == null) {
+            setSessionCode(savedCode);
+            debugPrint('DEBUG: Passive Master Bundle Auto-Join Success ($savedCode) for $hash.');
+          } else {
+            debugPrint('DEBUG: Passive Auto-Join Failed: $error');
+          }
         });
       }
     }

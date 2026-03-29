@@ -388,6 +388,10 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
         user.username,
         bundle,
       );
+      
+      // NEW: Auto-link the generated bundle for the Lecturer so they don't have to manually 'Start Broadcast' later
+      app.linkMasterBundle(bundle);
+      
       setState(() => _generatedMasterCode = masterCode);
     } catch (e) {
       ScaffoldMessenger.of(
@@ -719,6 +723,43 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                           style: TextStyle(color: text, fontSize: 11),
                         ),
                         leading: const Icon(LucideIcons.fileText, size: 14),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.05),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                f['sessionCode'] ?? 'بدون كود',
+                                style: TextStyle(
+                                  color: text,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 1.5,
+                                  fontSize: 10,
+                                ),
+                              ),
+                            ),
+                            if (f['sessionCode'] != null)
+                              IconButton(
+                                icon: const Icon(LucideIcons.copy, size: 14, color: Colors.grey),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                                iconSize: 14,
+                                onPressed: () {
+                                  Clipboard.setData(ClipboardData(text: f['sessionCode']));
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('تم نسخ الكود!'),
+                                      duration: Duration(seconds: 2),
+                                    ),
+                                  );
+                                },
+                              ),
+                          ],
+                        ),
                       ),
                     )
                     .toList(),
@@ -1501,11 +1542,13 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
                   color: Colors.blue,
                 ),
                 title: Text(
-                  'درس: ${doc.id}',
+                  '${data['pdfName'] ?? 'بدون اسم ملف'} (${doc.id})',
                   style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 subtitle: Text(
                   'الطلاب: ${parts.length}',

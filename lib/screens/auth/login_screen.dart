@@ -111,16 +111,27 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = context.watch<AppProvider>().isDarkMode;
+
+    final bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
+    final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    final borderColor = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE2E8F0);
+    final textPrimary = isDark ? Colors.white : const Color(0xFF0F172A);
+    final textSecondary = isDark ? const Color(0xFFBDBDBD) : const Color(0xFF64748B);
+    final inputBg = isDark ? const Color(0xFF151515) : const Color(0xFFF1F5F9);
+    final inputBorderColor = isDark ? const Color(0xFF333333) : const Color(0xFFCBD5E1);
+
     return Scaffold(
+      backgroundColor: bgColor,
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 460),
           child: Card(
-            elevation: 6,
-            color: const Color(0xFF1E1E1E),
+            elevation: isDark ? 6 : 2,
+            color: cardColor,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(18),
-              side: const BorderSide(color: Color(0xFF2A2A2A)),
+              side: BorderSide(color: borderColor),
             ),
             child: Padding(
               padding: const EdgeInsets.all(24),
@@ -132,22 +143,22 @@ class _LoginScreenState extends State<LoginScreen> {
                     'Welcome',
                     textAlign: TextAlign.center,
                     style: theme.textTheme.headlineMedium?.copyWith(
-                      color: Colors.white,
+                      color: textPrimary,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
                   const SizedBox(height: 18),
                   TextField(
                     controller: _usernameController,
-                    style: const TextStyle(color: Colors.white),
+                    style: TextStyle(color: textPrimary),
                     decoration: InputDecoration(
                       labelText: 'Username',
-                      labelStyle: const TextStyle(color: Color(0xFFBDBDBD)),
+                      labelStyle: TextStyle(color: textSecondary),
                       filled: true,
-                      fillColor: const Color(0xFF151515),
+                      fillColor: inputBg,
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Color(0xFF333333)),
+                        borderSide: BorderSide(color: inputBorderColor),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -159,14 +170,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF151515),
+                      color: inputBg,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFF333333)),
+                      border: Border.all(color: inputBorderColor),
                     ),
                     child: Text(
                       'Device ID: $_deviceId',
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: const Color(0xFFE0E0E0),
+                        color: textSecondary,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -219,8 +230,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     Text(
                       'Role: ${_currentUser!.role}',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Color(0xFF9E9E9E),
+                      style: TextStyle(
+                        color: textSecondary,
                         fontSize: 12,
                       ),
                     ),

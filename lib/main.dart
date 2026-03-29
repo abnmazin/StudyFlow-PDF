@@ -186,23 +186,39 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => fileManager),
         ChangeNotifierProvider(create: (_) => AppProvider()),
       ],
-      child: MaterialApp(
-        title: 'StudyFlow pdf',
-        debugShowCheckedModeBanner: false,
-        locale: const Locale('ar'),
-        supportedLocales: const [Locale('ar'), Locale('en')],
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-        ],
-        theme: ThemeData.dark().copyWith(
-          colorScheme: ThemeData.dark().colorScheme.copyWith(
-            primary: Colors.blueAccent,
-          ),
-          scaffoldBackgroundColor: const Color(0xFF121212),
-        ),
-        home: const RootWrapper(),
+      child: Consumer<AppProvider>(
+        builder: (context, app, child) {
+          return MaterialApp(
+            title: 'StudyFlow pdf',
+            debugShowCheckedModeBanner: false,
+            locale: const Locale('ar'),
+            supportedLocales: const [Locale('ar'), Locale('en')],
+            localizationsDelegates: const [
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            themeMode: app.isDarkMode ? ThemeMode.dark : ThemeMode.light,
+            theme: ThemeData.light().copyWith(
+              colorScheme: ThemeData.light().colorScheme.copyWith(
+                    primary: Colors.blueAccent,
+                    surface: Colors.white,
+                    onSurface: const Color(0xFF0F172A), // Dark slate wording
+                    surfaceContainerHighest: const Color(0xFFF1F5F9), // Subtle slate backgrounds
+                    outlineVariant: const Color(0xFFE2E8F0),
+                  ),
+              scaffoldBackgroundColor: const Color(0xFFF8FAFC), // Off-white clean background
+              cardColor: Colors.white,
+            ),
+            darkTheme: ThemeData.dark().copyWith(
+              colorScheme: ThemeData.dark().colorScheme.copyWith(
+                    primary: Colors.blueAccent,
+                  ),
+              scaffoldBackgroundColor: const Color(0xFF121212),
+            ),
+            home: const RootWrapper(),
+          );
+        },
       ),
     );
   }
