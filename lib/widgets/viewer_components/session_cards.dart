@@ -7,6 +7,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import '../../providers/app_state.dart';
 import '../../services/sync_service.dart';
+import '../../utils/sync_naming_utils.dart';
 
 // ─────────────────────────────────────────────────────────────
 // LECTURER SESSION CARD
@@ -91,27 +92,157 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
     super.dispose();
   }
 
-  Future<void> _generateCode() async {
-    // Removed hardwareId empty check because it silently blocked session creation
-    // and hostHardwareId is no longer strictly required by sync_service's generateSessionCode.
-    final hardwareId = widget.app.currentUser?.hardwareId ?? '';
-    
-    final activePdfId = widget.app.activePdfId;
-    if (activePdfId == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('يرجى فتح ملف PDF أولاً.')),
-        );
-        return;
+  Future<void> _showCreateSessionDialog() async {
+    final activePdf = widget.app.activePdf;
+    if (activePdf == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('يرجى فتح ملف PDF أولاً.')),
+      );
+      return;
     }
 
+    final smartName = SyncNamingUtils.generateSmartName(activePdf.name);
+    final nameCtrl = TextEditingController(text: smartName);
+    final codeCtrl = TextEditingController();
+    bool useCustomCode = false;
+    String? localError;
+    bool isChecking = false;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('إعداد بث الدرس'),
+            content: SizedBox(
+              width: 400,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'اسم الدرس',
+                      hintText: 'مثال: محاضرة الفصل الأول',
+                      helperText: 'سيظهر هذا الاسم للطلاب عند الانضمام',
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      const Text('استخدام كود مخصص؟'),
+                      const Spacer(),
+                      Switch(
+                        value: useCustomCode,
+                        onChanged: (val) {
+                          setDialogState(() {
+                            useCustomCode = val;
+                            if (val) {
+                              codeCtrl.text = SyncNamingUtils.suggestCodeFromName(nameCtrl.text);
+                            } else {
+                              codeCtrl.clear();
+                            }
+                            localError = null;
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                  if (useCustomCode) ...[
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: codeCtrl,
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        labelText: 'الكود المخصص',
+                        hintText: 'مثال: MATH-101',
+                        errorText: localError,
+                        helperText: '4-12 حرف، أرقام، شرطة، أو شرطة سفلية',
+                      ),
+                      onChanged: (v) {
+                        if (localError != null) {
+                          setDialogState(() => localError = null);
+                        }
+                      },
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isChecking ? null : () => Navigator.pop(ctx),
+                child: const Text('إلغاء'),
+              ),
+              FilledButton(
+                onPressed: isChecking
+                    ? null
+                    : () async {
+                        final finalName = nameCtrl.text.trim().isEmpty
+                            ? smartName
+                            : nameCtrl.text.trim();
+                        String? finalCode;
+
+                        if (useCustomCode) {
+                          final inputCode = codeCtrl.text.trim().toUpperCase();
+                          if (!SyncNamingUtils.isValidCode(inputCode)) {
+                            setDialogState(() => localError = 'تنسيق الكود غير صالح (4-12 رمزاً مسموحاً)');
+                            return;
+                          }
+
+                          setDialogState(() => isChecking = true);
+                          try {
+                            final isUnique = await widget.syncService.isSessionCodeUnique(inputCode);
+                            if (!isUnique) {
+                              setDialogState(() {
+                                localError = 'هذا الكود مستخدم بالفعل، اختر كوداً آخر';
+                                isChecking = false;
+                              });
+                              return;
+                            }
+                            finalCode = inputCode;
+                          } catch (e) {
+                            setDialogState(() {
+                              localError = 'خطأ في التحقق من الكود';
+                              isChecking = false;
+                            });
+                            return;
+                          }
+                        }
+
+                        Navigator.pop(ctx);
+                        _generateCode(
+                          customName: finalName,
+                          customCode: finalCode,
+                        );
+                      },
+                child: isChecking
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Text('بدء البث'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _generateCode({String? customName, String? customCode}) async {
+    final hardwareId = widget.app.currentUser?.hardwareId ?? '';
+    final activePdf = widget.app.activePdf!;
+    
     setState(() {
       _generating = true;
-      _syncStatus = 'جاري توليد الكود...';
-      _error = null; // Clear previous errors
+      _syncStatus = 'جاري إعداد الجلسة...';
+      _error = null;
     });
 
     try {
-      final activePdf = widget.app.activePdf!;
       final code = await widget.syncService.generateSessionCode(
         activePdf.fileHash ?? '',
         activePdf.name,
@@ -119,6 +250,8 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
         hardwareId,
         widget.app.currentUser?.username ?? 'محاضر مجهول',
         widget.app.currentUser?.uid ?? '',
+        customCode: customCode,
+        displayName: customName,
       );
       
       if (code == null) {
@@ -132,7 +265,6 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
       if (hasNotes) {
         setState(() => _syncStatus = 'جاري رفع الملاحظات الحالية...');
         
-        // Check for "Resume" duplication prevention
         final alreadyExists = await widget.syncService.hasAnnotations(code, activePdf.fileHash ?? '');
         if (!alreadyExists) {
             await widget.syncService.syncExistingAnnotations(
@@ -148,24 +280,13 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
       _startListening(code);
     } catch (e) {
       if (mounted) {
-        SchedulerBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('خطأ: $e')),
-            );
-            setState(() => _error = 'خطأ: $e');
-          }
-        });
+        setState(() => _error = 'خطأ: $e');
       }
     } finally {
       if (mounted) {
-        SchedulerBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            setState(() {
-              _generating = false;
-              _syncStatus = '';
-            });
-          }
+        setState(() {
+          _generating = false;
+          _syncStatus = '';
         });
       }
     }
@@ -357,7 +478,7 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
             )
           else
             ElevatedButton.icon(
-              onPressed: _generateCode,
+              onPressed: _showCreateSessionDialog,
               icon: const Icon(LucideIcons.zap, size: 16),
               label: const Text('بدء بث الدرس'),
               style: ElevatedButton.styleFrom(
@@ -761,6 +882,9 @@ class _MemberSessionCardState extends State<MemberSessionCard> {
             stream: widget.syncService.watchSessionSecurity(activeCode),
             builder: (context, snapshot) {
               final ownerName = snapshot.data?['ownerName'] ?? '...';
+              final displayName = snapshot.data?['displayName'] as String?;
+              final hasDisplayName = displayName != null && displayName.isNotEmpty;
+
               return Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
@@ -775,12 +899,26 @@ class _MemberSessionCardState extends State<MemberSessionCard> {
                       children: [
                         const Icon(LucideIcons.checkCircle, size: 14, color: Color(0xFF4ADE80)),
                         const SizedBox(width: 8),
-                        Text(
-                          'متصل بالدرس: $activeCode',
-                          style: const TextStyle(color: Color(0xFF4ADE80), fontWeight: FontWeight.w600),
+                        Expanded(
+                          child: Text(
+                            hasDisplayName ? displayName : 'متصل بالدرس: $activeCode',
+                            style: const TextStyle(
+                              color: Color(0xFF4ADE80),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ],
                     ),
+                    if (hasDisplayName) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        'كود الدرس: $activeCode',
+                        style: const TextStyle(color: Color(0xFFBCF5D4), fontSize: 10, letterSpacing: 1),
+                      ),
+                    ],
                     const SizedBox(height: 4),
                     Text(
                       'المحاضر: $ownerName',

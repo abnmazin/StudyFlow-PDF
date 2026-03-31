@@ -55,13 +55,15 @@ class SyncService {
   /// Creates a master session bundle and returns the generated 8-character code.
   Future<String> createMasterBundle(
     String ownerName,
-    List<Map<String, dynamic>> bundle,
-  ) async {
+    List<Map<String, dynamic>> bundle, {
+    String? displayName,
+  }) async {
     final code = _randomCode(8); // Master codes are 8 chars to distinguish
     await _withTimeout(
       _db.collection('master_sessions').doc(code).set({
         'masterCode': code,
         'ownerName': ownerName,
+        'displayName': displayName ?? 'حزمة دراسية جديدة',
         'bundle': bundle,
         'isLocked': false,
         'bannedUsernames': <String>[],
@@ -92,6 +94,12 @@ class SyncService {
   // LECTURER OPERATIONS
   // ─────────────────────────────────────────────
 
+  /// Checks if a session code is already taken in the 'sync_sessions' collection.
+  Future<bool> isSessionCodeUnique(String code) async {
+    final snap = await _db.collection('sync_sessions').doc(code).get();
+    return !snap.exists;
+  }
+
   /// Searches for an existing active session for a given host and file hash.
   Future<String?> findExistingSession(String username, String fileHash) async {
     try {
@@ -112,27 +120,35 @@ class SyncService {
     return null;
   }
 
-  /// Generates a new 6-char code with file metadata, creates the Firestore document, returns code.
+  /// Generates a new code (or uses custom), creates the Firestore document, returns code.
   Future<String?> generateSessionCode(
     String fileHash,
     String pdfName,
     int pageCount,
     String hostHardwareId,
     String ownerName,
-    String hostUid,
-  ) async {
-    final existingCode = await findExistingSession(ownerName, fileHash);
-    if (existingCode != null) {
-      return existingCode;
+    String hostUid, {
+    String? customCode,
+    String? displayName,
+  }) async {
+    // 1. If no custom code is provided, check for an existing session by this host for this file.
+    if (customCode == null) {
+      final existingCode = await findExistingSession(ownerName, fileHash);
+      if (existingCode != null) {
+        return existingCode;
+      }
     }
 
-    final code = _randomCode(6);
+    // 2. Use custom code if provided, otherwise generate a random one.
+    final code = customCode?.toUpperCase() ?? _randomCode(6);
+
     await _withTimeout(
       _db.collection('sync_sessions').doc(code).set({
         'createdBy': ownerName, // Anchor to Username!
         'ownerName': ownerName,
+        'displayName': displayName ?? pdfName,
         'fileHash': fileHash,
-        'pdfName': pdfName,
+        'pdfName': pdfName, // Raw filename
         'pageCount': pageCount,
         'isLocked': false,
         'joinLocked': false,
@@ -190,6 +206,7 @@ class SyncService {
         'exists': true,
         'createdBy': data['createdBy'], // UID
         'ownerName': data['ownerName'] ?? 'محاضر', // Username
+        'displayName': data['displayName'], // Lesson name
         'kicked_usernames': List<String>.from(data['kicked_usernames'] ?? []),
         'isLocked': data['isLocked'] ?? false,
         'joinLocked': data['joinLocked'] ?? false,

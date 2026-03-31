@@ -5,6 +5,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../screens/auth/login_screen.dart';
+import '../utils/sync_naming_utils.dart';
 import 'developer_dashboard_v.dart';
 
 class GlobalSettingsModal extends StatefulWidget {
@@ -350,13 +351,61 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
 
   // ─── منطق إنشاء الحزمة ─────────────────────────────────────────────────────
 
-  Future<void> _generateMasterBundle(AppProvider app) async {
+  Future<void> _showBundleNameDialog(AppProvider app) async {
     if (_selectedHashes.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('حدد ملفاً واحداً على الأقل.')),
       );
       return;
     }
+
+    // Attempt to guess a good name from the first selected file
+    String initialName = SyncNamingUtils.bundleFallback;
+    for (var cls in app.classes) {
+      final firstMatch = cls.pdfs.where((p) => _selectedHashes.contains(p.fileHash)).firstOrNull;
+      if (firstMatch != null) {
+        initialName = SyncNamingUtils.generateSmartName(firstMatch.name, isBundle: true);
+        break;
+      }
+    }
+
+    final nameCtrl = TextEditingController(text: initialName);
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('إنشاء حزمة دراسية'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('أدخل اسماً للحزمة ليظهر للطلاب:', style: TextStyle(fontSize: 13)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: nameCtrl,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'اسم الحزمة',
+                hintText: 'مثال: حزمة مراجعة الميد',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+          FilledButton(
+            onPressed: () {
+              final val = nameCtrl.text.trim();
+              Navigator.pop(ctx);
+              _generateMasterBundle(app, val.isEmpty ? initialName : val);
+            },
+            child: const Text('إنشاء'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _generateMasterBundle(AppProvider app, String displayName) async {
     setState(() {
       _isGenerating = true;
       _generatedMasterCode = null;
@@ -375,19 +424,22 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
               user.hardwareId,
               user.username,
               user.uid,
+              displayName: pdf.name, // Lessons inside bundle use their PDF name as display name
             );
-            if (code != null)
+            if (code != null) {
               bundle.add({
                 'hash': pdf.fileHash,
                 'sessionCode': code,
                 'name': pdf.name,
               });
+            }
           }
         }
       }
       final masterCode = await app.syncService.createMasterBundle(
         user.username,
         bundle,
+        displayName: displayName,
       );
 
       // NEW: Auto-link the generated bundle for the Lecturer so they don't have to manually 'Start Broadcast' later
@@ -636,11 +688,12 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
               app.currentUser?.username ?? '',
             ),
             builder: (context, snapshot) {
-              if (!snapshot.hasData)
+              if (!snapshot.hasData) {
                 return const Padding(
                   padding: EdgeInsets.all(16),
                   child: CircularProgressIndicator(),
                 );
+              }
 
               final allBundles = snapshot.data!;
 
@@ -652,14 +705,12 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                 }
               }
 
-              // 2. Filter bundles: only show bundles that have at least one file
-              // whose session still exists in the DB.
+              // 2. Filter bundles
               final List<Map<String, dynamic>> activeBundles = [];
               final Map<String, List<dynamic>> filteredFilesMap = {};
 
               for (var data in allBundles) {
                 final rawFiles = data['bundle'] as List? ?? [];
-                // ONLY show files that exist in the DB (Active Sessions)
                 final filteredFiles = rawFiles.where((f) {
                   if (f is! Map) return false;
                   final code = f['sessionCode']?.toString();
@@ -668,8 +719,7 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
 
                 if (filteredFiles.isNotEmpty) {
                   activeBundles.add(data);
-                  filteredFilesMap[data['id'] ?? data['masterCode']] =
-                      filteredFiles;
+                  filteredFilesMap[data['id'] ?? data['masterCode']] = filteredFiles;
                 }
               }
 
@@ -689,22 +739,25 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                   final files = filteredFilesMap[docId] ?? [];
                   final bool isLocked = data['isLocked'] as bool? ?? false;
 
-                  // Count how many files in this bundle still exist locally
                   int locallyPresentCount = 0;
                   for (var f in files) {
-                    if (f is Map && localHashes.contains(f['hash']))
+                    if (f is Map && localHashes.contains(f['hash'])) {
                       locallyPresentCount++;
+                    }
                   }
 
                   return ExpansionTile(
                     title: Row(
                       children: [
-                        Text(
-                          data['masterCode'],
-                          style: TextStyle(
-                            color: isLocked ? Colors.red : text,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 2,
+                        Expanded(
+                          child: Text(
+                            data['displayName'] ?? data['masterCode'],
+                            style: TextStyle(
+                              color: isLocked ? Colors.red : text,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         if (isLocked) ...[
@@ -717,33 +770,45 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                         ],
                       ],
                     ),
-                    subtitle: Row(
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'ملفات: ${files.length}',
-                          style: TextStyle(color: muted, fontSize: 10),
-                        ),
-                        if (locallyPresentCount < files.length) ...[
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 4,
-                              vertical: 1,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.orange.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              '${files.length - locallyPresentCount} مفقود محلياً',
-                              style: const TextStyle(
-                                color: Colors.orange,
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
+                        if (data['displayName'] != null)
+                          Text(
+                            'الكود: ${data['masterCode']}',
+                            style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1),
                           ),
-                        ],
+                        Row(
+                          children: [
+                            Text(
+                              'المحاضر: ${data['ownerName'] ?? "..."}',
+                              style: TextStyle(color: muted, fontSize: 10),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'ملفات: ${files.length}',
+                              style: TextStyle(color: muted, fontSize: 10),
+                            ),
+                            if (locallyPresentCount < files.length) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  '${files.length - locallyPresentCount} مفقود محلياً',
+                                  style: const TextStyle(
+                                    color: Colors.orange,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                       ],
                     ),
                     leading: Icon(
@@ -764,11 +829,7 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                           tooltip: isLocked ? 'فتح الحزمة' : 'قفل الحزمة',
                         ),
                         IconButton(
-                          icon: const Icon(
-                            LucideIcons.userX,
-                            size: 16,
-                            color: Colors.amber,
-                          ),
+                          icon: const Icon(LucideIcons.userX, size: 16, color: Colors.amber),
                           onPressed: () => _manageBannedUsers(
                             context,
                             app,
@@ -779,45 +840,28 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                           tooltip: 'إدارة المحظورين',
                         ),
                         IconButton(
-                          icon: const Icon(
-                            LucideIcons.trash2,
-                            size: 16,
-                            color: Colors.redAccent,
-                          ),
-                          onPressed: () => _confirmDelete(
-                            'master_sessions',
-                            docId,
-                            'الحزمة',
-                          ),
+                          icon: const Icon(LucideIcons.trash2, size: 16, color: Colors.redAccent),
+                          onPressed: () => _confirmDelete('master_sessions', docId, 'الحزمة'),
                           tooltip: 'حذف نهائي',
                         ),
                       ],
                     ),
                     children: files.map((f) {
-                      final bool locallyExists =
-                          f is Map && localHashes.contains(f['hash']);
+                      final bool locallyExists = f is Map && localHashes.contains(f['hash']);
                       return ListTile(
                         dense: true,
                         title: Text(
                           f['name'] ?? 'Unnamed',
                           style: TextStyle(
-                            color: locallyExists
-                                ? text
-                                : muted.withOpacity(0.5),
+                            color: locallyExists ? text : muted.withOpacity(0.5),
                             fontSize: 11,
-                            decoration: locallyExists
-                                ? null
-                                : TextDecoration.lineThrough,
+                            decoration: locallyExists ? null : TextDecoration.lineThrough,
                           ),
                         ),
                         leading: Icon(
-                          locallyExists
-                              ? LucideIcons.fileText
-                              : LucideIcons.fileX,
+                          locallyExists ? LucideIcons.fileText : LucideIcons.fileX,
                           size: 14,
-                          color: locallyExists
-                              ? null
-                              : Colors.red.withOpacity(0.5),
+                          color: locallyExists ? null : Colors.red.withOpacity(0.5),
                         ),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -827,19 +871,13 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                                 padding: const EdgeInsets.only(right: 8.0),
                                 child: Text(
                                   '(محذوف من Dashboard)',
-                                  style: TextStyle(
-                                    color: Colors.red.withOpacity(0.6),
-                                    fontSize: 9,
-                                  ),
+                                  style: TextStyle(color: Colors.red.withOpacity(0.6), fontSize: 9),
                                 ),
                               ),
                             Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 2,
-                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha: 0.05),
+                                color: Colors.black.withOpacity(0.05),
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
@@ -854,16 +892,9 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                             ),
                             if (f['sessionCode'] != null)
                               IconButton(
-                                icon: const Icon(
-                                  LucideIcons.copy,
-                                  size: 14,
-                                  color: Colors.grey,
-                                ),
+                                icon: const Icon(LucideIcons.copy, size: 14, color: Colors.grey),
                                 padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(
-                                  minWidth: 24,
-                                  minHeight: 24,
-                                ),
+                                constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
                                 iconSize: 14,
                                 onPressed: () {
                                   Clipboard.setData(
@@ -1119,7 +1150,7 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
               child: FilledButton.icon(
                 onPressed: _isGenerating
                     ? null
-                    : () => _generateMasterBundle(app),
+                    : () => _showBundleNameDialog(app),
                 icon: _isGenerating
                     ? const SizedBox(
                         width: 14,
