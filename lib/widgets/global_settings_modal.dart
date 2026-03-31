@@ -388,10 +388,10 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
         user.username,
         bundle,
       );
-      
+
       // NEW: Auto-link the generated bundle for the Lecturer so they don't have to manually 'Start Broadcast' later
       app.linkMasterBundle(bundle);
-      
+
       setState(() => _generatedMasterCode = masterCode);
     } catch (e) {
       ScaffoldMessenger.of(
@@ -623,111 +623,220 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
     Color muted,
   ) {
     return _buildSettingsCard(surface, border, [
-      StreamBuilder<List<Map<String, dynamic>>>(
-        stream: app.syncService.watchMasterBundlesByOwner(
-          app.currentUser?.username ?? '',
-        ),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData)
-            return const Padding(
-              padding: EdgeInsets.all(16),
-              child: CircularProgressIndicator(),
-            );
-          final bundles = snapshot.data!;
-          if (bundles.isEmpty)
-            return Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                'لا توجد حزم.',
-                style: TextStyle(color: muted, fontSize: 13),
-              ),
-            );
+      StreamBuilder<QuerySnapshot>(
+        stream: _firestore.collection('sync_sessions').snapshots(),
+        builder: (context, sessionSnap) {
+          final activeCodes = sessionSnap.hasData
+              ? sessionSnap.data!.docs.map((d) => d.id).toSet()
+              : <String>{};
 
-          return Column(
-            children: bundles.map((data) {
-              final files = data['bundle'] as List? ?? [];
-              final bool isLocked = data['isLocked'] as bool? ?? false;
-              final docId = data['id'] ?? data['masterCode'];
+          return StreamBuilder<List<Map<String, dynamic>>>(
+            stream: app.syncService.watchMasterBundlesByOwner(
+              app.currentUser?.username ?? '',
+            ),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData)
+                return const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: CircularProgressIndicator(),
+                );
 
-              return ExpansionTile(
-                title: Row(
-                  children: [
-                    Text(
-                      data['masterCode'],
-                      style: TextStyle(
-                        color: isLocked ? Colors.red : text,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 2,
-                      ),
+              final allBundles = snapshot.data!;
+
+              // 1. Gather all local hashes for existence check
+              final localHashes = <String>{};
+              for (var cls in app.classes) {
+                for (var pdf in cls.pdfs) {
+                  if (pdf.fileHash != null) localHashes.add(pdf.fileHash!);
+                }
+              }
+
+              // 2. Filter bundles: only show bundles that have at least one file
+              // whose session still exists in the DB.
+              final List<Map<String, dynamic>> activeBundles = [];
+              final Map<String, List<dynamic>> filteredFilesMap = {};
+
+              for (var data in allBundles) {
+                final rawFiles = data['bundle'] as List? ?? [];
+                // ONLY show files that exist in the DB (Active Sessions)
+                final filteredFiles = rawFiles.where((f) {
+                  if (f is! Map) return false;
+                  final code = f['sessionCode']?.toString();
+                  return code != null && activeCodes.contains(code);
+                }).toList();
+
+                if (filteredFiles.isNotEmpty) {
+                  activeBundles.add(data);
+                  filteredFilesMap[data['id'] ?? data['masterCode']] =
+                      filteredFiles;
+                }
+              }
+
+              if (activeBundles.isEmpty) {
+                return Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    'لا توجد حزم نشطة حالياً.',
+                    style: TextStyle(color: muted, fontSize: 13),
+                  ),
+                );
+              }
+
+              return Column(
+                children: activeBundles.map((data) {
+                  final docId = data['id'] ?? data['masterCode'];
+                  final files = filteredFilesMap[docId] ?? [];
+                  final bool isLocked = data['isLocked'] as bool? ?? false;
+
+                  // Count how many files in this bundle still exist locally
+                  int locallyPresentCount = 0;
+                  for (var f in files) {
+                    if (f is Map && localHashes.contains(f['hash']))
+                      locallyPresentCount++;
+                  }
+
+                  return ExpansionTile(
+                    title: Row(
+                      children: [
+                        Text(
+                          data['masterCode'],
+                          style: TextStyle(
+                            color: isLocked ? Colors.red : text,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 2,
+                          ),
+                        ),
+                        if (isLocked) ...[
+                          const SizedBox(width: 8),
+                          const Icon(
+                            LucideIcons.lock,
+                            size: 12,
+                            color: Colors.red,
+                          ),
+                        ],
+                      ],
                     ),
-                    if (isLocked) ...[
-                      const SizedBox(width: 8),
-                      const Icon(LucideIcons.lock, size: 12, color: Colors.red),
-                    ],
-                  ],
-                ),
-                subtitle: Text(
-                  'ملفات: ${files.length}',
-                  style: TextStyle(color: muted, fontSize: 10),
-                ),
-                leading: Icon(
-                  LucideIcons.package,
-                  size: 18,
-                  color: isLocked ? Colors.red : Colors.orange,
-                ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: Icon(
-                        isLocked ? LucideIcons.unlock : LucideIcons.lock,
-                        size: 16,
-                        color: isLocked ? Colors.green : Colors.red,
-                      ),
-                      onPressed: () => _toggleLock(app, docId, !isLocked),
-                      tooltip: isLocked ? 'فتح الحزمة' : 'قفل الحزمة',
+                    subtitle: Row(
+                      children: [
+                        Text(
+                          'ملفات: ${files.length}',
+                          style: TextStyle(color: muted, fontSize: 10),
+                        ),
+                        if (locallyPresentCount < files.length) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 1,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              '${files.length - locallyPresentCount} مفقود محلياً',
+                              style: const TextStyle(
+                                color: Colors.orange,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                    IconButton(
-                      icon: const Icon(
-                        LucideIcons.userX,
-                        size: 16,
-                        color: Colors.amber,
-                      ),
-                      onPressed: () => _manageBannedUsers(
-                        context,
-                        app,
-                        docId,
-                        List<String>.from(data['activators'] ?? []),
-                        List<String>.from(data['bannedUsernames'] ?? []),
-                      ),
-                      tooltip: 'إدارة المحظورين',
+                    leading: Icon(
+                      LucideIcons.package,
+                      size: 18,
+                      color: isLocked ? Colors.red : Colors.orange,
                     ),
-                    IconButton(
-                      icon: const Icon(
-                        LucideIcons.trash2,
-                        size: 16,
-                        color: Colors.redAccent,
-                      ),
-                      onPressed: () =>
-                          _confirmDelete('master_sessions', docId, 'الحزمة'),
-                      tooltip: 'حذف نهائي',
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: Icon(
+                            isLocked ? LucideIcons.unlock : LucideIcons.lock,
+                            size: 16,
+                            color: isLocked ? Colors.green : Colors.red,
+                          ),
+                          onPressed: () => _toggleLock(app, docId, !isLocked),
+                          tooltip: isLocked ? 'فتح الحزمة' : 'قفل الحزمة',
+                        ),
+                        IconButton(
+                          icon: const Icon(
+                            LucideIcons.userX,
+                            size: 16,
+                            color: Colors.amber,
+                          ),
+                          onPressed: () => _manageBannedUsers(
+                            context,
+                            app,
+                            docId,
+                            List<String>.from(data['activators'] ?? []),
+                            List<String>.from(data['bannedUsernames'] ?? []),
+                          ),
+                          tooltip: 'إدارة المحظورين',
+                        ),
+                        IconButton(
+                          icon: const Icon(
+                            LucideIcons.trash2,
+                            size: 16,
+                            color: Colors.redAccent,
+                          ),
+                          onPressed: () => _confirmDelete(
+                            'master_sessions',
+                            docId,
+                            'الحزمة',
+                          ),
+                          tooltip: 'حذف نهائي',
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                children: files
-                    .map(
-                      (f) => ListTile(
+                    children: files.map((f) {
+                      final bool locallyExists =
+                          f is Map && localHashes.contains(f['hash']);
+                      return ListTile(
                         dense: true,
                         title: Text(
                           f['name'] ?? 'Unnamed',
-                          style: TextStyle(color: text, fontSize: 11),
+                          style: TextStyle(
+                            color: locallyExists
+                                ? text
+                                : muted.withOpacity(0.5),
+                            fontSize: 11,
+                            decoration: locallyExists
+                                ? null
+                                : TextDecoration.lineThrough,
+                          ),
                         ),
-                        leading: const Icon(LucideIcons.fileText, size: 14),
+                        leading: Icon(
+                          locallyExists
+                              ? LucideIcons.fileText
+                              : LucideIcons.fileX,
+                          size: 14,
+                          color: locallyExists
+                              ? null
+                              : Colors.red.withOpacity(0.5),
+                        ),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
+                            if (!locallyExists)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 8.0),
+                                child: Text(
+                                  '(محذوف من Dashboard)',
+                                  style: TextStyle(
+                                    color: Colors.red.withOpacity(0.6),
+                                    fontSize: 9,
+                                  ),
+                                ),
+                              ),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.black.withValues(alpha: 0.05),
                                 borderRadius: BorderRadius.circular(4),
@@ -744,12 +853,21 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                             ),
                             if (f['sessionCode'] != null)
                               IconButton(
-                                icon: const Icon(LucideIcons.copy, size: 14, color: Colors.grey),
+                                icon: const Icon(
+                                  LucideIcons.copy,
+                                  size: 14,
+                                  color: Colors.grey,
+                                ),
                                 padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                                constraints: const BoxConstraints(
+                                  minWidth: 24,
+                                  minHeight: 24,
+                                ),
                                 iconSize: 14,
                                 onPressed: () {
-                                  Clipboard.setData(ClipboardData(text: f['sessionCode']));
+                                  Clipboard.setData(
+                                    ClipboardData(text: f['sessionCode']),
+                                  );
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
                                       content: Text('تم نسخ الكود!'),
@@ -760,127 +878,123 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                               ),
                           ],
                         ),
-                      ),
-                    )
-                    .toList(),
+                      );
+                    }).toList(),
+                  );
+                }).toList(),
               );
-            }).toList(),
+            },
           );
         },
       ),
     ]);
   }
-Widget _buildCompactJoinCard(
-  BuildContext context,
-  AppProvider app,
-  Color surface,
-  Color border,
-  Color text,
-  Color muted,
-) {
-  final isDark = Theme.of(context).brightness == Brightness.dark;
 
-  return Container(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
-    decoration: BoxDecoration(
-      color: surface,
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(
-        color: border.withOpacity(0.9),
-        width: 1,
+  Widget _buildCompactJoinCard(
+    BuildContext context,
+    AppProvider app,
+    Color surface,
+    Color border,
+    Color text,
+    Color muted,
+  ) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: border.withOpacity(0.9), width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(isDark ? 0.14 : 0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(isDark ? 0.14 : 0.05),
-          blurRadius: 8,
-          offset: const Offset(0, 2),
-        ),
-      ],
-    ),
-    child: Row(
-      children: [
-        Expanded(
-          child: Container(
-            height: 36,
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF0F172A) : Colors.white,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: border.withOpacity(0.9),
-              ),
-            ),
-            child: TextField(
-              controller: _joinCodeController,
-              textAlign: TextAlign.center,
-              textAlignVertical: TextAlignVertical.center,
-              textDirection: TextDirection.ltr,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.0,
-                color: text,
-              ),
-              decoration: InputDecoration(
-                hintText: 'أدخل الكود',
-                hintStyle: TextStyle(
-                  fontSize: 11,
-                  color: muted.withOpacity(0.7),
-                  fontWeight: FontWeight.w500,
-                ),
-                border: InputBorder.none,
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 9,
-                ),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        SizedBox(
-          height: 36,
-          child: FilledButton(
-            onPressed: _isJoining ? null : () => _joinMasterBundle(app),
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF2563EB),
-              disabledBackgroundColor: const Color(0xFF2563EB).withOpacity(0.6),
-              foregroundColor: Colors.white,
-              elevation: 0,
-              minimumSize: const Size(60, 36),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              shape: RoundedRectangleBorder(
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(
+              height: 36,
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF0F172A) : Colors.white,
                 borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: border.withOpacity(0.9)),
               ),
-              textStyle: const TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 11,
+              child: TextField(
+                controller: _joinCodeController,
+                textAlign: TextAlign.center,
+                textAlignVertical: TextAlignVertical.center,
+                textDirection: TextDirection.ltr,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.0,
+                  color: text,
+                ),
+                decoration: InputDecoration(
+                  hintText: 'أدخل الكود',
+                  hintStyle: TextStyle(
+                    fontSize: 11,
+                    color: muted.withOpacity(0.7),
+                    fontWeight: FontWeight.w500,
+                  ),
+                  border: InputBorder.none,
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 9,
+                  ),
+                ),
               ),
-            ),
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 180),
-              child: _isJoining
-                  ? const SizedBox(
-                      key: ValueKey('loading'),
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Text(
-                      'ربط',
-                      key: ValueKey('text'),
-                    ),
             ),
           ),
-        ),
-      ],
-    ),
-  );
-}
+          const SizedBox(width: 8),
+          SizedBox(
+            height: 36,
+            child: FilledButton(
+              onPressed: _isJoining ? null : () => _joinMasterBundle(app),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF2563EB),
+                disabledBackgroundColor: const Color(
+                  0xFF2563EB,
+                ).withOpacity(0.6),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                minimumSize: const Size(60, 36),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                textStyle: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 11,
+                ),
+              ),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                child: _isJoining
+                    ? const SizedBox(
+                        key: ValueKey('loading'),
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text('ربط', key: ValueKey('text')),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
   // ─── الهيلبرز المتبقية (بدون تغيير) ──────────────────────────────────────────
 
   Widget _buildMasterBundleCreator(
@@ -1505,11 +1619,25 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
   );
 
   Widget _buildActiveSessionsList(Color s, Color b, AppProvider app) {
+    final currentUser = app.currentUser;
+    final bool isDeveloper = currentUser?.role == 'developer';
+
     return StreamBuilder<QuerySnapshot>(
       stream: _firestore.collection('sync_sessions').snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const LinearProgressIndicator();
-        final docs = snapshot.data!.docs;
+
+        // 1. Filter sessions:
+        // - If Developer: show all.
+        // - If Lecturer: show only their own (by UID).
+        final rawDocs = snapshot.data!.docs;
+        final docs = isDeveloper
+            ? rawDocs
+            : rawDocs.where((doc) {
+                final d = doc.data() as Map<String, dynamic>;
+                return d['createdBy'] == currentUser?.uid;
+              }).toList();
+
         if (docs.isEmpty)
           return Container(
             padding: const EdgeInsets.all(20),
@@ -1517,13 +1645,16 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
               color: s,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Center(
+            child: Center(
               child: Text(
-                'لا توجد دروس حالية',
-                style: TextStyle(fontSize: 11, color: Colors.grey),
+                isDeveloper
+                    ? 'لا توجد دروس حالية في النظام'
+                    : 'ليس لديك دروس نشطة حالياً',
+                style: const TextStyle(fontSize: 11, color: Colors.grey),
               ),
             ),
           );
+
         return Container(
           decoration: BoxDecoration(
             color: s,
@@ -1531,61 +1662,75 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
             border: Border.all(color: b),
           ),
           child: Column(
-            children: docs.map((doc) {
-              final data = doc.data() as Map<String, dynamic>;
-              final parts = data['participants'] as List? ?? [];
-              return ExpansionTile(
-                dense: true,
-                leading: const Icon(
-                  LucideIcons.presentation,
-                  size: 18,
-                  color: Colors.blue,
-                ),
-                title: Text(
-                  '${data['pdfName'] ?? 'بدون اسم ملف'} (${doc.id})',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
+            children: [
+              if (isDeveloper)
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Text(
+                    'عرض القائمة الكاملة (إدارة المطور)',
+                    style: TextStyle(
+                      fontSize: 9,
+                      color: Colors.amber.withOpacity(0.8),
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                 ),
-                subtitle: Text(
-                  'الطلاب: ${parts.length}',
-                  style: const TextStyle(fontSize: 10),
-                ),
-                trailing: IconButton(
-                  icon: const Icon(
-                    LucideIcons.trash2,
-                    size: 14,
-                    color: Colors.red,
+              ...docs.map((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                final parts = data['participants'] as List? ?? [];
+                return ExpansionTile(
+                  dense: true,
+                  leading: const Icon(
+                    LucideIcons.presentation,
+                    size: 18,
+                    color: Colors.blue,
                   ),
-                  onPressed: () =>
-                      _confirmDelete('sync_sessions', doc.id, 'الجلسة'),
-                ),
-                children: parts
-                    .map(
-                      (p) => ListTile(
-                        dense: true,
-                        title: Text(
-                          p is Map ? p['username'] : p.toString(),
-                          style: const TextStyle(fontSize: 11),
-                        ),
-                        trailing: TextButton(
-                          onPressed: () => app.syncService.kickParticipant(
-                            doc.id,
-                            p is Map ? p['uid'] : "",
+                  title: Text(
+                    '${data['pdfName'] ?? 'بدون اسم ملف'} (${doc.id})',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(
+                    'الطلاب: ${parts.length}',
+                    style: const TextStyle(fontSize: 10),
+                  ),
+                  trailing: IconButton(
+                    icon: const Icon(
+                      LucideIcons.trash2,
+                      size: 14,
+                      color: Colors.red,
+                    ),
+                    onPressed: () =>
+                        _confirmDelete('sync_sessions', doc.id, 'الجلسة'),
+                  ),
+                  children: parts
+                      .map(
+                        (p) => ListTile(
+                          dense: true,
+                          title: Text(
+                            p is Map ? p['username'] : p.toString(),
+                            style: const TextStyle(fontSize: 11),
                           ),
-                          child: const Text(
-                            'طرد',
-                            style: TextStyle(color: Colors.red, fontSize: 10),
+                          trailing: TextButton(
+                            onPressed: () => app.syncService.kickParticipant(
+                              doc.id,
+                              p is Map ? p['uid'] : "",
+                            ),
+                            child: const Text(
+                              'طرد',
+                              style: TextStyle(color: Colors.red, fontSize: 10),
+                            ),
                           ),
                         ),
-                      ),
-                    )
-                    .toList(),
-              );
-            }).toList(),
+                      )
+                      .toList(),
+                );
+              }).toList(),
+            ],
           ),
         );
       },

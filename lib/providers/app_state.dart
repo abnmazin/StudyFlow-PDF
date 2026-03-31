@@ -139,6 +139,14 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   bool _isOffline = false;
   bool get isOffline => _isOffline;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
+  
+  // List to save notification IDs hidden by the student locally
+  final Set<String> _hiddenAnnouncements = {};
+  bool isAnnouncementHidden(String id) => _hiddenAnnouncements.contains(id);
+  void hideAnnouncementLocally(String id) {
+    _hiddenAnnouncements.add(id);
+    _notify();
+  }
 
   DrawingSyncStrategy get drawingSyncStrategy => _drawingSyncStrategy;
   DevSettings get devSettings => _devSettings;
@@ -161,6 +169,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   bool _isSyncing = false;
   bool get isSyncing => _isSyncing;
   bool _hasUnsavedChanges = false;
+  bool _notifyScheduled = false;
   bool _isJoiningSession = false;
   bool get isJoiningSession => _isJoiningSession;
   Timer? _syncDebounce; // Debouncer for background sync
@@ -212,7 +221,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     // --- STEP 0.1: SESSION KICK FALLBACK ---
     final code = this.currentSessionCode;
     if (code != null && _currentUser != null) {
-      final isKicked = await _syncService.isUserKicked(code, _currentUser!.hardwareId);
+      final isKicked = await _syncService.isUserKicked(code, _currentUser!.username);
       if (isKicked) {
         _handleForceLogout('لقد تم إنهاء وصولك لهذه الجلسة من قبل المالك (Manual Check)');
         return;
@@ -364,23 +373,23 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void _notify() {
-    // Phase 11.6: Flutter Threading Shield (Fix shell.cc errors)
-    if (SchedulerBinding.instance.schedulerPhase == SchedulerPhase.persistentCallbacks) {
-      SchedulerBinding.instance.addPostFrameCallback((_) => notifyListeners());
-    } else {
+    if (!hasListeners || _notifyScheduled) return;
+    _notifyScheduled = true;
+    Future.microtask(() {
+      _notifyScheduled = false;
       try {
-        notifyListeners();
-      } catch (_) {
-        SchedulerBinding.instance.addPostFrameCallback((_) => notifyListeners());
+        if (hasListeners) notifyListeners();
+      } catch (e) {
+        debugPrint('Safe Notify Error: $e');
       }
-    }
+    });
   }
 
   // --- LIFECYCLE MANAGEMENT (Patch 2) ---
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     debugPrint('📱 AppLifecycleState changed to: $state');
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden || state == AppLifecycleState.inactive) {
       _pauseAllListeners();
     } else if (state == AppLifecycleState.resumed) {
       _resumeAllListeners();
@@ -398,7 +407,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   void _resumeAllListeners() {
     debugPrint('▶️ Resuming background listeners & timers.');
     _kickSub?.resume();
-    if (_currentUser != null && _currentUser!.uid.isNotEmpty) {
+    if (_currentUser != null && _currentUser!.uid.isNotEmpty && _userMonitorTimer == null) {
       _startUserMonitor(_currentUser!.uid);
     }
   }
@@ -761,9 +770,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       }
 
       // 1. Kick Check (by UID)
-      final kickedUids = state['kicked_uids'] as List<dynamic>? ?? [];
+      final kickedUsernames = state['kicked_usernames'] as List<dynamic>? ?? [];
 
-      if (kickedUids.contains(uid)) {
+      if (kickedUsernames.contains(_currentUser?.username)) {
         _handleForceLogout('لقد تم حظرك من هذه الجلسة');
         return;
       }

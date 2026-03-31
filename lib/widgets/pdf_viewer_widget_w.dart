@@ -52,8 +52,9 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   bool _isShapesPaletteVisible = false;
   bool _isSettingsMode = false;
   int _rightPanelTabIndex = 0; // 0: Tools, 1: AI, 2: Translate
-  String? _currentListeningCode; 
-  String? _currentListeningFileHash; // NEW: Track which PDF hash we are listening for
+  String? _currentListeningCode;
+  String?
+  _currentListeningFileHash; // NEW: Track which PDF hash we are listening for
 
   // _tool is now managed by AppProvider.currentTool
   ToolType get _tool => context.read<AppProvider>().currentTool;
@@ -121,12 +122,12 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   int _lastReportedPage = 0;
   int _pagesSinceLastFlush = 0;
   int _lastMemoryTrimAt = 0;
-    static const int _defaultTrimDelayMs = 500;
-    static const int _defaultTrimMinIntervalMs = 6000;
-    int get _trimDelayMs =>
+  static const int _defaultTrimDelayMs = 500;
+  static const int _defaultTrimMinIntervalMs = 6000;
+  int get _trimDelayMs =>
       context.read<AppProvider>().devSettings.trimDelayMs ??
       _defaultTrimDelayMs;
-    int get _trimMinIntervalMs =>
+  int get _trimMinIntervalMs =>
       context.read<AppProvider>().devSettings.trimMinIntervalMs ??
       _defaultTrimMinIntervalMs;
   Size? _lastPdfViewSize;
@@ -215,14 +216,17 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   }
 
   void _setupSessionListener() {
-    final app = context.watch<AppProvider>();
+    final app = context.read<AppProvider>();
     final code = app.currentSessionCode;
     final user = app.currentUser;
     final pdf = app.activePdf;
     final fileHash = pdf?.fileHash;
 
     // 1. If session code changed, user logged out, or not a member, reset
-    if (code == null || user == null || user.role != 'member' || fileHash == null) {
+    if (code == null ||
+        user == null ||
+        user.role != 'member' ||
+        fileHash == null) {
       if (_sessionSub != null || _annotationsSub != null) {
         _sessionSub?.cancel();
         _sessionSub = null;
@@ -235,8 +239,9 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     }
 
     // 2. If we are already listening to a different code OR different PDF hash, cancel and restart
-    if ((_sessionSub != null || _annotationsSub != null) && 
-        (_currentListeningCode != code || _currentListeningFileHash != fileHash)) {
+    if ((_sessionSub != null || _annotationsSub != null) &&
+        (_currentListeningCode != code ||
+            _currentListeningFileHash != fileHash)) {
       _sessionSub?.cancel();
       _sessionSub = null;
       _annotationsSub?.cancel();
@@ -247,15 +252,15 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     if (_sessionSub == null) {
       _currentListeningCode = code;
       _currentListeningFileHash = fileHash;
-      
+
       _sessionSub = SyncService().watchSession(code).listen((snap) {
         SchedulerBinding.instance.addPostFrameCallback((_) {
           if (!mounted || !snap.exists) return;
           final data = snap.data()!;
 
           // 1. Kick Check
-          final kicked = (data['kicked_uuids'] as List?)?.cast<String>() ?? [];
-          if (kicked.contains(user.hardwareId)) {
+          final kicked = (data['kicked_usernames'] as List?)?.cast<String>() ?? [];
+          if (kicked.contains(user.username)) {
             _sessionSub?.cancel();
             _sessionSub = null;
             _annotationsSub?.cancel();
@@ -268,7 +273,9 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
               barrierDismissible: false,
               builder: (context) => AlertDialog(
                 title: const Text('تم طردك'),
-                content: const Text('لقد تم طردك من هذه الجلسة من قبل المحاضر.'),
+                content: const Text(
+                  'لقد تم طردك من هذه الجلسة من قبل المحاضر.',
+                ),
                 actions: [
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
@@ -285,13 +292,15 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
       _annotationsSub = SyncService().streamAnnotations(code).listen((snap) {
         SchedulerBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
-          
+
           for (var doc in snap.docs) {
             if (doc.id == fileHash) {
               final pdfData = doc.data()['data'] as List?;
               if (pdfData != null) {
                 app.syncFromFirestore(fileHash, pdfData);
-                debugPrint('DEBUG: Received ${pdfData.length} annotations from Firestore for $fileHash');
+                debugPrint(
+                  'DEBUG: Received ${pdfData.length} annotations from Firestore for $fileHash',
+                );
               }
             }
           }
@@ -458,16 +467,21 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   Widget build(BuildContext context) {
     // PERFORMANCE: Use read instead of watch to prevent full rebuilds
     // Only rebuild when activePdf changes using Selector
+    final (pdf: pdf, currentTool: _, isDarkMode: isDarkMode) = context
+        .select<
+          AppProvider,
+          ({PdfItem? pdf, ToolType currentTool, bool isDarkMode})
+        >(
+          (app) => (
+            pdf: app.activePdf,
+            currentTool: app.currentTool,
+            isDarkMode: app.isDarkMode,
+          ),
+        );
     final app = context.read<AppProvider>();
-    final pdf = context.select<AppProvider, PdfItem?>((app) => app.activePdf);
-    // React to tool changes
-    context.select<AppProvider, ToolType>((app) => app.currentTool);
-    
+
     final selectedAnnotationTool = _selectedAnnotationTool(pdf);
     final panelTool = _panelTool(pdf);
-    final isDarkMode = context.select<AppProvider, bool>(
-      (app) => app.isDarkMode,
-    );
 
     // Strict Controller Cycle Management
     if (pdf != null) {
@@ -688,7 +702,9 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                                         ),
                                                     onChanged: (val) {
                                                       _textSearcher
-                                                          ?.startTextSearch(val);
+                                                          ?.startTextSearch(
+                                                            val,
+                                                          );
                                                     },
                                                   ),
                                                 ),
@@ -709,8 +725,9 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                                   tooltip: 'التالي',
                                                 ),
                                                 IconButton(
-                                                  icon:
-                                                      const Icon(LucideIcons.x),
+                                                  icon: const Icon(
+                                                    LucideIcons.x,
+                                                  ),
                                                   onPressed: () {
                                                     _textSearcher
                                                         ?.resetTextSearch();
@@ -750,14 +767,17 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                           child: Material(
                                             elevation: 4,
                                             color: Colors.transparent,
-                                            borderRadius: BorderRadius.circular(14),
+                                            borderRadius: BorderRadius.circular(
+                                              14,
+                                            ),
                                             child: Container(
                                               padding: const EdgeInsets.all(8),
                                               decoration: BoxDecoration(
                                                 color: isDarkMode
                                                     ? const Color(0xFF1E293B)
                                                     : Colors.white,
-                                                borderRadius: BorderRadius.circular(14),
+                                                borderRadius:
+                                                    BorderRadius.circular(14),
                                                 border: Border.all(
                                                   color: isDarkMode
                                                       ? const Color(0xFF334155)
@@ -772,16 +792,24 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                                     icon: const Icon(
                                                       LucideIcons.square,
                                                     ),
-                                                    color: _tool == ToolType.rectangle
-                                                        ? const Color(0xFF3B82F6)
+                                                    color:
+                                                        _tool ==
+                                                            ToolType.rectangle
+                                                        ? const Color(
+                                                            0xFF3B82F6,
+                                                          )
                                                         : (isDarkMode
-                                                              ? const Color(0xFF94A3B8)
+                                                              ? const Color(
+                                                                  0xFF94A3B8,
+                                                                )
                                                               : const Color(
                                                                   0xFF64748B,
                                                                 )),
                                                     onPressed: () {
                                                       setState(() {
-                                                        _activateTool(ToolType.rectangle);
+                                                        _activateTool(
+                                                          ToolType.rectangle,
+                                                        );
                                                       });
                                                     },
                                                   ),
@@ -790,16 +818,23 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                                     icon: const Icon(
                                                       LucideIcons.circle,
                                                     ),
-                                                    color: _tool == ToolType.circle
-                                                        ? const Color(0xFF3B82F6)
+                                                    color:
+                                                        _tool == ToolType.circle
+                                                        ? const Color(
+                                                            0xFF3B82F6,
+                                                          )
                                                         : (isDarkMode
-                                                              ? const Color(0xFF94A3B8)
+                                                              ? const Color(
+                                                                  0xFF94A3B8,
+                                                                )
                                                               : const Color(
                                                                   0xFF64748B,
                                                                 )),
                                                     onPressed: () {
                                                       setState(() {
-                                                        _activateTool(ToolType.circle);
+                                                        _activateTool(
+                                                          ToolType.circle,
+                                                        );
                                                       });
                                                     },
                                                   ),
@@ -808,16 +843,23 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                                     icon: const Icon(
                                                       LucideIcons.arrowUpRight,
                                                     ),
-                                                    color: _tool == ToolType.arrow
-                                                        ? const Color(0xFF3B82F6)
+                                                    color:
+                                                        _tool == ToolType.arrow
+                                                        ? const Color(
+                                                            0xFF3B82F6,
+                                                          )
                                                         : (isDarkMode
-                                                              ? const Color(0xFF94A3B8)
+                                                              ? const Color(
+                                                                  0xFF94A3B8,
+                                                                )
                                                               : const Color(
                                                                   0xFF64748B,
                                                                 )),
                                                     onPressed: () {
                                                       setState(() {
-                                                        _activateTool(ToolType.arrow);
+                                                        _activateTool(
+                                                          ToolType.arrow,
+                                                        );
                                                       });
                                                     },
                                                   ),
@@ -843,42 +885,56 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                             child: Container(
                                               decoration: BoxDecoration(
                                                 color: Colors.white,
-                                                borderRadius: BorderRadius.circular(12),
+                                                borderRadius:
+                                                    BorderRadius.circular(12),
                                                 boxShadow: [
                                                   BoxShadow(
-                                                    color: Colors.black.withValues(
-                                                      alpha: 0.1,
-                                                    ),
+                                                    color: Colors.black
+                                                        .withValues(alpha: 0.1),
                                                     blurRadius: 10,
                                                     offset: const Offset(0, 4),
                                                   ),
                                                 ],
                                               ),
-                                              padding: const EdgeInsets.symmetric(
-                                                horizontal: 16,
-                                                vertical: 8,
-                                              ),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 16,
+                                                    vertical: 8,
+                                                  ),
                                               child: Row(
                                                 mainAxisSize: MainAxisSize.min,
                                                 children: [
                                                   ...[
-                                                    const Color(0xFFFEF08A), // Yellow
-                                                    const Color(0xFFBBF7D0), // Green
-                                                    const Color(0xFFBFDBFE), // Blue
-                                                    const Color(0xFFFBCFE8), // Pink
-                                                    const Color(0xFFDDD6FE), // Purple
+                                                    const Color(
+                                                      0xFFFEF08A,
+                                                    ), // Yellow
+                                                    const Color(
+                                                      0xFFBBF7D0,
+                                                    ), // Green
+                                                    const Color(
+                                                      0xFFBFDBFE,
+                                                    ), // Blue
+                                                    const Color(
+                                                      0xFFFBCFE8,
+                                                    ), // Pink
+                                                    const Color(
+                                                      0xFFDDD6FE,
+                                                    ), // Purple
                                                   ].map(
                                                     (c) => GestureDetector(
-                                                      onTap: () => _addTextHighlight(c),
+                                                      onTap: () =>
+                                                          _addTextHighlight(c),
                                                       child: Container(
                                                         width: 24,
                                                         height: 24,
-                                                        margin: const EdgeInsets.only(
-                                                          right: 12,
-                                                        ),
+                                                        margin:
+                                                            const EdgeInsets.only(
+                                                              right: 12,
+                                                            ),
                                                         decoration: BoxDecoration(
                                                           color: c,
-                                                          shape: BoxShape.circle,
+                                                          shape:
+                                                              BoxShape.circle,
                                                           border: Border.all(
                                                             color: const Color(
                                                               0xFFE2E8F0,
@@ -892,10 +948,13 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                                   Container(
                                                     width: 1,
                                                     height: 24,
-                                                    color: const Color(0xFFE2E8F0),
-                                                    margin: const EdgeInsets.only(
-                                                      right: 8,
+                                                    color: const Color(
+                                                      0xFFE2E8F0,
                                                     ),
+                                                    margin:
+                                                        const EdgeInsets.only(
+                                                          right: 8,
+                                                        ),
                                                   ),
                                                   IconButton(
                                                     icon: const Icon(
@@ -906,12 +965,15 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                                       _clearCurrentTextSelection();
                                                     },
                                                     tooltip: 'مسح التحديد',
-                                                    color: const Color(0xFF64748B),
-                                                    padding: EdgeInsets.zero,
-                                                    constraints: const BoxConstraints(
-                                                      minWidth: 32,
-                                                      minHeight: 32,
+                                                    color: const Color(
+                                                      0xFF64748B,
                                                     ),
+                                                    padding: EdgeInsets.zero,
+                                                    constraints:
+                                                        const BoxConstraints(
+                                                          minWidth: 32,
+                                                          minHeight: 32,
+                                                        ),
                                                   ),
                                                 ],
                                               ),
@@ -929,8 +991,12 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                         bottom: 100,
                                         child: Container(
                                           decoration: BoxDecoration(
-                                            color: Colors.black.withValues(alpha: 0.04),
-                                            borderRadius: BorderRadius.circular(20),
+                                            color: Colors.black.withValues(
+                                              alpha: 0.04,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              20,
+                                            ),
                                           ),
                                           padding: const EdgeInsets.symmetric(
                                             vertical: 8,
@@ -940,9 +1006,10 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                             child: SliderTheme(
                                               data: SliderTheme.of(context).copyWith(
                                                 trackHeight: 4,
-                                                thumbShape: const RoundSliderThumbShape(
-                                                  enabledThumbRadius: 6,
-                                                ),
+                                                thumbShape:
+                                                    const RoundSliderThumbShape(
+                                                      enabledThumbRadius: 6,
+                                                    ),
                                                 overlayShape:
                                                     const RoundSliderOverlayShape(
                                                       overlayRadius: 14,
@@ -950,32 +1017,59 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                                 activeTrackColor: const Color(
                                                   0xFF94A3B8,
                                                 ),
-                                                inactiveTrackColor: Colors.transparent,
-                                                thumbColor: const Color(0xFF64748B),
+                                                inactiveTrackColor:
+                                                    Colors.transparent,
+                                                thumbColor: const Color(
+                                                  0xFF64748B,
+                                                ),
                                               ),
                                               child: ListenableBuilder(
                                                 listenable: _pdfController,
                                                 builder: (context, _) {
-                                                  final int pageCount = _pdfController.pages.length;
-                                                  if (pageCount < 1) return const SizedBox.shrink();
+                                                  final int pageCount =
+                                                      _pdfController
+                                                          .pages
+                                                          .length;
+                                                  if (pageCount < 1)
+                                                    return const SizedBox.shrink();
 
                                                   final double min = 1.0;
-                                                  final double max = pageCount.toDouble().clamp(min, double.infinity);
-                                                  
+                                                  final double max = pageCount
+                                                      .toDouble()
+                                                      .clamp(
+                                                        min,
+                                                        double.infinity,
+                                                      );
+
                                                   bool isDragging = false;
                                                   double dragValue = min;
 
                                                   return StatefulBuilder(
                                                     builder: (context, setLocalState) {
-                                                      final int currentPage = _pdfController.pageNumber ?? 1;
-                                                      final double controllerVal = (pageCount - currentPage + 1).toDouble().clamp(min, max);
-                                                      final double displayValue = isDragging ? dragValue : controllerVal;
+                                                      final int currentPage =
+                                                          _pdfController
+                                                              .pageNumber ??
+                                                          1;
+                                                      final double
+                                                      controllerVal =
+                                                          (pageCount -
+                                                                  currentPage +
+                                                                  1)
+                                                              .toDouble()
+                                                              .clamp(min, max);
+                                                      final double
+                                                      displayValue = isDragging
+                                                          ? dragValue
+                                                          : controllerVal;
 
                                                       return Slider(
                                                         min: min,
                                                         max: max,
-                                                        divisions: pageCount > 1 ? pageCount - 1 : null,
-                                                        value: displayValue.clamp(min, max),
+                                                        divisions: pageCount > 1
+                                                            ? pageCount - 1
+                                                            : null,
+                                                        value: displayValue
+                                                            .clamp(min, max),
                                                         onChangeStart: (val) {
                                                           setLocalState(() {
                                                             isDragging = true;
@@ -986,20 +1080,44 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                                           setLocalState(() {
                                                             dragValue = val;
                                                           });
-                                                          int page = (pageCount - val + 1).round().clamp(1, pageCount);
-                                                          if (page != currentPage) {
-                                                            _pdfController.goToPage(pageNumber: page);
+                                                          int page =
+                                                              (pageCount -
+                                                                      val +
+                                                                      1)
+                                                                  .round()
+                                                                  .clamp(
+                                                                    1,
+                                                                    pageCount,
+                                                                  );
+                                                          if (page !=
+                                                              currentPage) {
+                                                            _pdfController
+                                                                .goToPage(
+                                                                  pageNumber:
+                                                                      page,
+                                                                );
                                                           }
                                                         },
                                                         onChangeEnd: (val) {
                                                           setLocalState(() {
                                                             isDragging = false;
                                                           });
-                                                          int page = (pageCount - val + 1).round().clamp(1, pageCount);
-                                                          _pdfController.goToPage(pageNumber: page);
+                                                          int page =
+                                                              (pageCount -
+                                                                      val +
+                                                                      1)
+                                                                  .round()
+                                                                  .clamp(
+                                                                    1,
+                                                                    pageCount,
+                                                                  );
+                                                          _pdfController
+                                                              .goToPage(
+                                                                pageNumber:
+                                                                    page,
+                                                              );
                                                         },
                                                       );
-
                                                     },
                                                   );
                                                 },
@@ -1008,9 +1126,9 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                           ),
                                         ),
                                       ),
-                                    ],
-                                  ),
+                                  ],
                                 ),
+                              ),
                       ),
 
                       // 3. Right Panel (Side-by-Side)
@@ -1159,7 +1277,8 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
           },
           onInteractionUpdate: (details) {
             // Auto-switch to Hand tool during multi-touch gestures
-            if (_tool != ToolType.cursor && (details.scale != 1.0 || details.pointerCount > 1)) {
+            if (_tool != ToolType.cursor &&
+                (details.scale != 1.0 || details.pointerCount > 1)) {
               _activateTool(ToolType.cursor);
             }
           },

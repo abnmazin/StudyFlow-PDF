@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:cross_file/cross_file.dart';
@@ -148,6 +149,9 @@ void main(List<String> args) async {
   }
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  FirebaseFirestore.instance.settings = const Settings(
+    persistenceEnabled: false,
+  );
 
   // 🚀 OPTIMIZATION: Ultra-lean startup RAM (Set to 2MB for Dashboard)
   // This will be expanded to 50MB in AppProvider when a PDF is opened.
@@ -186,8 +190,11 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => fileManager),
         ChangeNotifierProvider(create: (_) => AppProvider()),
       ],
-      child: Consumer<AppProvider>(
-        builder: (context, app, child) {
+      child: Builder(
+        builder: (context) {
+          final themeMode = context.select<AppProvider, ThemeMode>(
+            (app) => app.isDarkMode ? ThemeMode.dark : ThemeMode.light,
+          );
           return MaterialApp(
             title: 'StudyFlow pdf',
             debugShowCheckedModeBanner: false,
@@ -198,22 +205,26 @@ class MyApp extends StatelessWidget {
               GlobalWidgetsLocalizations.delegate,
               GlobalCupertinoLocalizations.delegate,
             ],
-            themeMode: app.isDarkMode ? ThemeMode.dark : ThemeMode.light,
+            themeMode: themeMode,
             theme: ThemeData.light().copyWith(
               colorScheme: ThemeData.light().colorScheme.copyWith(
-                    primary: Colors.blueAccent,
-                    surface: Colors.white,
-                    onSurface: const Color(0xFF0F172A), // Dark slate wording
-                    surfaceContainerHighest: const Color(0xFFF1F5F9), // Subtle slate backgrounds
-                    outlineVariant: const Color(0xFFE2E8F0),
-                  ),
-              scaffoldBackgroundColor: const Color(0xFFF8FAFC), // Off-white clean background
+                primary: Colors.blueAccent,
+                surface: Colors.white,
+                onSurface: const Color(0xFF0F172A), // Dark slate wording
+                surfaceContainerHighest: const Color(
+                  0xFFF1F5F9,
+                ), // Subtle slate backgrounds
+                outlineVariant: const Color(0xFFE2E8F0),
+              ),
+              scaffoldBackgroundColor: const Color(
+                0xFFF8FAFC,
+              ), // Off-white clean background
               cardColor: Colors.white,
             ),
             darkTheme: ThemeData.dark().copyWith(
               colorScheme: ThemeData.dark().colorScheme.copyWith(
-                    primary: Colors.blueAccent,
-                  ),
+                primary: Colors.blueAccent,
+              ),
               scaffoldBackgroundColor: const Color(0xFF121212),
             ),
             home: const RootWrapper(),
@@ -230,8 +241,12 @@ class RootWrapper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Phase 2 Optimization: Use granular selection to prevent global rebuilds
-    final initialized = context.select<AppProvider, Future<void>?>((p) => p.initialized);
-    final currentUser = context.select<AppProvider, AppUser?>((p) => p.currentUser);
+    final initialized = context.select<AppProvider, Future<void>?>(
+      (p) => p.initialized,
+    );
+    final currentUser = context.select<AppProvider, AppUser?>(
+      (p) => p.currentUser,
+    );
 
     return FutureBuilder(
       future: initialized,
@@ -317,8 +332,12 @@ class _MainLayoutState extends State<MainLayout> {
     _appProvider = context.read<AppProvider>();
     _appProvider.addListener(_securityListener);
 
-    // Silent Account Verification (Optimistic UI)
-    _appProvider.verifyAccountStatusSilently(context);
+    // Silent Account Verification (Optimistic UI) — delayed to avoid startup CPU spike
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) _appProvider.verifyAccountStatusSilently(context);
+      });
+    });
 
     _incomingPdfSubscription = _incomingPdfPaths.stream.listen((path) async {
       if (!mounted) return;
@@ -477,9 +496,11 @@ class _MainLayoutState extends State<MainLayout> {
               ),
 
             // Setup Modal
-            DeveloperModal(
-              isOpen: showDevInfo,
-              onClose: () => context.read<AppProvider>().toggleDevInfo(false),
+            Positioned.fill(
+              child: DeveloperModal(
+                isOpen: showDevInfo,
+                onClose: () => context.read<AppProvider>().toggleDevInfo(false),
+              ),
             ),
 
             // Global Settings Modal (Drawer style from right)

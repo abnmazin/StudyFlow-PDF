@@ -346,7 +346,7 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
               padding: const EdgeInsets.symmetric(vertical: 8.0),
               child: Column(
                 children: [
-                  const CircularProgressIndicator(strokeWidth: 2),
+                  const RepaintBoundary(child: CircularProgressIndicator(strokeWidth: 2)),
                   const SizedBox(height: 8),
                   Text(
                     _syncStatus,
@@ -434,7 +434,7 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
                 ? const SizedBox(
                     width: 14,
                     height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    child: const RepaintBoundary(child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
                   )
                 : const Icon(LucideIcons.refreshCw, size: 16),
             label: const Text('مزامنة التغييرات الآن'),
@@ -473,7 +473,7 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
                   ? const SizedBox(
                       width: 20,
                       height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: const RepaintBoundary(child: CircularProgressIndicator(strokeWidth: 2)),
                     )
                   : Switch(
                       value: locked,
@@ -509,7 +509,7 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
                   ? const SizedBox(
                       width: 20,
                       height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: const RepaintBoundary(child: CircularProgressIndicator(strokeWidth: 2)),
                     )
                   : Switch(
                       value: app.sessionJoinLocked,
@@ -527,7 +527,7 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
                 ? const SizedBox(
                     width: 14,
                     height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: const RepaintBoundary(child: CircularProgressIndicator(strokeWidth: 2)),
                   )
                 : const Icon(LucideIcons.trash2, size: 14, color: Color(0xFFF87171)),
             label: const Text(
@@ -867,7 +867,7 @@ class _MemberSessionCardState extends State<MemberSessionCard> {
               ? const SizedBox(
                   width: 14,
                   height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+                  child: const RepaintBoundary(child: CircularProgressIndicator(strokeWidth: 2)),
                 )
               : const Icon(LucideIcons.logIn, size: 16),
           label: const Text('الانضمام إلى درس'),

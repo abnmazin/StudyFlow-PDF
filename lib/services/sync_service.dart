@@ -7,10 +7,10 @@ import '../models/models.dart';
 /// Firestore collection: sync_sessions/{code}
 ///
 /// Document fields:
-///   createdBy     String          hardwareId of the lecturer
+///   createdBy     String          Username of the lecturer
 ///   isLocked      bool            whether student drawing is locked
-///   kicked_uuids  List of String  hardwareIds that are banned from this session
-///   participants  List of Map     [{hardwareId, username}]
+///   kicked_usernames List of String usernames that are banned from this session
+///   participants  List of Map     [{uid, username}]
 ///   (Sub-collection) annotations/{pdfHash}  Map {'data': List}
 class SyncService {
   final FirebaseFirestore _db;
@@ -64,7 +64,7 @@ class SyncService {
         'ownerName': ownerName,
         'bundle': bundle,
         'isLocked': false,
-        'bannedUids': <String>[],
+        'bannedUsernames': <String>[],
         'createdAt': FieldValue.serverTimestamp(),
       }),
       operationName: 'createMasterBundle',
@@ -136,7 +136,7 @@ class SyncService {
         'pageCount': pageCount,
         'isLocked': false,
         'joinLocked': false,
-        'kicked_uids': <String>[],
+        'kicked_usernames': <String>[],
         'participants':
             <
               Map<String, dynamic>
@@ -190,7 +190,7 @@ class SyncService {
         'exists': true,
         'createdBy': data['createdBy'], // UID
         'ownerName': data['ownerName'] ?? 'محاضر', // Username
-        'kicked_uids': List<String>.from(data['kicked_uids'] ?? []),
+        'kicked_usernames': List<String>.from(data['kicked_usernames'] ?? []),
         'isLocked': data['isLocked'] ?? false,
         'joinLocked': data['joinLocked'] ?? false,
         'participants': List<dynamic>.from(data['participants'] ?? []),
@@ -199,15 +199,15 @@ class SyncService {
   }
 
   /// One-off manual check for kick status (Second Line of Defense).
-  Future<bool> isUserKicked(String code, String hardwareId) async {
+  Future<bool> isUserKicked(String code, String username) async {
     try {
       final snap = await _withTimeout(
         _db.collection('sync_sessions').doc(code).get(),
         operationName: 'isUserKicked',
       );
       if (!snap.exists) return false;
-      final kicked = List<String>.from(snap.data()?['kicked_uuids'] ?? []);
-      return kicked.contains(hardwareId);
+      final kicked = List<String>.from(snap.data()?['kicked_usernames'] ?? []);
+      return kicked.contains(username);
     } catch (_) {
       return false;
     }
@@ -224,10 +224,19 @@ class SyncService {
   /// Checks if a user document exists in the 'users' collection.
   Future<bool> checkUserExists(String uid) async {
     try {
-      final snap = await _db.collection('users').doc(uid).get();
+      final snap = await _db.collection('users').doc(uid).get(
+        const GetOptions(source: Source.serverAndCache),
+      );
       return snap.exists;
     } catch (_) {
-      return false;
+      try {
+        final cached = await _db.collection('users').doc(uid).get(
+          const GetOptions(source: Source.cache),
+        );
+        return cached.exists;
+      } catch (_) {
+        return true;
+      }
     }
   }
 
@@ -704,20 +713,30 @@ class SyncService {
 
     final merged = [...retained, ...newHJson, ...newCJson];
 
-    final Map<String, dynamic> updatePayload = {'data': merged};
-    if (locallyDeletedIds.isNotEmpty) {
-      updatePayload['lastDeletedAt'] = DateTime.now().millisecondsSinceEpoch;
-    }
+    // ── Write Guard: لا تكتب لو ما في تغيير فعلي ────────────────────────
+    final hasChanges = newHJson.isNotEmpty ||
+        newCJson.isNotEmpty ||
+        deletedIds.isNotEmpty;
 
-    await _withTimeout(
-      _db
-          .collection('sync_sessions')
-          .doc(code)
-          .collection('annotations')
-          .doc(fileHash)
-          .set(updatePayload, SetOptions(merge: true)),
-      operationName: 'syncExistingAnnotations (Push)',
-    );
+    if (hasChanges) {
+      final Map<String, dynamic> updatePayload = {'data': merged};
+      if (locallyDeletedIds.isNotEmpty) {
+        updatePayload['lastDeletedAt'] = DateTime.now().millisecondsSinceEpoch;
+      }
+
+      await _withTimeout(
+        _db
+            .collection('sync_sessions')
+            .doc(code)
+            .collection('annotations')
+            .doc(fileHash)
+            .set(updatePayload, SetOptions(merge: true)),
+        operationName: 'syncExistingAnnotations (Push)',
+      );
+      debugPrint('DEBUG: Write executed — ${newHJson.length + newCJson.length} uploaded, ${deletedIds.length} deleted.');
+    } else {
+      debugPrint('DEBUG: Write skipped — no changes detected.');
+    }
 
     return (
       deletedCount: deletedIds.length,
@@ -766,8 +785,8 @@ class SyncService {
       return 'عدد الصفحات غير مطابق. تأكد من فتح نفس النسخة.';
     }
 
-    final kickedUids = List<String>.from(data['kicked_uids'] ?? []);
-    if (kickedUids.contains(uid)) {
+    final kickedUsernames = List<String>.from(data['kicked_usernames'] ?? []);
+    if (kickedUsernames.contains(username)) {
       return 'لقد تم حظرك من هذه الجلسة.';
     }
 
@@ -936,8 +955,13 @@ class SyncService {
     );
   }
 
-  /// Deletes an announcement by its document ID.
-  Future<void> deleteAnnouncement(String id) async {
-    await _db.collection('announcements').doc(id).delete();
+  /// Deletes an announcement from Firestore permanently.
+  Future<void> deleteAnnouncement(String docId) async {
+    try {
+      await _db.collection('announcements').doc(docId).delete();
+      debugPrint('🗑️ تم حذف الإشعار من السيرفر: $docId');
+    } catch (e) {
+      debugPrint('❌ خطأ في حذف الإشعار: $e');
+    }
   }
 }

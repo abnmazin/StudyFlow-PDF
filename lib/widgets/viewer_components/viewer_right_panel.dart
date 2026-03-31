@@ -752,7 +752,7 @@ class StudyFlowRightPanel extends StatelessWidget {
                                         textPrimary: textPrimary,
                                         textMuted: textMuted,
                                       ),
-                                         ],
+                                    ],
                                   ),
                                 ),
                                 const SizedBox(height: 16),
@@ -972,341 +972,347 @@ class StudyFlowRightPanel extends StatelessWidget {
       ),
     );
   }
-Widget _buildSettingsView(
-  BuildContext context,
-  Color panelBg,
-  Color panelBorder,
-  Color headerBg,
-  Color headerBorder,
-  Color surfaceAlt,
-  Color textPrimary,
-  Color textMuted,
-) {
-  return Column(
-    children: [
-      Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: headerBg,
-          border: Border(bottom: BorderSide(color: headerBorder)),
-        ),
-        child: Row(
-          children: [
-            Icon(LucideIcons.settings, size: 20, color: textPrimary),
-            const SizedBox(width: 8),
-            Text(
-              'إعدادات المستند',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: textPrimary,
-              ),
-            ),
-          ],
-        ),
-      ),
-      Expanded(
-        child: _buildSettingsTabContent(
-          context,
-          surfaceAlt,
-          panelBorder,
-          textPrimary,
-          textMuted,
-        ),
-      ),
-    ],
-  );
-}
-Widget _buildSettingsTabContent(
-  BuildContext context,
-  Color surfaceAlt,
-  Color panelBorder,
-  Color textPrimary,
-  Color textMuted,
-) {
-  final app = context.watch<AppProvider>();
 
-  return SingleChildScrollView(
-    padding: const EdgeInsets.all(16),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildSettingsView(
+    BuildContext context,
+    Color panelBg,
+    Color panelBorder,
+    Color headerBg,
+    Color headerBorder,
+    Color surfaceAlt,
+    Color textPrimary,
+    Color textMuted,
+  ) {
+    return Column(
       children: [
-        if (activePdf != null) ...[
-          _buildSettingsCard(
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: headerBg,
+            border: Border(bottom: BorderSide(color: headerBorder)),
+          ),
+          child: Row(
+            children: [
+              Icon(LucideIcons.settings, size: 20, color: textPrimary),
+              const SizedBox(width: 8),
+              Text(
+                'إعدادات المستند',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: textPrimary,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: _buildSettingsTabContent(
             context,
             surfaceAlt,
             panelBorder,
             textPrimary,
             textMuted,
-           [
-    _buildSettingsTile(
-      icon: LucideIcons.filePlus,
-      label: 'إضافة صفحة فارغة',
-      onTap: () => onAddPage(activePdf!),
-      textPrimary: textPrimary,
-      textMuted: textMuted,
-    ),
-    _buildSettingsDivider(panelBorder),
-    _buildSettingsTile(
-      icon: LucideIcons.fileMinus,
-      label: 'حذف الصفحة الحالية',
-      onTap: () => onDeletePage(activePdf!),
-      isDanger: true,
-      textPrimary: textPrimary,
-      textMuted: textMuted,
-    ),
-    _buildSettingsDivider(panelBorder),
-    _buildSettingsTile(
-      icon: LucideIcons.printer,
-      label: 'طباعة المستند',
-      onTap: () => onPrint(activePdf!),
-      textPrimary: textPrimary,
-      textMuted: textMuted,
-    ),
-    _buildSettingsDivider(panelBorder),
-    _buildSettingsTile(
-      icon: LucideIcons.bot,
-      label: 'تصفير سجل AI لهذا الملف',
-      onTap: () {
-        if (activePdf == null) return;
-        _showBulkCleanupDialog(
-          context,
-          title: 'تصفير سجل AI؟',
-          message:
-              'سيتم حذف محادثة الذكاء الاصطناعي الخاصة بهذا الملف وإرجاع الرسالة الافتراضية.',
-          successMessage: 'تم تصفير سجل AI لهذا الملف.',
-          onConfirm: () => _clearAiConversationForPdf(activePdf!.id),
-        );
-      },
-      isDanger: true,
-      textPrimary: textPrimary,
-      textMuted: textMuted,
-    ),
-  ],
           ),
-          const SizedBox(height: 16),
-        ],
-        _buildSessionCard(
-          context,
-          app,
-          surfaceAlt,
-          panelBorder,
-          textPrimary,
-          textMuted,
         ),
       ],
-    ),
-  );
-}
-Widget _buildCursorUtilitiesHub(
-  BuildContext context,
-  Color panelBg,
-  Color panelBorder,
-  Color surfaceAlt,
-  Color textPrimary,
-  Color textMuted,
-) {
-  final indicatorColor = const Color(0xFF3B82F6);
-  final tabBg = isDarkMode
-      ? const Color(0xFF111827)
-      : const Color(0xFFE2E8F0);
+    );
+  }
 
-  return DefaultTabController(
-    length: 4,
-    child: Column(
-      children: [
-        Container(
-          margin: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-          padding: const EdgeInsets.all(4),
-          decoration: BoxDecoration(
-            color: tabBg,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: panelBorder),
-          ),
-          child: TabBar(
-            indicator: BoxDecoration(
-              color: indicatorColor.withValues(alpha: 0.18),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: indicatorColor.withValues(alpha: 0.45),
-              ),
+  Widget _buildSettingsTabContent(
+    BuildContext context,
+    Color surfaceAlt,
+    Color panelBorder,
+    Color textPrimary,
+    Color textMuted,
+  ) {
+    final app = context.watch<AppProvider>();
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (activePdf != null) ...[
+            _buildSettingsCard(
+              context,
+              surfaceAlt,
+              panelBorder,
+              textPrimary,
+              textMuted,
+              [
+                _buildSettingsTile(
+                  icon: LucideIcons.filePlus,
+                  label: 'إضافة صفحة فارغة',
+                  onTap: () => onAddPage(activePdf!),
+                  textPrimary: textPrimary,
+                  textMuted: textMuted,
+                ),
+                _buildSettingsDivider(panelBorder),
+                _buildSettingsTile(
+                  icon: LucideIcons.fileMinus,
+                  label: 'حذف الصفحة الحالية',
+                  onTap: () => onDeletePage(activePdf!),
+                  isDanger: true,
+                  textPrimary: textPrimary,
+                  textMuted: textMuted,
+                ),
+                _buildSettingsDivider(panelBorder),
+                _buildSettingsTile(
+                  icon: LucideIcons.printer,
+                  label: 'طباعة المستند',
+                  onTap: () => onPrint(activePdf!),
+                  textPrimary: textPrimary,
+                  textMuted: textMuted,
+                ),
+                _buildSettingsDivider(panelBorder),
+                _buildSettingsTile(
+                  icon: LucideIcons.bot,
+                  label: 'تصفير سجل AI لهذا الملف',
+                  onTap: () {
+                    if (activePdf == null) return;
+                    _showBulkCleanupDialog(
+                      context,
+                      title: 'تصفير سجل AI؟',
+                      message:
+                          'سيتم حذف محادثة الذكاء الاصطناعي الخاصة بهذا الملف وإرجاع الرسالة الافتراضية.',
+                      successMessage: 'تم تصفير سجل AI لهذا الملف.',
+                      onConfirm: () =>
+                          _clearAiConversationForPdf(activePdf!.id),
+                    );
+                  },
+                  isDanger: true,
+                  textPrimary: textPrimary,
+                  textMuted: textMuted,
+                ),
+              ],
             ),
-            labelColor: indicatorColor,
-            unselectedLabelColor: textMuted,
-            dividerColor: Colors.transparent,
-            indicatorSize: TabBarIndicatorSize.tab,
-            tabs: const [
-  Tab(
-    icon: Tooltip(
-      message: 'ذكاء اصطناعي',
-      child: Icon(LucideIcons.bot, size: 20),
-    ),
-  ),
-  Tab(
-    icon: Tooltip(
-      message: 'حاسبة',
-      child: Icon(LucideIcons.calculator, size: 20),
-    ),
-  ),
-  Tab(
-    icon: Tooltip(
-      message: 'صفحات مرجعية',
-      child: Icon(LucideIcons.bookmark, size: 20),
-    ),
-  ),
-  Tab(
-    icon: Tooltip(
-      message: 'الإعدادات',
-      child: Icon(LucideIcons.settings, size: 20),
-    ),
-  ),
-            ],
+            const SizedBox(height: 16),
+          ],
+          _buildSessionCard(
+            context,
+            app,
+            surfaceAlt,
+            panelBorder,
+            textPrimary,
+            textMuted,
           ),
-        ),
-        Expanded(
-          child: TabBarView(
-            children: [
-              // AI Tab
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                child: _AiChatWidget(
-                  isDarkMode: isDarkMode,
-                  pdfId: activePdf?.id,
-                  pdfController: pdfController,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCursorUtilitiesHub(
+    BuildContext context,
+    Color panelBg,
+    Color panelBorder,
+    Color surfaceAlt,
+    Color textPrimary,
+    Color textMuted,
+  ) {
+    final indicatorColor = const Color(0xFF3B82F6);
+    final tabBg = isDarkMode
+        ? const Color(0xFF111827)
+        : const Color(0xFFE2E8F0);
+
+    return DefaultTabController(
+      length: 4,
+      child: Column(
+        children: [
+          Container(
+            margin: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: tabBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: panelBorder),
+            ),
+            child: TabBar(
+              indicator: BoxDecoration(
+                color: indicatorColor.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: indicatorColor.withValues(alpha: 0.45),
                 ),
               ),
+              labelColor: indicatorColor,
+              unselectedLabelColor: textMuted,
+              dividerColor: Colors.transparent,
+              indicatorSize: TabBarIndicatorSize.tab,
+              tabs: const [
+                Tab(
+                  icon: Tooltip(
+                    message: 'ذكاء اصطناعي',
+                    child: Icon(LucideIcons.bot, size: 20),
+                  ),
+                ),
+                Tab(
+                  icon: Tooltip(
+                    message: 'حاسبة',
+                    child: Icon(LucideIcons.calculator, size: 20),
+                  ),
+                ),
+                Tab(
+                  icon: Tooltip(
+                    message: 'صفحات مرجعية',
+                    child: Icon(LucideIcons.bookmark, size: 20),
+                  ),
+                ),
+                Tab(
+                  icon: Tooltip(
+                    message: 'الإعدادات',
+                    child: Icon(LucideIcons.settings, size: 20),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: TabBarView(
+              children: [
+                // AI Tab
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                  child: _AiChatWidget(
+                    isDarkMode: isDarkMode,
+                    pdfId: activePdf?.id,
+                    pdfController: pdfController,
+                  ),
+                ),
 
-              // Calculator Tab
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                child: const MiniCalculatorWidget(),
-              ),
+                // Calculator Tab
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                  child: const MiniCalculatorWidget(),
+                ),
 
-              // Bookmarks Tab
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-                child: activePdf != null
-                    ? SingleChildScrollView(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (activePdf!.bookmarks.isNotEmpty)
-                              ...activePdf!.bookmarks.map((bookmark) {
-                                return Card(
-                                  margin: const EdgeInsets.only(bottom: 8),
-                                  elevation: 1,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                    side: BorderSide(color: panelBorder),
-                                  ),
-                                  color: surfaceAlt,
-                                  child: InkWell(
-                                    onTap: () {
-                                      if (pdfController.isReady) {
-                                        pdfController.goToPage(
-                                          pageNumber: bookmark.page,
-                                        );
-                                      }
-                                    },
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(12),
-                                      child: Row(
-                                        children: [
-                                          const Icon(
-                                            LucideIcons.bookmark,
-                                            size: 16,
-                                            color: Color(0xFF3B82F6),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  bookmark.name,
-                                                  style: TextStyle(
-                                                    fontSize: 14,
-                                                    fontWeight: FontWeight.w500,
-                                                    color: textPrimary,
-                                                  ),
-                                                ),
-                                                Text(
-                                                  'الصفحة ${bookmark.page}',
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    color: textMuted,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          IconButton(
-                                            icon: const Icon(
-                                              LucideIcons.trash2,
+                // Bookmarks Tab
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                  child: activePdf != null
+                      ? SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (activePdf!.bookmarks.isNotEmpty)
+                                ...activePdf!.bookmarks.map((bookmark) {
+                                  return Card(
+                                    margin: const EdgeInsets.only(bottom: 8),
+                                    elevation: 1,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                      side: BorderSide(color: panelBorder),
+                                    ),
+                                    color: surfaceAlt,
+                                    child: InkWell(
+                                      onTap: () {
+                                        if (pdfController.isReady) {
+                                          pdfController.goToPage(
+                                            pageNumber: bookmark.page,
+                                          );
+                                        }
+                                      },
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(12),
+                                        child: Row(
+                                          children: [
+                                            const Icon(
+                                              LucideIcons.bookmark,
                                               size: 16,
-                                              color: Color(0xFFDC2626),
+                                              color: Color(0xFF3B82F6),
                                             ),
-                                            onPressed: () {
-                                              context
-                                                  .read<AppProvider>()
-                                                  .deleteBookmark(
-                                                    activePdf!.id,
-                                                    bookmark.id,
-                                                  );
-                                            },
-                                            tooltip: 'حذف العلامة المرجعية',
-                                          ),
-                                        ],
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    bookmark.name,
+                                                    style: TextStyle(
+                                                      fontSize: 14,
+                                                      fontWeight:
+                                                          FontWeight.w500,
+                                                      color: textPrimary,
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    'الصفحة ${bookmark.page}',
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: textMuted,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            IconButton(
+                                              icon: const Icon(
+                                                LucideIcons.trash2,
+                                                size: 16,
+                                                color: Color(0xFFDC2626),
+                                              ),
+                                              onPressed: () {
+                                                context
+                                                    .read<AppProvider>()
+                                                    .deleteBookmark(
+                                                      activePdf!.id,
+                                                      bookmark.id,
+                                                    );
+                                              },
+                                              tooltip: 'حذف العلامة المرجعية',
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                })
+                              else
+                                Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(top: 32),
+                                    child: Text(
+                                      'لا توجد علامات مرجعية بعد\n\nاستخدم Ctrl+S لإضافة علامة مرجعية',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: textMuted,
+                                        fontSize: 14,
                                       ),
                                     ),
                                   ),
-                                );
-                              })
-                            else
-                              Center(
-                                child: Padding(
-                                  padding: const EdgeInsets.only(top: 32),
-                                  child: Text(
-                                    'لا توجد علامات مرجعية بعد\n\nاستخدم Ctrl+S لإضافة علامة مرجعية',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      color: textMuted,
-                                      fontSize: 14,
-                                    ),
-                                  ),
                                 ),
-                              ),
-                          ],
+                            ],
+                          ),
+                        )
+                      : Center(
+                          child: Text(
+                            'لا يوجد مستند مفتوح',
+                            style: TextStyle(color: textMuted, fontSize: 14),
+                          ),
                         ),
-                      )
-                    : Center(
-                        child: Text(
-                          'لا يوجد مستند مفتوح',
-                          style: TextStyle(color: textMuted, fontSize: 14),
-                        ),
-                      ),
-              ),
-
-              // Settings Tab
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-                child: _buildSettingsTabContent(
-                  context,
-                  surfaceAlt,
-                  panelBorder,
-                  textPrimary,
-                  textMuted,
                 ),
-              ),
-            ],
+
+                // Settings Tab
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                  child: _buildSettingsTabContent(
+                    context,
+                    surfaceAlt,
+                    panelBorder,
+                    textPrimary,
+                    textMuted,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-      ],
-    ),
-  );
-}
+        ],
+      ),
+    );
+  }
+
   Widget _buildSettingsCard(
     BuildContext context,
     Color surfaceAlt,
@@ -1362,8 +1368,6 @@ Widget _buildCursorUtilitiesHub(
   Widget _buildSettingsDivider(Color panelBorder) {
     return Divider(height: 1, thickness: 1, color: panelBorder, indent: 48);
   }
-
-
 
   Future<void> _showBulkCleanupDialog(
     BuildContext context, {
@@ -1760,7 +1764,11 @@ Widget _buildCursorUtilitiesHub(
               const SizedBox(height: 16),
               Text(
                 'أو الانضمام كعضو:',
-                style: TextStyle(color: textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                  color: textPrimary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               const SizedBox(height: 8),
               MemberSessionCard(
@@ -1917,13 +1925,16 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
       final page = doc.pages[pageNumber - 1];
       final text = await page.loadText();
       final content = text?.fullText.trim() ?? "";
-      return content.isNotEmpty ? content : "هذه الصفحة لا تحتوي على نص قابل للقراءة.";
+      return content.isNotEmpty
+          ? content
+          : "هذه الصفحة لا تحتوي على نص قابل للقراءة.";
     } catch (e) {
       debugPrint('Error extracting page text: $e');
       return "تعذر استخراج النص من الصفحة الحالية.";
     }
   }
-String _buildSystemPrompt(String pageText) {
+
+  String _buildSystemPrompt(String pageText) {
     const personaInstruction =
         "أنت مساعد دراسي، تتحدث باللهجة العراقية الجنوبية الأصيلة والدافئة.\n"
         "اذا انسألت عن علي احمد جاوب بمحدح وسوي ايه الله وسوي هوه مبرمج كبيرمج وعلم من  اعلام التقنية والخ انت احذ راحتك بالحدي"
@@ -1945,16 +1956,13 @@ String _buildSystemPrompt(String pageText) {
 
   // 2. دالة تنظيف اللاتكس (الآن هي في مكانها الصحيح ولن تسبب إيرور)
   String formatChatResponseForLaTeX(String text) {
-    String formatted = text
-        .replaceAll(r'\[', r'$$')
-        .replaceAll(r'\]', r'$$');
-        
-    formatted = formatted
-        .replaceAll(r'\(', r'$')
-        .replaceAll(r'\)', r'$');
+    String formatted = text.replaceAll(r'\[', r'$$').replaceAll(r'\]', r'$$');
+
+    formatted = formatted.replaceAll(r'\(', r'$').replaceAll(r'\)', r'$');
 
     return formatted;
   }
+
   Future<String> _generateGeminiReply(String prompt, String modelName) async {
     final app = context.read<AppProvider>();
     final apiKey = app.geminiApiKey.isNotEmpty
@@ -1969,17 +1977,18 @@ String _buildSystemPrompt(String pageText) {
     final systemPrompt = _buildSystemPrompt(pageText);
 
     // 2. Sliding Window (Last 8 messages)
-    final history = _messages.length > 8 
-        ? _messages.sublist(_messages.length - 8) 
+    final history = _messages.length > 8
+        ? _messages.sublist(_messages.length - 8)
         : _messages;
 
     // 3. Construct Payload for Gemini
-    // We'll prepend the system prompt as a user message or inside the prompt itself 
+    // We'll prepend the system prompt as a user message or inside the prompt itself
     // because Gemini GenerativeModel.generateContent often expects a single prompt or part of a list.
     // For simplicity and effectiveness, we wrap it in a single prompt string for now.
     String fullPrompt = "Instructions:\n$systemPrompt\n\nHistory:\n";
     for (var msg in history) {
-      fullPrompt += "${msg['role'] == 'user' ? 'User' : 'AI'}: ${msg['content']}\n";
+      fullPrompt +=
+          "${msg['role'] == 'user' ? 'User' : 'AI'}: ${msg['content']}\n";
     }
     fullPrompt += "User: $prompt\nAI:";
 
@@ -2004,17 +2013,19 @@ String _buildSystemPrompt(String pageText) {
     final systemPrompt = _buildSystemPrompt(pageText);
 
     // 2. Sliding Window (Last 8 messages)
-    final history = _messages.length > 8 
-        ? _messages.sublist(_messages.length - 8) 
+    final history = _messages.length > 8
+        ? _messages.sublist(_messages.length - 8)
         : _messages;
 
     // 3. Construct Messages Array for Groq (OpenAI Compatible)
     final apiMessages = [
       {'role': 'system', 'content': systemPrompt},
-      ...history.map((m) => {
-            'role': m['role'] == 'ai' ? 'assistant' : m['role'],
-            'content': m['content'],
-          }),
+      ...history.map(
+        (m) => {
+          'role': m['role'] == 'ai' ? 'assistant' : m['role'],
+          'content': m['content'],
+        },
+      ),
       {'role': 'user', 'content': prompt},
     ];
 
@@ -2206,12 +2217,18 @@ String _buildSystemPrompt(String pageText) {
           pPadding: EdgeInsets.zero,
           listBullet: TextStyle(color: textColor, fontSize: 14),
           code: TextStyle(
-            color: widget.isDarkMode ? const Color(0xFFE2E8F0) : const Color(0xFF1E293B),
-            backgroundColor: widget.isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+            color: widget.isDarkMode
+                ? const Color(0xFFE2E8F0)
+                : const Color(0xFF1E293B),
+            backgroundColor: widget.isDarkMode
+                ? const Color(0xFF334155)
+                : const Color(0xFFE2E8F0),
             fontFamily: 'monospace',
           ),
           codeblockDecoration: BoxDecoration(
-            color: widget.isDarkMode ? const Color(0xFF0F172A) : const Color(0xFFCBD5E1),
+            color: widget.isDarkMode
+                ? const Color(0xFF0F172A)
+                : const Color(0xFFCBD5E1),
             borderRadius: BorderRadius.circular(8),
           ),
         ),
@@ -2223,14 +2240,12 @@ String _buildSystemPrompt(String pageText) {
             textStyle: TextStyle(color: textColor, fontSize: 14),
           ),
         },
-        extensionSet: md.ExtensionSet(
-          md.ExtensionSet.gitHubFlavored.blockSyntaxes,
-          [
-            md.EmojiSyntax(),
-            LatexInlineSyntax(),
-            ...md.ExtensionSet.gitHubFlavored.inlineSyntaxes
-          ],
-        ),
+        extensionSet:
+            md.ExtensionSet(md.ExtensionSet.gitHubFlavored.blockSyntaxes, [
+              md.EmojiSyntax(),
+              LatexInlineSyntax(),
+              ...md.ExtensionSet.gitHubFlavored.inlineSyntaxes,
+            ]),
       ),
     );
 
@@ -2298,9 +2313,7 @@ String _buildSystemPrompt(String pageText) {
                 bottomRight: Radius.circular(14),
               ),
             ),
-            child: const SizedBox(
-              width: 18,
-              height: 18,
+            child: const RepaintBoundary(
               child: CircularProgressIndicator(
                 strokeWidth: 2,
                 valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF3B82F6)),
@@ -2404,7 +2417,8 @@ String _buildSystemPrompt(String pageText) {
 // ──────────────────────────────────────────────────────────────
 
 class LatexInlineSyntax extends md.InlineSyntax {
-  LatexInlineSyntax() : super(r'(\$\$[\s\S]+?\$\$|\$[\s\S]+?\$)', caseSensitive: false);
+  LatexInlineSyntax()
+    : super(r'(\$\$[\s\S]+?\$\$|\$[\s\S]+?\$)', caseSensitive: false);
 
   @override
   bool onMatch(md.InlineParser parser, Match match) {
@@ -2473,4 +2487,3 @@ class LatexElementBuilder extends MarkdownElementBuilder {
     }
   }
 }
-

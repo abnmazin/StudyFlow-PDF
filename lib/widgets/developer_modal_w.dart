@@ -77,43 +77,48 @@ class _DeveloperModalState extends State<DeveloperModal>
 
   @override
   Widget build(BuildContext context) {
-    if (!widget.isOpen && _controller.isDismissed) {
-      return const SizedBox.shrink();
-    }
-
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
-        return Stack(
-          children: [
-            // Backdrop with dark blue blur
-            GestureDetector(
-              onTap: widget.onClose,
-              child: BackdropFilter(
-                filter: ImageFilter.blur(
-                  sigmaX: _blurAnimation.value,
-                  sigmaY: _blurAnimation.value,
-                ),
-                child: FadeTransition(
-                  opacity: _opacityAnimation,
-                  child: Container(
-                    color: const Color(0xFF0F172A).withOpacity(0.8),
+        // 1. Completely remove from render tree when animation finishes
+        if (!widget.isOpen && _controller.isDismissed) {
+          return const SizedBox.shrink();
+        }
+
+        // 2. Immediately drop all touch events when closing begins
+        return IgnorePointer(
+          ignoring: !widget.isOpen,
+          child: Stack(
+            children: [
+              // Backdrop with dark blue blur
+              GestureDetector(
+                onTap: widget.onClose,
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(
+                    sigmaX: _blurAnimation.value,
+                    sigmaY: _blurAnimation.value,
+                  ),
+                  child: FadeTransition(
+                    opacity: _opacityAnimation,
+                    child: Container(
+                      color: const Color(0xFF0F172A).withOpacity(0.8),
+                    ),
                   ),
                 ),
               ),
-            ),
 
-            // Modal Body
-            Center(
-              child: ScaleTransition(
-                scale: _scaleAnimation,
-                child: FadeTransition(
-                  opacity: _opacityAnimation,
-                  child: _buildGlassContainer(),
+              // Modal Body
+              Center(
+                child: ScaleTransition(
+                  scale: _scaleAnimation,
+                  child: FadeTransition(
+                    opacity: _opacityAnimation,
+                    child: _buildGlassContainer(),
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         );
       },
     );

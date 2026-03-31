@@ -1,4 +1,4 @@
-﻿part of 'pdf_viewer_widget_w.dart';
+part of 'pdf_viewer_widget_w.dart';
 
 //  PRINT / RELOAD LIFECYCLE EXTENSION
 // Extension on _PDFViewerWidgetState for print orchestration and hard reload.
@@ -9,13 +9,33 @@ extension _PDFViewerWidgetStatePrint on _PDFViewerWidgetState {
     PdfItem pdf,
     AppProvider appProvider,
   ) {
-    final highlights = pdf.highlights
-        .map((h) => <String, dynamic>{
-              'annotationKind': 'highlight',
-              'coordSpace': 'pdf',
-              ...h.toJson(),
-            })
-        .toList();
+    // نجيب حجم كل صفحة من pdfrx — هذا هو الحجم الحقيقي للـ PDF بالـ points
+    double _pageW(int page) {
+      try {
+        final pages = _pdfController.pages;
+        if (page < 1 || page > pages.length) return 0;
+        return pages[page - 1].width;
+      } catch (_) { return 0; }
+    }
+
+    double _pageH(int page) {
+      try {
+        final pages = _pdfController.pages;
+        if (page < 1 || page > pages.length) return 0;
+        return pages[page - 1].height;
+      } catch (_) { return 0; }
+    }
+
+    final highlights = pdf.highlights.map((h) {
+      final rawJson = h.toJson();
+      return <String, dynamic>{
+        'annotationKind': 'highlight',
+        'coordSpace': 'ui',
+        'uiRenderWidth': _pageW(h.page),
+        'uiRenderHeight': _pageH(h.page),
+        ...rawJson,
+      };
+    }).toList();
 
     final comments = pdf.comments.map((c) {
       final liveStyles = appProvider.getEditingStyles(c.id);
@@ -40,7 +60,9 @@ extension _PDFViewerWidgetStatePrint on _PDFViewerWidgetState {
 
       return <String, dynamic>{
         'annotationKind': 'comment',
-        'coordSpace': 'pdf',
+        'coordSpace': 'ui',
+        'uiRenderWidth': _pageW(c.page),
+        'uiRenderHeight': _pageH(c.page),
         'id': c.id,
         'page': c.page,
         'dx': c.position.dx,

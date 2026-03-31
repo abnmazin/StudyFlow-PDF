@@ -3,16 +3,19 @@ part of 'pdf_viewer_widget_w.dart';
 // ─── DASHBOARD COMMAND CENTER ───────────────────────────────────────────────
 
 Widget _buildDashboard(BuildContext context) {
-  return Selector<AppProvider, ({bool isDarkMode, int pdfCount, int highlightCount, AppUser? user})>(
+  return Selector<
+    AppProvider,
+    ({bool isDarkMode, int pdfCount, int highlightCount, AppUser? user})
+  >(
     selector: (_, app) => (
-      isDarkMode: app.isDarkMode, 
+      isDarkMode: app.isDarkMode,
       pdfCount: app.totalPdfs,
       highlightCount: app.totalHighlights,
       user: app.currentUser,
     ),
-    shouldRebuild: (prev, next) => 
-        prev.isDarkMode != next.isDarkMode || 
-        prev.pdfCount != next.pdfCount || 
+    shouldRebuild: (prev, next) =>
+        prev.isDarkMode != next.isDarkMode ||
+        prev.pdfCount != next.pdfCount ||
         prev.highlightCount != next.highlightCount ||
         prev.user?.uid != next.user?.uid,
     builder: (context, data, _) => _DashboardWrapper(
@@ -45,7 +48,9 @@ class _DashboardWrapperState extends State<_DashboardWrapper> {
   void initState() {
     super.initState();
     // MEMOIZATION: Future only created once per widget lifecycle
-    _recentDocsFuture = context.read<FileManagerService>().getRecentDocuments(limit: 6);
+    _recentDocsFuture = context.read<FileManagerService>().getRecentDocuments(
+      limit: 6,
+    );
   }
 
   int _estimateReadingTime(List<PdfDocument> allDocs) {
@@ -65,14 +70,20 @@ class _DashboardWrapperState extends State<_DashboardWrapper> {
     final app = widget.app;
     final isAdmin = widget.isAdmin;
 
-    final rootBg = isDarkMode ? const Color(0xFF020617) : const Color(0xFFE2E8F0);
+    final rootBg = isDarkMode
+        ? const Color(0xFF020617)
+        : const Color(0xFFE2E8F0);
     final canvasBg = isDarkMode ? const Color(0xFF0F172A) : Colors.white;
-    final canvasBorder = isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFCBD5E1);
+    final canvasBorder = isDarkMode
+        ? const Color(0xFF1E293B)
+        : const Color(0xFFCBD5E1);
 
     return ColoredBox(
       color: rootBg,
       child: SafeArea(
-        left: false, right: false, bottom: false,
+        left: false,
+        right: false,
+        bottom: false,
         child: LayoutBuilder(
           builder: (context, constraints) {
             final padding = constraints.maxWidth < 600 ? 12.0 : 20.0;
@@ -97,7 +108,9 @@ class _DashboardWrapperState extends State<_DashboardWrapper> {
                 future: _recentDocsFuture,
                 builder: (context, snapshot) {
                   final recentDocs = snapshot.data ?? <PdfDocument>[];
-                  final readingTimeEstimate = _estimateReadingTime(recentDocs); // Using recentDocs for now or pass allDocs if available
+                  final readingTimeEstimate = _estimateReadingTime(
+                    recentDocs,
+                  ); // Using recentDocs for now or pass allDocs if available
 
                   return SingleChildScrollView(
                     padding: const EdgeInsets.all(32),
@@ -106,29 +119,38 @@ class _DashboardWrapperState extends State<_DashboardWrapper> {
                       children: [
                         _buildHeroSection(context, app),
                         const SizedBox(height: 32),
-                        
+
                         _buildMainContentArea(
-                          context, 
-                          app, 
-                          isDarkMode, 
-                          recentDocs, 
-                          readingTimeEstimate, 
-                          isWide
+                          context,
+                          app,
+                          isDarkMode,
+                          recentDocs,
+                          readingTimeEstimate,
+                          isWide,
                         ),
-                        
+
                         const SizedBox(height: 48),
-                        
+
                         _buildSectionHeader(
-                          isAdmin ? 'لوحة تحكم المطور - نشر الإعلانات' : 'الكتب الأخيرة', 
-                          isDarkMode
+                          isAdmin
+                              ? 'لوحة تحكم المطور - نشر الإعلانات'
+                              : 'الكتب الأخيرة',
+                          isDarkMode,
                         ),
                         const SizedBox(height: 20),
-                        
-                        if (isAdmin) 
-                          _buildAdminAnnouncementSender(isDarkMode, app.currentUser?.username ?? 'Admin')
-                        else 
-                          _buildRecentVerticalList(context, recentDocs, isDarkMode),
-                        
+
+                        if (isAdmin)
+                          _buildAdminAnnouncementSender(
+                            isDarkMode,
+                            app.currentUser?.username ?? 'Admin',
+                          )
+                        else
+                          _buildRecentVerticalList(
+                            context,
+                            recentDocs,
+                            isDarkMode,
+                          ),
+
                         const SizedBox(height: 24),
                       ],
                     ),
@@ -176,7 +198,7 @@ Widget _buildMainContentArea(
         _buildQuickActionChips(context, isDarkMode),
       ],
     ),
-    
+
     if (isWide) const SizedBox(width: 32) else const SizedBox(height: 32),
 
     // Right/Secondary Column Logic
@@ -198,7 +220,11 @@ Widget _buildMainContentArea(
           children: [
             Row(
               children: [
-                const Icon(LucideIcons.checkSquare, size: 20, color: Color(0xFF2563EB)),
+                const Icon(
+                  LucideIcons.checkSquare,
+                  size: 20,
+                  color: Color(0xFF2563EB),
+                ),
                 const SizedBox(width: 8),
                 _buildSectionHeader('مهام اليوم', isDarkMode),
               ],
@@ -225,13 +251,7 @@ Widget _buildMainContentArea(
       ],
     );
   } else {
-    return Column(
-      children: [
-        content[0],
-        content[1],
-        content[2],
-      ],
-    );
+    return Column(children: [content[0], content[1], content[2]]);
   }
 }
 
@@ -240,10 +260,14 @@ Widget _buildMainContentArea(
 class _AdminAnnouncementSender extends StatefulWidget {
   final bool isDarkMode;
   final String authorName;
-  const _AdminAnnouncementSender({required this.isDarkMode, required this.authorName});
+  const _AdminAnnouncementSender({
+    required this.isDarkMode,
+    required this.authorName,
+  });
 
   @override
-  State<_AdminAnnouncementSender> createState() => _AdminAnnouncementSenderState();
+  State<_AdminAnnouncementSender> createState() =>
+      _AdminAnnouncementSenderState();
 }
 
 class _AdminAnnouncementSenderState extends State<_AdminAnnouncementSender> {
@@ -320,7 +344,10 @@ class _AdminAnnouncementSenderState extends State<_AdminAnnouncementSender> {
               hintText: 'عنوان الإشعار...',
               filled: true,
               fillColor: isDarkMode ? Colors.black26 : Colors.white,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
             ),
           ),
           const SizedBox(height: 16),
@@ -331,7 +358,10 @@ class _AdminAnnouncementSenderState extends State<_AdminAnnouncementSender> {
               hintText: 'محتوى الإشعار التفصيلي...',
               filled: true,
               fillColor: isDarkMode ? Colors.black26 : Colors.white,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
             ),
           ),
           const SizedBox(height: 20),
@@ -368,12 +398,14 @@ class _AdminAnnouncementSenderState extends State<_AdminAnnouncementSender> {
               ChoiceChip(
                 label: const Text('الطلاب 👨‍🎓'),
                 selected: _selectedAudience == 'student',
-                onSelected: (_) => setState(() => _selectedAudience = 'student'),
+                onSelected: (_) =>
+                    setState(() => _selectedAudience = 'student'),
               ),
               ChoiceChip(
                 label: const Text('الأساتذة 👨‍🏫'),
                 selected: _selectedAudience == 'lecturer',
-                onSelected: (_) => setState(() => _selectedAudience = 'lecturer'),
+                onSelected: (_) =>
+                    setState(() => _selectedAudience = 'lecturer'),
               ),
             ],
           ),
@@ -384,16 +416,30 @@ class _AdminAnnouncementSenderState extends State<_AdminAnnouncementSender> {
             child: ElevatedButton.icon(
               onPressed: _isSending ? null : _publish,
               icon: _isSending
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
                   : const Icon(LucideIcons.send, size: 18),
               label: Text(
-                _selectedAudience == 'all' ? 'نشر الإشعار للجميع' : 'نشر الإشعار للفئة المحددة',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                _selectedAudience == 'all'
+                    ? 'نشر الإشعار للجميع'
+                    : 'نشر الإشعار للفئة المحددة',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
               ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF4338CA),
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 elevation: 0,
               ),
             ),
@@ -405,7 +451,10 @@ class _AdminAnnouncementSenderState extends State<_AdminAnnouncementSender> {
 }
 
 Widget _buildAdminAnnouncementSender(bool isDarkMode, String authorName) {
-  return _AdminAnnouncementSender(isDarkMode: isDarkMode, authorName: authorName);
+  return _AdminAnnouncementSender(
+    isDarkMode: isDarkMode,
+    authorName: authorName,
+  );
 }
 
 // REMOVED: Replaced by unified _buildMainContentArea
@@ -474,9 +523,9 @@ class _JoinSessionBarState extends State<JoinSessionBar> {
     final code = _codeController.text.trim();
 
     if (code.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('يرجى إدخال كود الدرس.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('يرجى إدخال كود الدرس.')));
       return;
     }
 
@@ -485,10 +534,7 @@ class _JoinSessionBarState extends State<JoinSessionBar> {
 
     if (error != null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error),
-          backgroundColor: Colors.redAccent,
-        ),
+        SnackBar(content: Text(error), backgroundColor: Colors.redAccent),
       );
     } else {
       _codeController.clear();
@@ -553,9 +599,11 @@ class _JoinSessionBarState extends State<JoinSessionBar> {
                 ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
+                    child: const RepaintBoundary(
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
                     ),
                   )
                 : const Text(
@@ -575,161 +623,239 @@ Widget _buildAnnouncementsSection(bool isDarkMode) {
   return Consumer<AppProvider>(
     builder: (context, app, _) {
       final currentUserRole = app.currentUser?.role ?? 'student';
-      
+
       return StreamBuilder<List<Map<String, dynamic>>>(
         stream: app.syncService.watchAnnouncements(currentUserRole),
-    builder: (context, snapshot) {
-      final announcements = snapshot.data ?? [];
+        builder: (context, snapshot) {
+          // 🔥 Smart Filtering: Exclude announcements hidden by the user locally
+          final announcements = (snapshot.data ?? []).where((ann) {
+            final docId = ann['id']?.toString() ?? ann.hashCode.toString();
+            return !app.isAnnouncementHidden(docId);
+          }).toList();
 
-      if (snapshot.connectionState == ConnectionState.waiting && announcements.isEmpty) {
-        return const Center(
-          child: Padding(
-            padding: EdgeInsets.all(16),
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-        );
-      }
-
-      if (announcements.isEmpty) {
-        return Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
-            ),
-          ),
-          child: Text(
-            'لا توجد إعلانات حالياً',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
-              fontSize: 13,
-            ),
-          ),
-        );
-      }
-
-      return Column(
-        children: announcements.map((ann) {
-          final type = ann['type'] as String? ?? 'info';
-          final color = type == 'warning'
-              ? Colors.amber
-              : type == 'update'
-                  ? Colors.green
-                  : Colors.blue;
-          final icon = type == 'warning'
-              ? LucideIcons.alertTriangle
-              : type == 'update'
-                  ? LucideIcons.refreshCw
-                  : LucideIcons.info;
-
-          return Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: isDarkMode ? const Color(0xFF1E293B) : Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+          if (snapshot.connectionState == ConnectionState.waiting &&
+              announcements.isEmpty) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: CircularProgressIndicator(strokeWidth: 2),
               ),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    icon,
-                    size: 16,
-                    color: isDarkMode ? color[400] : color[600],
-                  ),
+            );
+          }
+
+          if (announcements.isEmpty) {
+            return Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color:
+                    isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isDarkMode
+                      ? const Color(0xFF334155)
+                      : const Color(0xFFE2E8F0),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              ann['title'] as String? ?? '',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: isDarkMode ? Colors.white : const Color(0xFF0F172A),
-                              ),
-                            ),
-                          ),
-                          if ((ann['targetAudience'] as String? ?? 'all') != 'all') ...[
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: ann['targetAudience'] == 'student'
-                                    ? Colors.blue.withValues(alpha: 0.1)
-                                    : ann['targetAudience'] == 'lecturer'
-                                        ? Colors.purple.withValues(alpha: 0.1)
-                                        : Colors.red.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(4),
-                                border: Border.all(
-                                  color: ann['targetAudience'] == 'student'
-                                      ? Colors.blue.withValues(alpha: 0.3)
-                                      : ann['targetAudience'] == 'lecturer'
-                                          ? Colors.purple.withValues(alpha: 0.3)
-                                          : Colors.red.withValues(alpha: 0.3),
-                                ),
-                              ),
-                              child: Text(
-                                ann['targetAudience'] == 'student'
-                                    ? 'للطلاب'
-                                    : ann['targetAudience'] == 'lecturer'
-                                        ? 'للأساتذة'
-                                        : 'للإدارة',
-                                style: TextStyle(
-                                  fontSize: 8,
-                                  fontWeight: FontWeight.bold,
-                                  color: ann['targetAudience'] == 'student'
-                                      ? Colors.blue
-                                      : ann['targetAudience'] == 'lecturer'
-                                          ? Colors.purple
-                                          : Colors.red,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                      if ((ann['body'] as String? ?? '').isNotEmpty)
-                        Text(
-                          ann['body'] as String,
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
+              ),
+              child: Text(
+                'لا توجد إعلانات حالياً',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: isDarkMode
+                      ? const Color(0xFF94A3B8)
+                      : const Color(0xFF64748B),
+                  fontSize: 13,
+                ),
+              ),
+            );
+          }
+
+          return ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 350),
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: announcements.length,
+              itemBuilder: (context, index) {
+                final ann = announcements[index];
+                final type = ann['type'] as String? ?? 'info';
+                final color = type == 'warning'
+                    ? Colors.amber
+                    : type == 'update'
+                    ? Colors.green
+                    : Colors.blue;
+                final icon = type == 'warning'
+                    ? LucideIcons.alertTriangle
+                    : type == 'update'
+                    ? LucideIcons.refreshCw
+                    : LucideIcons.info;
+
+                final docId = ann['id']?.toString() ?? ann.hashCode.toString();
+
+                return Dismissible(
+                  key: Key(docId),
+                  direction: DismissDirection.horizontal,
+                  background: Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withOpacity(0.8),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    alignment: Alignment.centerRight,
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: const Icon(
+                      LucideIcons.trash2,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                  ),
+                  secondaryBackground: Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withOpacity(0.8),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    alignment: Alignment.centerLeft,
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: const Icon(
+                      LucideIcons.trash2,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                  ),
+                  onDismissed: (direction) {
+                    // 🔥 Smart Logic: Admin deletes globally, Student hides locally
+                    if (currentUserRole == 'developer' ||
+                        currentUserRole == 'lecturer') {
+                      app.syncService.deleteAnnouncement(docId);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('تم حذف الإشعار نهائياً من النظام 🗑️'),
                         ),
-                    ],
+                      );
+                    } else {
+                      app.hideAnnouncementLocally(docId);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('تم إخفاء الإشعار من شاشتك 👁️‍🗨️'),
+                        ),
+                      );
+                    }
+                  },
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: isDarkMode ? const Color(0xFF1E293B) : Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: isDarkMode
+                            ? const Color(0xFF334155)
+                            : const Color(0xFFE2E8F0),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: color.withValues(alpha: 0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            icon,
+                            size: 16,
+                            color: isDarkMode ? color[400] : color[600],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      ann['title'] as String? ?? '',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: isDarkMode
+                                            ? Colors.white
+                                            : const Color(0xFF0F172A),
+                                      ),
+                                    ),
+                                  ),
+                                  if ((ann['targetAudience'] as String? ?? 'all') !=
+                                      'all') ...[
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: ann['targetAudience'] == 'student'
+                                            ? Colors.blue.withValues(alpha: 0.1)
+                                            : ann['targetAudience'] == 'lecturer'
+                                            ? Colors.purple.withValues(alpha: 0.1)
+                                            : Colors.red.withValues(alpha: 0.1),
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(
+                                          color: ann['targetAudience'] == 'student'
+                                              ? Colors.blue.withValues(alpha: 0.3)
+                                              : ann['targetAudience'] == 'lecturer'
+                                              ? Colors.purple.withValues(alpha: 0.3)
+                                              : Colors.red.withValues(alpha: 0.3),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        ann['targetAudience'] == 'student'
+                                            ? 'للطلاب'
+                                            : ann['targetAudience'] == 'lecturer'
+                                            ? 'للأساتذة'
+                                            : 'للإدارة',
+                                        style: TextStyle(
+                                          fontSize: 8,
+                                          fontWeight: FontWeight.bold,
+                                          color: ann['targetAudience'] == 'student'
+                                              ? Colors.blue
+                                              : ann['targetAudience'] == 'lecturer'
+                                              ? Colors.purple
+                                              : Colors.red,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              if ((ann['body'] as String? ?? '').isNotEmpty)
+                                Text(
+                                  ann['body'] as String,
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: isDarkMode
+                                        ? const Color(0xFF94A3B8)
+                                        : const Color(0xFF64748B),
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                );
+              },
             ),
           );
-        }).toList(),
+        },
       );
     },
   );
-    },
-  );
 }
-
 // ─── TO-DO LIST MOCK ────────────────────────────────────────────────────────
 
 Widget _buildToDoListMock(bool isDarkMode) {
@@ -742,16 +868,20 @@ Widget _buildToDoListMock(bool isDarkMode) {
           width: double.infinity,
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+            color: isDarkMode
+                ? const Color(0xFF1E293B)
+                : const Color(0xFFF8FAFC),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+              color: isDarkMode
+                  ? const Color(0xFF334155)
+                  : const Color(0xFFE2E8F0),
             ),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-                const Icon(
+              const Icon(
                 LucideIcons.listTodo,
                 size: 32,
                 color: Color(0x1F000000), // Default black12
@@ -761,7 +891,9 @@ Widget _buildToDoListMock(bool isDarkMode) {
                 'لا توجد مهام حالياً',
                 style: TextStyle(
                   fontSize: 13,
-                  color: isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                  color: isDarkMode
+                      ? const Color(0xFF94A3B8)
+                      : const Color(0xFF64748B),
                 ),
               ),
             ],
@@ -774,10 +906,14 @@ Widget _buildToDoListMock(bool isDarkMode) {
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+            color: isDarkMode
+                ? const Color(0xFF1E293B)
+                : const Color(0xFFF8FAFC),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+              color: isDarkMode
+                  ? const Color(0xFF334155)
+                  : const Color(0xFFE2E8F0),
             ),
           ),
           child: Column(
@@ -809,12 +945,14 @@ Widget _buildToDoListMock(bool isDarkMode) {
                           fontSize: 13,
                           color: isDone
                               ? (isDarkMode
-                                  ? const Color(0xFF64748B)
-                                  : const Color(0xFF94A3B8))
+                                    ? const Color(0xFF64748B)
+                                    : const Color(0xFF94A3B8))
                               : (isDarkMode
-                                  ? Colors.white
-                                  : const Color(0xFF0F172A)),
-                          decoration: isDone ? TextDecoration.lineThrough : null,
+                                    ? Colors.white
+                                    : const Color(0xFF0F172A)),
+                          decoration: isDone
+                              ? TextDecoration.lineThrough
+                              : null,
                         ),
                       ),
                     ),
@@ -848,9 +986,7 @@ void _showAddTaskDialog(BuildContext context) {
       content: TextField(
         controller: controller,
         autofocus: true,
-        decoration: const InputDecoration(
-          hintText: 'ماذا تريد أن تفعل؟',
-        ),
+        decoration: const InputDecoration(hintText: 'ماذا تريد أن تفعل؟'),
         onSubmitted: (val) {
           if (val.trim().isNotEmpty) {
             context.read<AppProvider>().addTask(val.trim());
@@ -877,7 +1013,6 @@ void _showAddTaskDialog(BuildContext context) {
   );
 }
 
-
 // ─── UTILITIES & COMPONENTS ─────────────────────────────────────────────────
 
 Widget _buildQuickActionChips(BuildContext context, bool isDarkMode) {
@@ -903,22 +1038,33 @@ Widget _buildQuickActionChips(BuildContext context, bool isDarkMode) {
           final app = context.read<AppProvider>();
           if (label == 'رفع PDF') {
             final classId =
-                app.activeClassId ?? (app.classes.isNotEmpty ? app.classes.first.id : null);
+                app.activeClassId ??
+                (app.classes.isNotEmpty ? app.classes.first.id : null);
             if (classId != null) {
               app.uploadPdf(classId);
             } else {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('يرجى إنشاء مجلد أولاً لرفع الملف إليه.')),
+                const SnackBar(
+                  content: Text('يرجى إنشاء مجلد أولاً لرفع الملف إليه.'),
+                ),
               );
             }
           } else if (label == 'دمج ملفات') {
-            showDialog(context: context, builder: (_) => const MergePdfDialog());
+            showDialog(
+              context: context,
+              builder: (_) => const MergePdfDialog(),
+            );
           } else if (label == 'صور إلى PDF') {
-            showDialog(context: context, builder: (_) => const ImagesToPdfDialog());
+            showDialog(
+              context: context,
+              builder: (_) => const ImagesToPdfDialog(),
+            );
           } else if (label == 'ترجمة الملفات (قريباً)') {
             // TODO: Feature under development
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('ميزة ترجمة الملفات قيد التطوير حالياً...')),
+              const SnackBar(
+                content: Text('ميزة ترجمة الملفات قيد التطوير حالياً...'),
+              ),
             );
           }
         },
@@ -991,7 +1137,9 @@ void _showCreateFolderDialog(BuildContext context) {
             if (name.isNotEmpty) {
               final app = context.read<AppProvider>();
               // 1. Save to FileManagerService (Isar)
-              final folder = await FileManagerService().createFolder(name: name);
+              final folder = await FileManagerService().createFolder(
+                name: name,
+              );
               // 2. Sync to AppProvider (SharedPrefs) using the same UUID
               app.addClass(name, uuid: folder.uuid);
             }
@@ -1010,119 +1158,134 @@ Widget _buildRealFolderGrid(bool isDarkMode) {
       return FutureBuilder<List<ClassFolder>>(
         future: fileService.getFoldersOrdered(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting && snapshot.data == null) {
-            return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+          if (snapshot.connectionState == ConnectionState.waiting &&
+              snapshot.data == null) {
+            return const Center(
+              child: CircularProgressIndicator(strokeWidth: 2),
+            );
           }
 
-      final folders = snapshot.data ?? [];
+          final folders = snapshot.data ?? [];
 
-      if (folders.isEmpty) {
-        return Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 40),
-          decoration: BoxDecoration(
-            color: isDarkMode
-                ? const Color(0xFF1E293B).withOpacity(0.5)
-                : const Color(0xFFF8FAFC),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
-              style: BorderStyle.none,
-            ),
-          ),
-          child: Column(
-            children: [
-              Icon(
-                LucideIcons.folderX,
-                size: 48,
-                color: isDarkMode ? Colors.grey[600] : Colors.grey[300],
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'لا توجد مجلدات حالياً',
-                style: TextStyle(
-                  color: Color(0xFF64748B),
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        );
-      }
-
-      return GridView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-          maxCrossAxisExtent: 220,
-          mainAxisSpacing: 16,
-          crossAxisSpacing: 16,
-          childAspectRatio: 1.3,
-        ),
-        itemCount: folders.length,
-        itemBuilder: (context, index) {
-          final folder = folders[index];
-          return InkWell(
-            onTap: () {
-              context.read<AppProvider>().setActiveClass(folder.uuid);
-            },
-            borderRadius: BorderRadius.circular(16),
-            child: Container(
+          if (folders.isEmpty) {
+            return Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 40),
               decoration: BoxDecoration(
-                color: isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+                color: isDarkMode
+                    ? const Color(0xFF1E293B).withOpacity(0.5)
+                    : const Color(0xFFF8FAFC),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                  color: isDarkMode
+                      ? const Color(0xFF334155)
+                      : const Color(0xFFE2E8F0),
+                  style: BorderStyle.none,
                 ),
               ),
-              child: Stack(
+              child: Column(
                 children: [
-                  Positioned(
-                    top: 0,
-                    right: 0,
-                    child: Container(
-                      width: 60,
-                      height: 60,
-                      decoration: BoxDecoration(
-                        color: Colors.blue.withValues(alpha: 0.1),
-                        borderRadius: const BorderRadius.only(
-                          bottomLeft: Radius.circular(60),
-                        ),
-                      ),
-                    ),
+                  Icon(
+                    LucideIcons.folderX,
+                    size: 48,
+                    color: isDarkMode ? Colors.grey[600] : Colors.grey[300],
                   ),
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(LucideIcons.folder, color: Colors.blue[400], size: 32),
-                        const SizedBox(height: 12),
-                        Text(
-                          folder.name,
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: isDarkMode ? Colors.white : const Color(0xFF1E293B),
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        Text(
-                          '${folder.pdfIds.length} ملفات',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Color(0xFF64748B),
-                          ),
-                        ),
-                      ],
+                  const SizedBox(height: 16),
+                  const Text(
+                    'لا توجد مجلدات حالياً',
+                    style: TextStyle(
+                      color: Color(0xFF64748B),
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ],
               ),
+            );
+          }
+
+          return GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 220,
+              mainAxisSpacing: 16,
+              crossAxisSpacing: 16,
+              childAspectRatio: 1.3,
             ),
-          );
-        },
+            itemCount: folders.length,
+            itemBuilder: (context, index) {
+              final folder = folders[index];
+              return InkWell(
+                onTap: () {
+                  context.read<AppProvider>().setActiveClass(folder.uuid);
+                },
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isDarkMode
+                        ? const Color(0xFF1E293B)
+                        : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: isDarkMode
+                          ? const Color(0xFF334155)
+                          : const Color(0xFFE2E8F0),
+                    ),
+                  ),
+                  child: Stack(
+                    children: [
+                      Positioned(
+                        top: 0,
+                        right: 0,
+                        child: Container(
+                          width: 60,
+                          height: 60,
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withValues(alpha: 0.1),
+                            borderRadius: const BorderRadius.only(
+                              bottomLeft: Radius.circular(60),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              LucideIcons.folder,
+                              color: Colors.blue[400],
+                              size: 32,
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              folder.name,
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: isDarkMode
+                                    ? Colors.white
+                                    : const Color(0xFF1E293B),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              '${folder.pdfIds.length} ملفات',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
           );
         },
       );
@@ -1209,7 +1372,6 @@ Widget _buildRecentVerticalList(
     },
   );
 }
-
 
 Widget _buildSectionHeader(String title, bool isDarkMode) {
   return Text(
