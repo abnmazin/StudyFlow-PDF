@@ -1135,13 +1135,7 @@ void _showCreateFolderDialog(BuildContext context) {
           onPressed: () async {
             final name = controller.text.trim();
             if (name.isNotEmpty) {
-              final app = context.read<AppProvider>();
-              // 1. Save to FileManagerService (Isar)
-              final folder = await FileManagerService().createFolder(
-                name: name,
-              );
-              // 2. Sync to AppProvider (SharedPrefs) using the same UUID
-              app.addClass(name, uuid: folder.uuid);
+              await context.read<AppProvider>().addClass(name);
             }
             if (ctx.mounted) Navigator.pop(ctx);
           },

@@ -6,8 +6,13 @@ import 'package:flutter/scheduler.dart';
 import 'package:isar/isar.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:uuid/uuid.dart';
 
+import 'package:uuid/uuid.dart';
+
+import '../models/annotations.dart';
 import '../models/isar_models.dart';
+import 'file_hash_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FileManagerService
@@ -79,6 +84,9 @@ class FileManagerService extends ChangeNotifier {
         PdfSnapshotSchema,
         TrashItemSchema,
         StudyTaskSchema,
+        IsarHighlightSchema,
+        IsarCommentSchema,
+        IsarBookmarkSchema,
       ], directory: dbDir.path);
 
       _isInitialized = true;
@@ -119,9 +127,8 @@ class FileManagerService extends ChangeNotifier {
       return existing;
     }
 
+    final uuid = const Uuid().v4();
     final basename = p.basenameWithoutExtension(sourcePath);
-    final doc = PdfDocument.create(originalPath: '');
-    final uuid = doc.uuid; // already generated
 
     final originalDest = p.join(_originalsDir.path, '${uuid}_$basename.pdf');
     final sessionDest = p.join(
@@ -133,6 +140,13 @@ class FileManagerService extends ChangeNotifier {
     await _copyFile(sourcePath, sessionDest);
 
     final fileSize = await File(sourcePath).length();
+    
+    String? fileHash;
+    try {
+      fileHash = await FileHashService.calculateFileHash(sourcePath);
+    } catch (e) {
+      debugPrint('⚠️ [FileManagerService] Failed to calculate hash for $sourcePath: $e');
+    }
 
     final newDoc = PdfDocument.create(
       uuid: uuid,
@@ -143,6 +157,7 @@ class FileManagerService extends ChangeNotifier {
       lastOpenedAt: DateTime.now(),
       fileSize: fileSize,
       classId: classId,
+      fileHash: fileHash,
     );
 
     await _isar.writeTxn(() async {
@@ -191,23 +206,17 @@ class FileManagerService extends ChangeNotifier {
     _notify();
   }
 
-  Future<void> updateReadingState({
-    required String pdfUuid,
-    int? page,
-    double? zoom,
-    double? scroll,
-  }) async {
+  Future<void> updateReadingState(String pdfUuid, {int? page, double? zoom, double? scroll}) async {
     if (!_isInitialized) await init();
-    final doc = await _isar.pdfDocuments
-        .filter()
-        .uuidEqualTo(pdfUuid)
-        .findFirst();
-    if (doc == null) return;
     await _isar.writeTxn(() async {
-      if (page != null) doc.lastPage = page;
-      if (zoom != null) doc.lastZoom = zoom;
-      if (scroll != null) doc.lastScroll = scroll;
-      await _isar.pdfDocuments.put(doc);
+      final doc = await _isar.pdfDocuments.filter().uuidEqualTo(pdfUuid).findFirst();
+      if (doc != null) {
+        if (page != null) doc.lastPage = page;
+        if (zoom != null) doc.lastZoom = zoom;
+        if (scroll != null) doc.lastScroll = scroll;
+        doc.lastOpenedAt = DateTime.now();
+        await _isar.pdfDocuments.put(doc);
+      }
     });
   }
 
@@ -382,10 +391,37 @@ class FileManagerService extends ChangeNotifier {
         .uuidEqualTo(trashUuid)
         .findFirst();
     if (item == null) return;
+    
+    // Clean up associated files
     if (item.filePath.isNotEmpty) {
       final f = File(item.filePath);
       if (await f.exists()) await f.delete();
     }
+    
+    // Clean up history/snapshots for this PDF
+    try {
+      final snapshots = await _isar.pdfSnapshots.filter().pdfIdEqualTo(item.originalPdfId).findAll();
+      for (var s in snapshots) {
+        final f = File(s.filePath);
+        if (await f.exists()) await f.delete();
+      }
+      await _isar.writeTxn(() async {
+        await _isar.pdfSnapshots.filter().pdfIdEqualTo(item.originalPdfId).deleteAll();
+      });
+    } catch (e) {
+      debugPrint('Error cleaning snapshots during permanent delete: $e');
+    }
+
+    // Clean up original record
+    try {
+      final meta = jsonDecode(item.originalDataJson ?? '{}');
+      final originalPath = meta['originalPath'] as String?;
+      if (originalPath != null) {
+        final f = File(originalPath);
+        if (await f.exists()) await f.delete();
+      }
+    } catch (_) {}
+
     await _isar.writeTxn(() async {
       await _isar.trashItems.delete(item.id);
     });
@@ -466,19 +502,6 @@ class FileManagerService extends ChangeNotifier {
     return _isar.classFolders.where().sortByOrderIndex().findAll();
   }
 
-  Future<void> deleteFolder(String folderUuid) async {
-    if (!_isInitialized) await init();
-    final folder = await _isar.classFolders
-        .filter()
-        .uuidEqualTo(folderUuid)
-        .findFirst();
-    if (folder == null) return;
-    await _isar.writeTxn(() async {
-      await _isar.classFolders.delete(folder.id);
-    });
-    _notify();
-  }
-
   // ── 7. Documents ───────────────────────────────────────────────────────────
 
   Future<List<PdfDocument>> getDocumentsInFolder(String classId) async {
@@ -518,7 +541,693 @@ class FileManagerService extends ChangeNotifier {
     return _isar.trashItems.where().sortByDeletedAtDesc().findAll();
   }
 
-  // ── 6. Study Tasks ────────────────────────────────────────────────────────
+  // ── 8. Migration ──────────────────────────────────────────────────────────
+
+  /// Merges legacy data from SharedPreferences classes into Isar.
+  /// This is an idempotent operation.
+  Future<void> migrateFromLegacyPrefs(dynamic legacyClassesRaw) async {
+    if (!_isInitialized) await init();
+    if (legacyClassesRaw == null || legacyClassesRaw is! List) return;
+
+    debugPrint('🚀 [FileManagerService] Starting Legacy Prefs Migration...');
+    int folderCount = 0;
+    int pdfCount = 0;
+
+    await _isar.writeTxn(() async {
+      for (final clsJson in legacyClassesRaw) {
+        if (clsJson is! Map<String, dynamic>) continue;
+
+        final String uuid = clsJson['id']?.toString() ?? '';
+        final String name = clsJson['name']?.toString() ?? 'بدون اسم';
+        final List pdfsJson = clsJson['pdfs'] as List? ?? [];
+
+        // Check if folder exists
+        var folder =
+            await _isar.classFolders.filter().uuidEqualTo(uuid).findFirst();
+
+        if (folder == null) {
+          folder = ClassFolder.create(uuid: uuid, name: name);
+          await _isar.classFolders.put(folder);
+          folderCount++;
+        }
+
+        // Migrate PDFs
+        for (final pdfJson in pdfsJson) {
+          if (pdfJson is! Map<String, dynamic>) continue;
+
+          final String pUuid = pdfJson['id']?.toString() ?? '';
+          final String pPath = pdfJson['path']?.toString() ?? '';
+          final int? pLastPage = pdfJson['lastPage'];
+          final double? pScroll = (pdfJson['scrollTop'] as num?)?.toDouble();
+
+          // Check if document exists by UUID or original path
+          var doc =
+              await _isar.pdfDocuments.filter().uuidEqualTo(pUuid).findFirst();
+
+          if (doc == null) {
+            doc = PdfDocument.create(
+              uuid: pUuid,
+              originalPath: pdfJson['originalPath'] ?? pPath,
+              workingPath: pPath,
+              classId: uuid,
+              fileHash: pdfJson['fileHash'],
+              lastPage: pLastPage ?? 1,
+              lastScroll: pScroll ?? 0.0,
+              totalPages: (pdfJson['pageCount'] as num?)?.toInt() ?? 0,
+            );
+            await _isar.pdfDocuments.put(doc);
+            pdfCount++;
+          }
+        }
+      }
+    });
+
+    debugPrint(
+      '✅ [FileManagerService] Migration finished: $folderCount classes, $pdfCount pdfs migrated.',
+    );
+    _notify();
+  }
+
+  Future<void> updateFolderSelection(String folderUuid, String? lastActivePdfId) async {
+    if (!_isInitialized) await init();
+    await _isar.writeTxn(() async {
+      final folder = await _isar.classFolders.filter().uuidEqualTo(folderUuid).findFirst();
+      if (folder != null) {
+        folder.lastActivePdfId = lastActivePdfId;
+        await _isar.classFolders.put(folder);
+      }
+    });
+  }
+
+  Future<void> updateFolderOrder(List<String> folderUuids) async {
+    if (!_isInitialized) await init();
+    await _isar.writeTxn(() async {
+      for (int i = 0; i < folderUuids.length; i++) {
+        final folder = await _isar.classFolders.filter().uuidEqualTo(folderUuids[i]).findFirst();
+        if (folder != null) {
+          folder.orderIndex = i;
+          await _isar.classFolders.put(folder);
+        }
+      }
+    });
+    _notify();
+  }
+
+  Future<void> updatePdfOrder(String folderUuid, List<String> pdfUuids) async {
+    if (!_isInitialized) await init();
+    await _isar.writeTxn(() async {
+      final folder = await _isar.classFolders.filter().uuidEqualTo(folderUuid).findFirst();
+      if (folder != null) {
+        folder.pdfIds = pdfUuids;
+        await _isar.classFolders.put(folder);
+      }
+    });
+    _notify();
+  }
+
+  Future<void> movePdf(String pdfUuid, String fromFolderUuid, String toFolderUuid) async {
+    if (!_isInitialized) await init();
+    await _isar.writeTxn(() async {
+      // 1. Update Document
+      final doc = await _isar.pdfDocuments.filter().uuidEqualTo(pdfUuid).findFirst();
+      if (doc != null) {
+        doc.classId = toFolderUuid;
+        await _isar.pdfDocuments.put(doc);
+      }
+
+      // 2. Remove from Source
+      final source = await _isar.classFolders.filter().uuidEqualTo(fromFolderUuid).findFirst();
+      if (source != null) {
+        source.pdfIds.remove(pdfUuid);
+        if (source.lastActivePdfId == pdfUuid) source.lastActivePdfId = null;
+        await _isar.classFolders.put(source);
+      }
+
+      // 3. Add to Target
+      final target = await _isar.classFolders.filter().uuidEqualTo(toFolderUuid).findFirst();
+      if (target != null) {
+        if (!target.pdfIds.contains(pdfUuid)) {
+          target.pdfIds.add(pdfUuid);
+        }
+        await _isar.classFolders.put(target);
+      }
+    });
+
+    _notify();
+  }
+
+  Future<void> deleteFolder(String uuid) async {
+    if (!_isInitialized) await init();
+
+    // 1. Find all documents belonging to this folder
+    final docs = await _isar.pdfDocuments.filter().classIdEqualTo(uuid).findAll();
+
+    // 2. Delete each document (this handles annotations and files)
+    for (var doc in docs) {
+      await deleteDocument(doc.uuid);
+    }
+
+    // 3. Delete the folder itself
+    await _isar.writeTxn(() async {
+      final folder = await _isar.classFolders.filter().uuidEqualTo(uuid).findFirst();
+      if (folder != null) {
+        await _isar.classFolders.delete(folder.id);
+      }
+    });
+
+    _notify();
+  }
+
+  Future<void> deleteDocument(String uuid) async {
+    if (!_isInitialized) await init();
+
+    // 1. Find the document metadata
+    final doc = await _isar.pdfDocuments.filter().uuidEqualTo(uuid).findFirst();
+    if (doc == null) return;
+
+    final String? workingPath = doc.workingPath;
+    final String? classId = doc.classId;
+
+    await _isar.writeTxn(() async {
+      // 2. Remove document ID from the parent folder's list (Atomic update)
+      if (classId != null) {
+        final folder = await _isar.classFolders.filter().uuidEqualTo(classId).findFirst();
+        if (folder != null) {
+          final updatedList = List<String>.from(folder.pdfIds);
+          if (updatedList.remove(uuid)) {
+            folder.pdfIds = updatedList;
+            if (folder.lastActivePdfId == uuid) folder.lastActivePdfId = null;
+            await _isar.classFolders.put(folder);
+          }
+        }
+      }
+
+      // 3. Clean up all associated annotations from Isar
+      // (Using filter-based logical delete to avoid orphans)
+      final highlightIds = await _isar.isarHighlights.filter().pdfUuidEqualTo(uuid).findAll();
+      if (highlightIds.isNotEmpty) {
+        await _isar.isarHighlights.deleteAll(highlightIds.map((e) => e.id).toList());
+      }
+
+      final commentIds = await _isar.isarComments.filter().pdfUuidEqualTo(uuid).findAll();
+      if (commentIds.isNotEmpty) {
+        await _isar.isarComments.deleteAll(commentIds.map((e) => e.id).toList());
+      }
+
+      final bookmarkIds = await _isar.isarBookmarks.filter().pdfUuidEqualTo(uuid).findAll();
+      if (bookmarkIds.isNotEmpty) {
+        await _isar.isarBookmarks.deleteAll(bookmarkIds.map((e) => e.id).toList());
+      }
+
+      // 4. Delete the main document record
+      await _isar.pdfDocuments.delete(doc.id);
+    });
+
+    // 5. Safe Deletion of physical files
+    // We only delete the original if it is an internally managed copy
+    final bool isManagedOriginal = doc.originalPath.startsWith(_originalsDir.path);
+
+    for (var path in [workingPath, isManagedOriginal ? doc.originalPath : null]) {
+      if (path != null) {
+        try {
+          final file = File(path);
+          if (await file.exists()) {
+            await file.delete();
+            debugPrint('🗑️ [FileManagerService] Deleted physical PDF (${path == workingPath ? "working" : "original"}): $path');
+          }
+        } catch (e) {
+          debugPrint('⚠️ [FileManagerService] Failed to delete physical file $path: $e');
+        }
+      }
+    }
+
+    _notify();
+  }
+
+  // ── 10. Annotations (High Level - Model Based) ───────────────────────────
+
+  /// Saves runtime [Highlight] models to Isar for a specific PDF.
+  /// Handles orphaned record deletion and preserves sync metadata.
+  Future<void> saveHighlights(String pdfUuid, List<Highlight> highlights) async {
+    if (!_isInitialized) await init();
+
+    // 1. Deduplicate incoming by uuid (keeping the last one)
+    final Map<String, Highlight> dedupedMap = {};
+    for (var h in highlights) {
+      if (h.id.isEmpty) {
+        debugPrint('[Isar Upsert] Skipped invalid empty highlight uuid');
+        continue;
+      }
+      if (dedupedMap.containsKey(h.id)) {
+        debugPrint('[Isar Upsert] Dropped duplicate incoming Highlight uuid: ${h.id}');
+      }
+      dedupedMap[h.id] = h;
+    }
+    final finalIncoming = dedupedMap.values.toList();
+
+    await _isar.writeTxn(() async {
+      // 2. Load existing records for this PDF
+      final existingRecords = await _isar.isarHighlights.filter().pdfUuidEqualTo(pdfUuid).findAll();
+      final Map<String, int> uuidToIdMap = {for (var r in existingRecords) r.uuid: r.id};
+
+      debugPrint('[Isar Upsert] Existing highlights for PDF $pdfUuid: ${existingRecords.length}');
+
+      // 3. Reconcile Incoming with Existing
+      final List<IsarHighlight> toPut = [];
+      final Set<String> incomingUuids = {};
+      int reusedCount = 0;
+      int newCount = 0;
+
+      for (var h in finalIncoming) {
+        final isarH = _toIsarHighlight(pdfUuid, h);
+        if (uuidToIdMap.containsKey(isarH.uuid)) {
+          isarH.id = uuidToIdMap[isarH.uuid]!; // Reuse existing Isar row ID
+          reusedCount++;
+        } else {
+          newCount++;
+        }
+        toPut.add(isarH);
+        incomingUuids.add(isarH.uuid);
+      }
+
+      // 4. Identify and delete Orphans
+      final orphanedIds = existingRecords.where((e) => !incomingUuids.contains(e.uuid)).map((e) => e.id).toList();
+      if (orphanedIds.isNotEmpty) {
+        debugPrint('[Isar Upsert] Deleted orphaned highlights: ${orphanedIds.length}');
+        await _isar.isarHighlights.deleteAll(orphanedIds);
+      }
+
+      debugPrint('[Isar Upsert] Reconciled highlights: $reusedCount restored ID, $newCount new items');
+
+      // 5. Final Upsert
+      await _isar.isarHighlights.putAll(toPut);
+    });
+  }
+
+  /// Saves runtime [PdfComment] models to Isar for a specific PDF.
+  Future<void> saveComments(String pdfUuid, List<PdfComment> comments) async {
+    if (!_isInitialized) await init();
+
+    // 1. Deduplicate incoming by uuid
+    final Map<String, PdfComment> dedupedMap = {};
+    for (var c in comments) {
+      if (c.id.isEmpty) {
+        debugPrint('[Isar Upsert] Skipped invalid empty comment uuid');
+        continue;
+      }
+      if (dedupedMap.containsKey(c.id)) {
+        debugPrint('[Isar Upsert] Dropped duplicate incoming Comment uuid: ${c.id}');
+      }
+      dedupedMap[c.id] = c;
+    }
+    final finalIncoming = dedupedMap.values.toList();
+
+    await _isar.writeTxn(() async {
+      // 2. Load existing
+      final existingRecords = await _isar.isarComments.filter().pdfUuidEqualTo(pdfUuid).findAll();
+      final Map<String, int> uuidToIdMap = {for (var r in existingRecords) r.uuid: r.id};
+
+      debugPrint('[Isar Upsert] Existing comments for PDF $pdfUuid: ${existingRecords.length}');
+
+      // 3. Reconcile
+      final List<IsarComment> toPut = [];
+      final Set<String> incomingUuids = {};
+      int reusedCount = 0;
+      int newCount = 0;
+
+      for (var c in finalIncoming) {
+        final isarC = _toIsarComment(pdfUuid, c);
+        if (uuidToIdMap.containsKey(isarC.uuid)) {
+          isarC.id = uuidToIdMap[isarC.uuid]!;
+          reusedCount++;
+        } else {
+          newCount++;
+        }
+        toPut.add(isarC);
+        incomingUuids.add(isarC.uuid);
+      }
+
+      // 4. Delete Orphans
+      final orphanedIds = existingRecords.where((e) => !incomingUuids.contains(e.uuid)).map((e) => e.id).toList();
+      if (orphanedIds.isNotEmpty) {
+        debugPrint('[Isar Upsert] Deleted orphaned comments: ${orphanedIds.length}');
+        await _isar.isarComments.deleteAll(orphanedIds);
+      }
+
+      debugPrint('[Isar Upsert] Reconciled comments: $reusedCount restored ID, $newCount new items');
+
+      await _isar.isarComments.putAll(toPut);
+    });
+  }
+
+  /// Saves runtime [PdfBookmark] models to Isar for a specific PDF.
+  Future<void> saveBookmarks(String pdfUuid, List<PdfBookmark> bookmarks) async {
+    if (!_isInitialized) await init();
+
+    // 1. Deduplicate incoming by uuid
+    final Map<String, PdfBookmark> dedupedMap = {};
+    for (var b in bookmarks) {
+      if (b.id.isEmpty) {
+        debugPrint('[Isar Upsert] Skipped invalid empty bookmark uuid');
+        continue;
+      }
+      if (dedupedMap.containsKey(b.id)) {
+        debugPrint('[Isar Upsert] Dropped duplicate incoming Bookmark uuid: ${b.id}');
+      }
+      dedupedMap[b.id] = b;
+    }
+    final finalIncoming = dedupedMap.values.toList();
+
+    await _isar.writeTxn(() async {
+      // 2. Load existing
+      final existingRecords = await _isar.isarBookmarks.filter().pdfUuidEqualTo(pdfUuid).findAll();
+      final Map<String, int> uuidToIdMap = {for (var r in existingRecords) r.uuid: r.id};
+
+      debugPrint('[Isar Upsert] Existing bookmarks for PDF $pdfUuid: ${existingRecords.length}');
+
+      // 3. Reconcile
+      final List<IsarBookmark> toPut = [];
+      final Set<String> incomingUuids = {};
+      int reusedCount = 0;
+      int newCount = 0;
+
+      for (var b in finalIncoming) {
+        final isarB = _toIsarBookmark(pdfUuid, b);
+        if (uuidToIdMap.containsKey(isarB.uuid)) {
+          isarB.id = uuidToIdMap[isarB.uuid]!;
+          reusedCount++;
+        } else {
+          newCount++;
+        }
+        toPut.add(isarB);
+        incomingUuids.add(isarB.uuid);
+      }
+
+      // 4. Delete Orphans
+      final orphanedIds = existingRecords.where((e) => !incomingUuids.contains(e.uuid)).map((e) => e.id).toList();
+      if (orphanedIds.isNotEmpty) {
+        debugPrint('[Isar Upsert] Deleted orphaned bookmarks: ${orphanedIds.length}');
+        await _isar.isarBookmarks.deleteAll(orphanedIds);
+      }
+
+      debugPrint('[Isar Upsert] Reconciled bookmarks: $reusedCount restored ID, $newCount new items');
+
+      await _isar.isarBookmarks.putAll(toPut);
+    });
+  }
+
+  // ── Annotations (Low Level - Isar Based) ──────────────────────────────────
+
+  Future<List<IsarHighlight>> loadHighlightsForPdf(String pdfUuid) async {
+    if (!_isInitialized) await init();
+    return _isar.isarHighlights.filter().pdfUuidEqualTo(pdfUuid).findAll();
+  }
+
+  Future<List<IsarComment>> loadCommentsForPdf(String pdfUuid) async {
+    if (!_isInitialized) await init();
+    return _isar.isarComments.filter().pdfUuidEqualTo(pdfUuid).findAll();
+  }
+
+  Future<List<IsarBookmark>> loadBookmarksForPdf(String pdfUuid) async {
+    if (!_isInitialized) await init();
+    return _isar.isarBookmarks.filter().pdfUuidEqualTo(pdfUuid).findAll();
+  }
+
+  Future<void> saveHighlightsForPdf(String pdfUuid, List<IsarHighlight> highlights) async {
+    if (!_isInitialized) await init();
+
+    // 1. Deduplicate by uuid
+    final Map<String, IsarHighlight> dedupedMap = {};
+    for (var h in highlights) {
+      if (h.uuid.isEmpty) continue;
+      dedupedMap[h.uuid] = h;
+    }
+    final finalIncoming = dedupedMap.values.toList();
+
+    await _isar.writeTxn(() async {
+      // 2. Load existing and Map UUID -> ID
+      final existing = await _isar.isarHighlights.filter().pdfUuidEqualTo(pdfUuid).findAll();
+      final Map<String, int> uuidToIdMap = {for (var r in existing) r.uuid: r.id};
+
+      final List<IsarHighlight> toPut = [];
+      final Set<String> incomingUuids = {};
+
+      for (var h in finalIncoming) {
+        h.pdfUuid = pdfUuid;
+        if (uuidToIdMap.containsKey(h.uuid)) {
+          h.id = uuidToIdMap[h.uuid]!; // REUSE ID
+        } else {
+          h.id = Isar.autoIncrement; // Ensure it treats as new if not found
+        }
+        toPut.add(h);
+        incomingUuids.add(h.uuid);
+      }
+
+      // 3. Delete orphans
+      final orphanedIds = existing.where((e) => !incomingUuids.contains(e.uuid)).map((e) => e.id).toList();
+      if (orphanedIds.isNotEmpty) {
+        await _isar.isarHighlights.deleteAll(orphanedIds);
+      }
+
+      // 4. Save reconciled list
+      await _isar.isarHighlights.putAll(toPut);
+    });
+  }
+
+  Future<void> saveCommentsForPdf(String pdfUuid, List<IsarComment> comments) async {
+    if (!_isInitialized) await init();
+
+    final Map<String, IsarComment> dedupedMap = {};
+    for (var c in comments) {
+      if (c.uuid.isEmpty) continue;
+      dedupedMap[c.uuid] = c;
+    }
+    final finalIncoming = dedupedMap.values.toList();
+
+    await _isar.writeTxn(() async {
+      final existing = await _isar.isarComments.filter().pdfUuidEqualTo(pdfUuid).findAll();
+      final Map<String, int> uuidToIdMap = {for (var r in existing) r.uuid: r.id};
+
+      final List<IsarComment> toPut = [];
+      final Set<String> incomingUuids = {};
+
+      for (var c in finalIncoming) {
+        c.pdfUuid = pdfUuid;
+        if (uuidToIdMap.containsKey(c.uuid)) {
+          c.id = uuidToIdMap[c.uuid]!; // REUSE ID
+        } else {
+          c.id = Isar.autoIncrement;
+        }
+        toPut.add(c);
+        incomingUuids.add(c.uuid);
+      }
+
+      final orphanedIds = existing.where((e) => !incomingUuids.contains(e.uuid)).map((e) => e.id).toList();
+      if (orphanedIds.isNotEmpty) {
+        await _isar.isarComments.deleteAll(orphanedIds);
+      }
+
+      await _isar.isarComments.putAll(toPut);
+    });
+  }
+
+  Future<void> saveBookmarksForPdf(String pdfUuid, List<IsarBookmark> bookmarks) async {
+    if (!_isInitialized) await init();
+
+    final Map<String, IsarBookmark> dedupedMap = {};
+    for (var b in bookmarks) {
+      if (b.uuid.isEmpty) continue;
+      dedupedMap[b.uuid] = b;
+    }
+    final finalIncoming = dedupedMap.values.toList();
+
+    await _isar.writeTxn(() async {
+      final existing = await _isar.isarBookmarks.filter().pdfUuidEqualTo(pdfUuid).findAll();
+      final Map<String, int> uuidToIdMap = {for (var r in existing) r.uuid: r.id};
+
+      final List<IsarBookmark> toPut = [];
+      final Set<String> incomingUuids = {};
+
+      for (var b in finalIncoming) {
+        b.pdfUuid = pdfUuid;
+        if (uuidToIdMap.containsKey(b.uuid)) {
+          b.id = uuidToIdMap[b.uuid]!; // REUSE ID
+        } else {
+          b.id = Isar.autoIncrement;
+        }
+        toPut.add(b);
+        incomingUuids.add(b.uuid);
+      }
+
+      final orphanedIds = existing.where((e) => !incomingUuids.contains(e.uuid)).map((e) => e.id).toList();
+      if (orphanedIds.isNotEmpty) {
+        await _isar.isarBookmarks.deleteAll(orphanedIds);
+      }
+
+      await _isar.isarBookmarks.putAll(toPut);
+    });
+  }
+
+  /// One-time idempotent migration fromlegacy blob
+  Future<bool> migrateAnnotationsFromBlob(Map<String, dynamic> blobData) async {
+    if (!_isInitialized) await init();
+    try {
+      await _isar.writeTxn(() async {
+        for (final entry in blobData.entries) {
+          final pdfUuid = entry.key;
+          final data = entry.value as Map<String, dynamic>;
+
+          // 1. Delete existing for THIS pdf (Safe ONLY for migration)
+          await _isar.isarHighlights.filter().pdfUuidEqualTo(pdfUuid).deleteAll();
+          await _isar.isarComments.filter().pdfUuidEqualTo(pdfUuid).deleteAll();
+          await _isar.isarBookmarks.filter().pdfUuidEqualTo(pdfUuid).deleteAll();
+
+          // 2. Migration: Highlights
+          if (data.containsKey('highlights')) {
+            final highlights = (data['highlights'] as List).map((hJson) {
+              final h = _mapJsonToIsarHighlight(hJson);
+              h.pdfUuid = pdfUuid;
+              return h;
+            }).toList();
+            await _isar.isarHighlights.putAll(highlights);
+          }
+
+          // 3. Migration: Comments
+          if (data.containsKey('comments')) {
+            final comments = (data['comments'] as List).map((cJson) {
+              final c = _mapJsonToIsarComment(cJson);
+              c.pdfUuid = pdfUuid;
+              return c;
+            }).toList();
+            await _isar.isarComments.putAll(comments);
+          }
+
+          // 4. Migration: Bookmarks
+          if (data.containsKey('bookmarks')) {
+            final bookmarks = (data['bookmarks'] as List).map((bJson) {
+              final b = _mapJsonToIsarBookmark(bJson);
+              b.pdfUuid = pdfUuid;
+              return b;
+            }).toList();
+            await _isar.isarBookmarks.putAll(bookmarks);
+          }
+        }
+      });
+      return true;
+    } catch (e) {
+      debugPrint('⚠️ Migration failed: $e');
+      return false;
+    }
+  }
+
+  // ── Mapping Helpers (Model -> Isar) ───────────────────────────────────────
+
+  IsarHighlight _toIsarHighlight(String pdfUuid, Highlight h) {
+    return IsarHighlight()
+      ..uuid = h.id
+      ..pdfUuid = pdfUuid
+      ..page = h.page
+      ..color = h.color.value
+      ..strokeWidth = h.strokeWidth
+      ..type = h.type.toString()
+      ..backgroundColor = h.backgroundColor
+      ..isSynced = h.isSynced
+      ..updatedAt = h.updatedAt
+      ..path = h.path.map((o) => (IsarPoint()
+        ..dx = o.dx
+        ..dy = o.dy)
+      ).toList()
+      ..rects = h.rects?.map((r) => (IsarRect()
+        ..left = r.left
+        ..top = r.top
+        ..right = r.right
+        ..bottom = r.bottom)
+      ).toList();
+  }
+
+  IsarComment _toIsarComment(String pdfUuid, PdfComment c) {
+    return IsarComment()
+      ..uuid = c.id
+      ..pdfUuid = pdfUuid
+      ..page = c.page
+      ..content = c.content
+      ..date = c.date
+      ..color = c.color.value
+      ..fontSize = c.fontSize
+      ..isBold = c.isBold
+      ..isLatex = c.isLatex
+      ..fontFamily = c.fontFamily
+      ..showBorder = c.showBorder
+      ..borderColor = c.borderColor.value
+      ..bgColor = c.bgColor.value
+      ..isSynced = c.isSynced
+      ..updatedAt = c.updatedAt
+      ..position = (IsarPoint()
+        ..dx = c.position.dx
+        ..dy = c.position.dy);
+  }
+
+  IsarBookmark _toIsarBookmark(String pdfUuid, PdfBookmark b) {
+    return IsarBookmark()
+      ..uuid = b.id
+      ..pdfUuid = pdfUuid
+      ..page = b.page
+      ..name = b.name;
+  }
+
+  // ── Mapping Helpers (JSON -> Isar) ─────────────────────────────────────────
+
+  IsarHighlight _mapJsonToIsarHighlight(Map<String, dynamic> json) {
+    return IsarHighlight()
+      ..uuid = json['id'] ?? ''
+      ..path = (json['path'] as List?)?.map((p) => (IsarPoint()
+        ..dx = (p['dx'] as num?)?.toDouble()
+        ..dy = (p['dy'] as num?)?.toDouble())
+      ).toList() ?? []
+      ..color = json['color'] ?? 0
+      ..page = json['page'] ?? 1
+      ..strokeWidth = (json['strokeWidth'] as num?)?.toDouble() ?? 5.0
+      ..type = json['type'] ?? ''
+      ..isSynced = json['isSynced'] ?? false
+      ..updatedAt = json['updatedAt'] ?? 0
+      ..backgroundColor = json['backgroundColor']
+      ..rects = (json['rects'] as List?)?.map((r) => (IsarRect()
+        ..left = (r['L'] as num?)?.toDouble()
+        ..top = (r['T'] as num?)?.toDouble()
+        ..right = (r['R'] as num?)?.toDouble()
+        ..bottom = (r['B'] as num?)?.toDouble())
+      ).toList();
+  }
+
+  IsarComment _mapJsonToIsarComment(Map<String, dynamic> json) {
+    return IsarComment()
+      ..uuid = json['id'] ?? ''
+      ..page = json['page'] ?? 1
+      ..content = json['content'] ?? ''
+      ..date = json['date'] != null ? DateTime.parse(json['date']) : DateTime.now()
+      ..color = json['color'] ?? 0
+      ..fontSize = (json['fontSize'] as num?)?.toDouble() ?? 14.0
+      ..isBold = json['isBold'] ?? false
+      ..isLatex = json['isLatex'] ?? false
+      ..fontFamily = json['fontFamily'] ?? 'Times New Roman'
+      ..showBorder = json['showBorder'] ?? true
+      ..borderColor = json['borderColor'] ?? 0
+      ..bgColor = json['bgColor'] ?? 0
+      ..isSynced = json['isSynced'] ?? false
+      ..updatedAt = json['updatedAt'] ?? 0
+      ..position = (IsarPoint()
+        ..dx = (json['dx'] as num?)?.toDouble()
+        ..dy = (json['dy'] as num?)?.toDouble());
+  }
+
+  IsarBookmark _mapJsonToIsarBookmark(Map<String, dynamic> json) {
+    return IsarBookmark()
+      ..uuid = json['id'] ?? ''
+      ..page = json['page'] ?? 1
+      ..name = json['name'] ?? '';
+  }
+
+  // ── 11. Study Tasks ────────────────────────────────────────────────────────
 
   Future<List<StudyTask>> getAllTasks() async {
     if (!_isInitialized) await init();

@@ -24,6 +24,8 @@ class ClassFolder {
   int orderIndex = 0;
 
   List<String> pdfIds = [];
+  
+  String? lastActivePdfId;
 
   /// Use this factory to create new instances with auto-generated UUIDs.
   static ClassFolder create({
@@ -57,6 +59,9 @@ class PdfDocument {
 
   @Index()
   String originalPath = '';
+
+  @Index()
+  String? fileHash;
 
   String? workingPath;
   DateTime? workingCreatedAt;
@@ -107,10 +112,12 @@ class PdfDocument {
     bool hasUnsavedChanges = false,
     String? thumbnailPath,
     DateTime? createdAt,
+    String? fileHash,
   }) {
     return PdfDocument()
       ..uuid = uuid ?? const Uuid().v4()
       ..originalPath = originalPath
+      ..fileHash = fileHash
       ..workingPath = workingPath
       ..workingCreatedAt = workingCreatedAt
       ..workingModifiedAt = workingModifiedAt
@@ -237,6 +244,81 @@ class TrashItem {
 // ─────────────────────────────────────────────────────────────────────────────
 // StudyTask: Daily to-do items persisted via Isar
 // ─────────────────────────────────────────────────────────────────────────────
+
+@embedded
+class IsarPoint {
+  double? dx;
+  double? dy;
+}
+
+@embedded
+class IsarRect {
+  double? left;
+  double? top;
+  double? right;
+  double? bottom;
+}
+
+@collection
+class IsarHighlight {
+  Id id = Isar.autoIncrement;
+
+  @Index(unique: true)
+  String uuid = ''; // Matches Highlight.id
+
+  @Index()
+  String pdfUuid = ''; // Links to PdfDocument.uuid
+
+  List<IsarPoint> path = [];
+  int color = 0;
+  int page = 1;
+  double strokeWidth = 5.0;
+  String type = ''; // HighlightType enum name
+  List<IsarRect>? rects;
+  int? backgroundColor;
+  bool isSynced = false;
+  int updatedAt = 0;
+}
+
+@collection
+class IsarComment {
+  Id id = Isar.autoIncrement;
+
+  @Index(unique: true)
+  String uuid = ''; // Matches PdfComment.id
+
+  @Index()
+  String pdfUuid = ''; // Links to PdfDocument.uuid
+
+  int page = 1;
+  IsarPoint? position;
+  String content = '';
+  DateTime date = DateTime.now();
+  int color = 0;
+  double fontSize = 14.0;
+  bool isBold = false;
+  bool isLatex = false;
+  String fontFamily = 'Times New Roman';
+  bool showBorder = true;
+  int borderColor = 0;
+  int bgColor = 0;
+  bool isSynced = false;
+  int updatedAt = 0;
+}
+
+@collection
+class IsarBookmark {
+  Id id = Isar.autoIncrement;
+
+  @Index(unique: true)
+  String uuid = ''; // Matches PdfBookmark.id
+
+  @Index()
+  String pdfUuid = ''; // Links to PdfDocument.uuid
+
+  int page = 1;
+  String name = '';
+}
 
 @collection
 class StudyTask {

@@ -27,23 +27,28 @@ const ClassFolderSchema = CollectionSchema(
       name: r'icon',
       type: IsarType.string,
     ),
-    r'name': PropertySchema(
+    r'lastActivePdfId': PropertySchema(
       id: 2,
+      name: r'lastActivePdfId',
+      type: IsarType.string,
+    ),
+    r'name': PropertySchema(
+      id: 3,
       name: r'name',
       type: IsarType.string,
     ),
     r'orderIndex': PropertySchema(
-      id: 3,
+      id: 4,
       name: r'orderIndex',
       type: IsarType.long,
     ),
     r'pdfIds': PropertySchema(
-      id: 4,
+      id: 5,
       name: r'pdfIds',
       type: IsarType.stringList,
     ),
     r'uuid': PropertySchema(
-      id: 5,
+      id: 6,
       name: r'uuid',
       type: IsarType.string,
     )
@@ -114,6 +119,12 @@ int _classFolderEstimateSize(
       bytesCount += 3 + value.length * 3;
     }
   }
+  {
+    final value = object.lastActivePdfId;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
   bytesCount += 3 + object.name.length * 3;
   bytesCount += 3 + object.pdfIds.length * 3;
   {
@@ -134,10 +145,11 @@ void _classFolderSerialize(
 ) {
   writer.writeLong(offsets[0], object.color);
   writer.writeString(offsets[1], object.icon);
-  writer.writeString(offsets[2], object.name);
-  writer.writeLong(offsets[3], object.orderIndex);
-  writer.writeStringList(offsets[4], object.pdfIds);
-  writer.writeString(offsets[5], object.uuid);
+  writer.writeString(offsets[2], object.lastActivePdfId);
+  writer.writeString(offsets[3], object.name);
+  writer.writeLong(offsets[4], object.orderIndex);
+  writer.writeStringList(offsets[5], object.pdfIds);
+  writer.writeString(offsets[6], object.uuid);
 }
 
 ClassFolder _classFolderDeserialize(
@@ -150,10 +162,11 @@ ClassFolder _classFolderDeserialize(
   object.color = reader.readLongOrNull(offsets[0]);
   object.icon = reader.readStringOrNull(offsets[1]);
   object.id = id;
-  object.name = reader.readString(offsets[2]);
-  object.orderIndex = reader.readLong(offsets[3]);
-  object.pdfIds = reader.readStringList(offsets[4]) ?? [];
-  object.uuid = reader.readString(offsets[5]);
+  object.lastActivePdfId = reader.readStringOrNull(offsets[2]);
+  object.name = reader.readString(offsets[3]);
+  object.orderIndex = reader.readLong(offsets[4]);
+  object.pdfIds = reader.readStringList(offsets[5]) ?? [];
+  object.uuid = reader.readString(offsets[6]);
   return object;
 }
 
@@ -169,12 +182,14 @@ P _classFolderDeserializeProp<P>(
     case 1:
       return (reader.readStringOrNull(offset)) as P;
     case 2:
-      return (reader.readString(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 3:
-      return (reader.readLong(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 4:
-      return (reader.readStringList(offset) ?? []) as P;
+      return (reader.readLong(offset)) as P;
     case 5:
+      return (reader.readStringList(offset) ?? []) as P;
+    case 6:
       return (reader.readString(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -731,6 +746,160 @@ extension ClassFolderQueryFilter
         includeLower: includeLower,
         upper: upper,
         includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<ClassFolder, ClassFolder, QAfterFilterCondition>
+      lastActivePdfIdIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'lastActivePdfId',
+      ));
+    });
+  }
+
+  QueryBuilder<ClassFolder, ClassFolder, QAfterFilterCondition>
+      lastActivePdfIdIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'lastActivePdfId',
+      ));
+    });
+  }
+
+  QueryBuilder<ClassFolder, ClassFolder, QAfterFilterCondition>
+      lastActivePdfIdEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'lastActivePdfId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ClassFolder, ClassFolder, QAfterFilterCondition>
+      lastActivePdfIdGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'lastActivePdfId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ClassFolder, ClassFolder, QAfterFilterCondition>
+      lastActivePdfIdLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'lastActivePdfId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ClassFolder, ClassFolder, QAfterFilterCondition>
+      lastActivePdfIdBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'lastActivePdfId',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ClassFolder, ClassFolder, QAfterFilterCondition>
+      lastActivePdfIdStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'lastActivePdfId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ClassFolder, ClassFolder, QAfterFilterCondition>
+      lastActivePdfIdEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'lastActivePdfId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ClassFolder, ClassFolder, QAfterFilterCondition>
+      lastActivePdfIdContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'lastActivePdfId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ClassFolder, ClassFolder, QAfterFilterCondition>
+      lastActivePdfIdMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'lastActivePdfId',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ClassFolder, ClassFolder, QAfterFilterCondition>
+      lastActivePdfIdIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'lastActivePdfId',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<ClassFolder, ClassFolder, QAfterFilterCondition>
+      lastActivePdfIdIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'lastActivePdfId',
+        value: '',
       ));
     });
   }
@@ -1311,6 +1480,19 @@ extension ClassFolderQuerySortBy
     });
   }
 
+  QueryBuilder<ClassFolder, ClassFolder, QAfterSortBy> sortByLastActivePdfId() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'lastActivePdfId', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ClassFolder, ClassFolder, QAfterSortBy>
+      sortByLastActivePdfIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'lastActivePdfId', Sort.desc);
+    });
+  }
+
   QueryBuilder<ClassFolder, ClassFolder, QAfterSortBy> sortByName() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'name', Sort.asc);
@@ -1386,6 +1568,19 @@ extension ClassFolderQuerySortThenBy
     });
   }
 
+  QueryBuilder<ClassFolder, ClassFolder, QAfterSortBy> thenByLastActivePdfId() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'lastActivePdfId', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ClassFolder, ClassFolder, QAfterSortBy>
+      thenByLastActivePdfIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'lastActivePdfId', Sort.desc);
+    });
+  }
+
   QueryBuilder<ClassFolder, ClassFolder, QAfterSortBy> thenByName() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'name', Sort.asc);
@@ -1438,6 +1633,14 @@ extension ClassFolderQueryWhereDistinct
     });
   }
 
+  QueryBuilder<ClassFolder, ClassFolder, QDistinct> distinctByLastActivePdfId(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'lastActivePdfId',
+          caseSensitive: caseSensitive);
+    });
+  }
+
   QueryBuilder<ClassFolder, ClassFolder, QDistinct> distinctByName(
       {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
@@ -1482,6 +1685,13 @@ extension ClassFolderQueryProperty
   QueryBuilder<ClassFolder, String?, QQueryOperations> iconProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'icon');
+    });
+  }
+
+  QueryBuilder<ClassFolder, String?, QQueryOperations>
+      lastActivePdfIdProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'lastActivePdfId');
     });
   }
 
@@ -8295,6 +8505,5072 @@ extension TrashItemQueryProperty
 // coverage:ignore-file
 // ignore_for_file: duplicate_ignore, non_constant_identifier_names, constant_identifier_names, invalid_use_of_protected_member, unnecessary_cast, prefer_const_constructors, lines_longer_than_80_chars, require_trailing_commas, inference_failure_on_function_invocation, unnecessary_parenthesis, unnecessary_raw_strings, unnecessary_null_checks, join_return_with_assignment, prefer_final_locals, avoid_js_rounded_ints, avoid_positional_boolean_parameters, always_specify_types
 
+extension GetIsarHighlightCollection on Isar {
+  IsarCollection<IsarHighlight> get isarHighlights => this.collection();
+}
+
+const IsarHighlightSchema = CollectionSchema(
+  name: r'IsarHighlight',
+  id: -4674359457821424041,
+  properties: {
+    r'backgroundColor': PropertySchema(
+      id: 0,
+      name: r'backgroundColor',
+      type: IsarType.long,
+    ),
+    r'color': PropertySchema(
+      id: 1,
+      name: r'color',
+      type: IsarType.long,
+    ),
+    r'isSynced': PropertySchema(
+      id: 2,
+      name: r'isSynced',
+      type: IsarType.bool,
+    ),
+    r'page': PropertySchema(
+      id: 3,
+      name: r'page',
+      type: IsarType.long,
+    ),
+    r'path': PropertySchema(
+      id: 4,
+      name: r'path',
+      type: IsarType.objectList,
+      target: r'IsarPoint',
+    ),
+    r'pdfUuid': PropertySchema(
+      id: 5,
+      name: r'pdfUuid',
+      type: IsarType.string,
+    ),
+    r'rects': PropertySchema(
+      id: 6,
+      name: r'rects',
+      type: IsarType.objectList,
+      target: r'IsarRect',
+    ),
+    r'strokeWidth': PropertySchema(
+      id: 7,
+      name: r'strokeWidth',
+      type: IsarType.double,
+    ),
+    r'type': PropertySchema(
+      id: 8,
+      name: r'type',
+      type: IsarType.string,
+    ),
+    r'updatedAt': PropertySchema(
+      id: 9,
+      name: r'updatedAt',
+      type: IsarType.long,
+    ),
+    r'uuid': PropertySchema(
+      id: 10,
+      name: r'uuid',
+      type: IsarType.string,
+    )
+  },
+  estimateSize: _isarHighlightEstimateSize,
+  serialize: _isarHighlightSerialize,
+  deserialize: _isarHighlightDeserialize,
+  deserializeProp: _isarHighlightDeserializeProp,
+  idName: r'id',
+  indexes: {
+    r'uuid': IndexSchema(
+      id: 2134397340427724972,
+      name: r'uuid',
+      unique: true,
+      replace: false,
+      properties: [
+        IndexPropertySchema(
+          name: r'uuid',
+          type: IndexType.hash,
+          caseSensitive: true,
+        )
+      ],
+    ),
+    r'pdfUuid': IndexSchema(
+      id: -4929012433447133390,
+      name: r'pdfUuid',
+      unique: false,
+      replace: false,
+      properties: [
+        IndexPropertySchema(
+          name: r'pdfUuid',
+          type: IndexType.hash,
+          caseSensitive: true,
+        )
+      ],
+    )
+  },
+  links: {},
+  embeddedSchemas: {r'IsarPoint': IsarPointSchema, r'IsarRect': IsarRectSchema},
+  getId: _isarHighlightGetId,
+  getLinks: _isarHighlightGetLinks,
+  attach: _isarHighlightAttach,
+  version: '3.1.0+1',
+);
+
+int _isarHighlightEstimateSize(
+  IsarHighlight object,
+  List<int> offsets,
+  Map<Type, List<int>> allOffsets,
+) {
+  var bytesCount = offsets.last;
+  bytesCount += 3 + object.path.length * 3;
+  {
+    final offsets = allOffsets[IsarPoint]!;
+    for (var i = 0; i < object.path.length; i++) {
+      final value = object.path[i];
+      bytesCount += IsarPointSchema.estimateSize(value, offsets, allOffsets);
+    }
+  }
+  bytesCount += 3 + object.pdfUuid.length * 3;
+  {
+    final list = object.rects;
+    if (list != null) {
+      bytesCount += 3 + list.length * 3;
+      {
+        final offsets = allOffsets[IsarRect]!;
+        for (var i = 0; i < list.length; i++) {
+          final value = list[i];
+          bytesCount += IsarRectSchema.estimateSize(value, offsets, allOffsets);
+        }
+      }
+    }
+  }
+  bytesCount += 3 + object.type.length * 3;
+  bytesCount += 3 + object.uuid.length * 3;
+  return bytesCount;
+}
+
+void _isarHighlightSerialize(
+  IsarHighlight object,
+  IsarWriter writer,
+  List<int> offsets,
+  Map<Type, List<int>> allOffsets,
+) {
+  writer.writeLong(offsets[0], object.backgroundColor);
+  writer.writeLong(offsets[1], object.color);
+  writer.writeBool(offsets[2], object.isSynced);
+  writer.writeLong(offsets[3], object.page);
+  writer.writeObjectList<IsarPoint>(
+    offsets[4],
+    allOffsets,
+    IsarPointSchema.serialize,
+    object.path,
+  );
+  writer.writeString(offsets[5], object.pdfUuid);
+  writer.writeObjectList<IsarRect>(
+    offsets[6],
+    allOffsets,
+    IsarRectSchema.serialize,
+    object.rects,
+  );
+  writer.writeDouble(offsets[7], object.strokeWidth);
+  writer.writeString(offsets[8], object.type);
+  writer.writeLong(offsets[9], object.updatedAt);
+  writer.writeString(offsets[10], object.uuid);
+}
+
+IsarHighlight _isarHighlightDeserialize(
+  Id id,
+  IsarReader reader,
+  List<int> offsets,
+  Map<Type, List<int>> allOffsets,
+) {
+  final object = IsarHighlight();
+  object.backgroundColor = reader.readLongOrNull(offsets[0]);
+  object.color = reader.readLong(offsets[1]);
+  object.id = id;
+  object.isSynced = reader.readBool(offsets[2]);
+  object.page = reader.readLong(offsets[3]);
+  object.path = reader.readObjectList<IsarPoint>(
+        offsets[4],
+        IsarPointSchema.deserialize,
+        allOffsets,
+        IsarPoint(),
+      ) ??
+      [];
+  object.pdfUuid = reader.readString(offsets[5]);
+  object.rects = reader.readObjectList<IsarRect>(
+    offsets[6],
+    IsarRectSchema.deserialize,
+    allOffsets,
+    IsarRect(),
+  );
+  object.strokeWidth = reader.readDouble(offsets[7]);
+  object.type = reader.readString(offsets[8]);
+  object.updatedAt = reader.readLong(offsets[9]);
+  object.uuid = reader.readString(offsets[10]);
+  return object;
+}
+
+P _isarHighlightDeserializeProp<P>(
+  IsarReader reader,
+  int propertyId,
+  int offset,
+  Map<Type, List<int>> allOffsets,
+) {
+  switch (propertyId) {
+    case 0:
+      return (reader.readLongOrNull(offset)) as P;
+    case 1:
+      return (reader.readLong(offset)) as P;
+    case 2:
+      return (reader.readBool(offset)) as P;
+    case 3:
+      return (reader.readLong(offset)) as P;
+    case 4:
+      return (reader.readObjectList<IsarPoint>(
+            offset,
+            IsarPointSchema.deserialize,
+            allOffsets,
+            IsarPoint(),
+          ) ??
+          []) as P;
+    case 5:
+      return (reader.readString(offset)) as P;
+    case 6:
+      return (reader.readObjectList<IsarRect>(
+        offset,
+        IsarRectSchema.deserialize,
+        allOffsets,
+        IsarRect(),
+      )) as P;
+    case 7:
+      return (reader.readDouble(offset)) as P;
+    case 8:
+      return (reader.readString(offset)) as P;
+    case 9:
+      return (reader.readLong(offset)) as P;
+    case 10:
+      return (reader.readString(offset)) as P;
+    default:
+      throw IsarError('Unknown property with id $propertyId');
+  }
+}
+
+Id _isarHighlightGetId(IsarHighlight object) {
+  return object.id;
+}
+
+List<IsarLinkBase<dynamic>> _isarHighlightGetLinks(IsarHighlight object) {
+  return [];
+}
+
+void _isarHighlightAttach(
+    IsarCollection<dynamic> col, Id id, IsarHighlight object) {
+  object.id = id;
+}
+
+extension IsarHighlightByIndex on IsarCollection<IsarHighlight> {
+  Future<IsarHighlight?> getByUuid(String uuid) {
+    return getByIndex(r'uuid', [uuid]);
+  }
+
+  IsarHighlight? getByUuidSync(String uuid) {
+    return getByIndexSync(r'uuid', [uuid]);
+  }
+
+  Future<bool> deleteByUuid(String uuid) {
+    return deleteByIndex(r'uuid', [uuid]);
+  }
+
+  bool deleteByUuidSync(String uuid) {
+    return deleteByIndexSync(r'uuid', [uuid]);
+  }
+
+  Future<List<IsarHighlight?>> getAllByUuid(List<String> uuidValues) {
+    final values = uuidValues.map((e) => [e]).toList();
+    return getAllByIndex(r'uuid', values);
+  }
+
+  List<IsarHighlight?> getAllByUuidSync(List<String> uuidValues) {
+    final values = uuidValues.map((e) => [e]).toList();
+    return getAllByIndexSync(r'uuid', values);
+  }
+
+  Future<int> deleteAllByUuid(List<String> uuidValues) {
+    final values = uuidValues.map((e) => [e]).toList();
+    return deleteAllByIndex(r'uuid', values);
+  }
+
+  int deleteAllByUuidSync(List<String> uuidValues) {
+    final values = uuidValues.map((e) => [e]).toList();
+    return deleteAllByIndexSync(r'uuid', values);
+  }
+
+  Future<Id> putByUuid(IsarHighlight object) {
+    return putByIndex(r'uuid', object);
+  }
+
+  Id putByUuidSync(IsarHighlight object, {bool saveLinks = true}) {
+    return putByIndexSync(r'uuid', object, saveLinks: saveLinks);
+  }
+
+  Future<List<Id>> putAllByUuid(List<IsarHighlight> objects) {
+    return putAllByIndex(r'uuid', objects);
+  }
+
+  List<Id> putAllByUuidSync(List<IsarHighlight> objects,
+      {bool saveLinks = true}) {
+    return putAllByIndexSync(r'uuid', objects, saveLinks: saveLinks);
+  }
+}
+
+extension IsarHighlightQueryWhereSort
+    on QueryBuilder<IsarHighlight, IsarHighlight, QWhere> {
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterWhere> anyId() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(const IdWhereClause.any());
+    });
+  }
+}
+
+extension IsarHighlightQueryWhere
+    on QueryBuilder<IsarHighlight, IsarHighlight, QWhereClause> {
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterWhereClause> idEqualTo(
+      Id id) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IdWhereClause.between(
+        lower: id,
+        upper: id,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterWhereClause> idNotEqualTo(
+      Id id) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(
+              IdWhereClause.lessThan(upper: id, includeUpper: false),
+            )
+            .addWhereClause(
+              IdWhereClause.greaterThan(lower: id, includeLower: false),
+            );
+      } else {
+        return query
+            .addWhereClause(
+              IdWhereClause.greaterThan(lower: id, includeLower: false),
+            )
+            .addWhereClause(
+              IdWhereClause.lessThan(upper: id, includeUpper: false),
+            );
+      }
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterWhereClause> idGreaterThan(
+      Id id,
+      {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(
+        IdWhereClause.greaterThan(lower: id, includeLower: include),
+      );
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterWhereClause> idLessThan(
+      Id id,
+      {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(
+        IdWhereClause.lessThan(upper: id, includeUpper: include),
+      );
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterWhereClause> idBetween(
+    Id lowerId,
+    Id upperId, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IdWhereClause.between(
+        lower: lowerId,
+        includeLower: includeLower,
+        upper: upperId,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterWhereClause> uuidEqualTo(
+      String uuid) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'uuid',
+        value: [uuid],
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterWhereClause> uuidNotEqualTo(
+      String uuid) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'uuid',
+              lower: [],
+              upper: [uuid],
+              includeUpper: false,
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'uuid',
+              lower: [uuid],
+              includeLower: false,
+              upper: [],
+            ));
+      } else {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'uuid',
+              lower: [uuid],
+              includeLower: false,
+              upper: [],
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'uuid',
+              lower: [],
+              upper: [uuid],
+              includeUpper: false,
+            ));
+      }
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterWhereClause> pdfUuidEqualTo(
+      String pdfUuid) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'pdfUuid',
+        value: [pdfUuid],
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterWhereClause>
+      pdfUuidNotEqualTo(String pdfUuid) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'pdfUuid',
+              lower: [],
+              upper: [pdfUuid],
+              includeUpper: false,
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'pdfUuid',
+              lower: [pdfUuid],
+              includeLower: false,
+              upper: [],
+            ));
+      } else {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'pdfUuid',
+              lower: [pdfUuid],
+              includeLower: false,
+              upper: [],
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'pdfUuid',
+              lower: [],
+              upper: [pdfUuid],
+              includeUpper: false,
+            ));
+      }
+    });
+  }
+}
+
+extension IsarHighlightQueryFilter
+    on QueryBuilder<IsarHighlight, IsarHighlight, QFilterCondition> {
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      backgroundColorIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'backgroundColor',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      backgroundColorIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'backgroundColor',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      backgroundColorEqualTo(int? value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'backgroundColor',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      backgroundColorGreaterThan(
+    int? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'backgroundColor',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      backgroundColorLessThan(
+    int? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'backgroundColor',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      backgroundColorBetween(
+    int? lower,
+    int? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'backgroundColor',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      colorEqualTo(int value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'color',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      colorGreaterThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'color',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      colorLessThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'color',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      colorBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'color',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition> idEqualTo(
+      Id value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'id',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      idGreaterThan(
+    Id value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'id',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition> idLessThan(
+    Id value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'id',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition> idBetween(
+    Id lower,
+    Id upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'id',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      isSyncedEqualTo(bool value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'isSynced',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition> pageEqualTo(
+      int value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'page',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      pageGreaterThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'page',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      pageLessThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'page',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition> pageBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'page',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      pathLengthEqualTo(int length) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'path',
+        length,
+        true,
+        length,
+        true,
+      );
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      pathIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'path',
+        0,
+        true,
+        0,
+        true,
+      );
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      pathIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'path',
+        0,
+        false,
+        999999,
+        true,
+      );
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      pathLengthLessThan(
+    int length, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'path',
+        0,
+        true,
+        length,
+        include,
+      );
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      pathLengthGreaterThan(
+    int length, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'path',
+        length,
+        include,
+        999999,
+        true,
+      );
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      pathLengthBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'path',
+        lower,
+        includeLower,
+        upper,
+        includeUpper,
+      );
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      pdfUuidEqualTo(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'pdfUuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      pdfUuidGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'pdfUuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      pdfUuidLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'pdfUuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      pdfUuidBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'pdfUuid',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      pdfUuidStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'pdfUuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      pdfUuidEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'pdfUuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      pdfUuidContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'pdfUuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      pdfUuidMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'pdfUuid',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      pdfUuidIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'pdfUuid',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      pdfUuidIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'pdfUuid',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      rectsIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'rects',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      rectsIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'rects',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      rectsLengthEqualTo(int length) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'rects',
+        length,
+        true,
+        length,
+        true,
+      );
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      rectsIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'rects',
+        0,
+        true,
+        0,
+        true,
+      );
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      rectsIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'rects',
+        0,
+        false,
+        999999,
+        true,
+      );
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      rectsLengthLessThan(
+    int length, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'rects',
+        0,
+        true,
+        length,
+        include,
+      );
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      rectsLengthGreaterThan(
+    int length, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'rects',
+        length,
+        include,
+        999999,
+        true,
+      );
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      rectsLengthBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'rects',
+        lower,
+        includeLower,
+        upper,
+        includeUpper,
+      );
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      strokeWidthEqualTo(
+    double value, {
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'strokeWidth',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      strokeWidthGreaterThan(
+    double value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'strokeWidth',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      strokeWidthLessThan(
+    double value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'strokeWidth',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      strokeWidthBetween(
+    double lower,
+    double upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'strokeWidth',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition> typeEqualTo(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'type',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      typeGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'type',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      typeLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'type',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition> typeBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'type',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      typeStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'type',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      typeEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'type',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      typeContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'type',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition> typeMatches(
+      String pattern,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'type',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      typeIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'type',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      typeIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'type',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      updatedAtEqualTo(int value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'updatedAt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      updatedAtGreaterThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'updatedAt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      updatedAtLessThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'updatedAt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      updatedAtBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'updatedAt',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition> uuidEqualTo(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'uuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      uuidGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'uuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      uuidLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'uuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition> uuidBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'uuid',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      uuidStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'uuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      uuidEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'uuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      uuidContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'uuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition> uuidMatches(
+      String pattern,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'uuid',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      uuidIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'uuid',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      uuidIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'uuid',
+        value: '',
+      ));
+    });
+  }
+}
+
+extension IsarHighlightQueryObject
+    on QueryBuilder<IsarHighlight, IsarHighlight, QFilterCondition> {
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition> pathElement(
+      FilterQuery<IsarPoint> q) {
+    return QueryBuilder.apply(this, (query) {
+      return query.object(q, r'path');
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterFilterCondition>
+      rectsElement(FilterQuery<IsarRect> q) {
+    return QueryBuilder.apply(this, (query) {
+      return query.object(q, r'rects');
+    });
+  }
+}
+
+extension IsarHighlightQueryLinks
+    on QueryBuilder<IsarHighlight, IsarHighlight, QFilterCondition> {}
+
+extension IsarHighlightQuerySortBy
+    on QueryBuilder<IsarHighlight, IsarHighlight, QSortBy> {
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy>
+      sortByBackgroundColor() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'backgroundColor', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy>
+      sortByBackgroundColorDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'backgroundColor', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy> sortByColor() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'color', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy> sortByColorDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'color', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy> sortByIsSynced() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isSynced', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy>
+      sortByIsSyncedDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isSynced', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy> sortByPage() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'page', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy> sortByPageDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'page', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy> sortByPdfUuid() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'pdfUuid', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy> sortByPdfUuidDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'pdfUuid', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy> sortByStrokeWidth() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'strokeWidth', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy>
+      sortByStrokeWidthDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'strokeWidth', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy> sortByType() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'type', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy> sortByTypeDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'type', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy> sortByUpdatedAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'updatedAt', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy>
+      sortByUpdatedAtDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'updatedAt', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy> sortByUuid() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'uuid', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy> sortByUuidDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'uuid', Sort.desc);
+    });
+  }
+}
+
+extension IsarHighlightQuerySortThenBy
+    on QueryBuilder<IsarHighlight, IsarHighlight, QSortThenBy> {
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy>
+      thenByBackgroundColor() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'backgroundColor', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy>
+      thenByBackgroundColorDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'backgroundColor', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy> thenByColor() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'color', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy> thenByColorDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'color', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy> thenById() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'id', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy> thenByIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'id', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy> thenByIsSynced() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isSynced', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy>
+      thenByIsSyncedDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isSynced', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy> thenByPage() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'page', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy> thenByPageDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'page', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy> thenByPdfUuid() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'pdfUuid', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy> thenByPdfUuidDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'pdfUuid', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy> thenByStrokeWidth() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'strokeWidth', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy>
+      thenByStrokeWidthDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'strokeWidth', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy> thenByType() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'type', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy> thenByTypeDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'type', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy> thenByUpdatedAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'updatedAt', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy>
+      thenByUpdatedAtDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'updatedAt', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy> thenByUuid() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'uuid', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QAfterSortBy> thenByUuidDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'uuid', Sort.desc);
+    });
+  }
+}
+
+extension IsarHighlightQueryWhereDistinct
+    on QueryBuilder<IsarHighlight, IsarHighlight, QDistinct> {
+  QueryBuilder<IsarHighlight, IsarHighlight, QDistinct>
+      distinctByBackgroundColor() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'backgroundColor');
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QDistinct> distinctByColor() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'color');
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QDistinct> distinctByIsSynced() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'isSynced');
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QDistinct> distinctByPage() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'page');
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QDistinct> distinctByPdfUuid(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'pdfUuid', caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QDistinct>
+      distinctByStrokeWidth() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'strokeWidth');
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QDistinct> distinctByType(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'type', caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QDistinct> distinctByUpdatedAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'updatedAt');
+    });
+  }
+
+  QueryBuilder<IsarHighlight, IsarHighlight, QDistinct> distinctByUuid(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'uuid', caseSensitive: caseSensitive);
+    });
+  }
+}
+
+extension IsarHighlightQueryProperty
+    on QueryBuilder<IsarHighlight, IsarHighlight, QQueryProperty> {
+  QueryBuilder<IsarHighlight, int, QQueryOperations> idProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'id');
+    });
+  }
+
+  QueryBuilder<IsarHighlight, int?, QQueryOperations>
+      backgroundColorProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'backgroundColor');
+    });
+  }
+
+  QueryBuilder<IsarHighlight, int, QQueryOperations> colorProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'color');
+    });
+  }
+
+  QueryBuilder<IsarHighlight, bool, QQueryOperations> isSyncedProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'isSynced');
+    });
+  }
+
+  QueryBuilder<IsarHighlight, int, QQueryOperations> pageProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'page');
+    });
+  }
+
+  QueryBuilder<IsarHighlight, List<IsarPoint>, QQueryOperations>
+      pathProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'path');
+    });
+  }
+
+  QueryBuilder<IsarHighlight, String, QQueryOperations> pdfUuidProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'pdfUuid');
+    });
+  }
+
+  QueryBuilder<IsarHighlight, List<IsarRect>?, QQueryOperations>
+      rectsProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'rects');
+    });
+  }
+
+  QueryBuilder<IsarHighlight, double, QQueryOperations> strokeWidthProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'strokeWidth');
+    });
+  }
+
+  QueryBuilder<IsarHighlight, String, QQueryOperations> typeProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'type');
+    });
+  }
+
+  QueryBuilder<IsarHighlight, int, QQueryOperations> updatedAtProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'updatedAt');
+    });
+  }
+
+  QueryBuilder<IsarHighlight, String, QQueryOperations> uuidProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'uuid');
+    });
+  }
+}
+
+// coverage:ignore-file
+// ignore_for_file: duplicate_ignore, non_constant_identifier_names, constant_identifier_names, invalid_use_of_protected_member, unnecessary_cast, prefer_const_constructors, lines_longer_than_80_chars, require_trailing_commas, inference_failure_on_function_invocation, unnecessary_parenthesis, unnecessary_raw_strings, unnecessary_null_checks, join_return_with_assignment, prefer_final_locals, avoid_js_rounded_ints, avoid_positional_boolean_parameters, always_specify_types
+
+extension GetIsarCommentCollection on Isar {
+  IsarCollection<IsarComment> get isarComments => this.collection();
+}
+
+const IsarCommentSchema = CollectionSchema(
+  name: r'IsarComment',
+  id: 5834933742650145894,
+  properties: {
+    r'bgColor': PropertySchema(
+      id: 0,
+      name: r'bgColor',
+      type: IsarType.long,
+    ),
+    r'borderColor': PropertySchema(
+      id: 1,
+      name: r'borderColor',
+      type: IsarType.long,
+    ),
+    r'color': PropertySchema(
+      id: 2,
+      name: r'color',
+      type: IsarType.long,
+    ),
+    r'content': PropertySchema(
+      id: 3,
+      name: r'content',
+      type: IsarType.string,
+    ),
+    r'date': PropertySchema(
+      id: 4,
+      name: r'date',
+      type: IsarType.dateTime,
+    ),
+    r'fontFamily': PropertySchema(
+      id: 5,
+      name: r'fontFamily',
+      type: IsarType.string,
+    ),
+    r'fontSize': PropertySchema(
+      id: 6,
+      name: r'fontSize',
+      type: IsarType.double,
+    ),
+    r'isBold': PropertySchema(
+      id: 7,
+      name: r'isBold',
+      type: IsarType.bool,
+    ),
+    r'isLatex': PropertySchema(
+      id: 8,
+      name: r'isLatex',
+      type: IsarType.bool,
+    ),
+    r'isSynced': PropertySchema(
+      id: 9,
+      name: r'isSynced',
+      type: IsarType.bool,
+    ),
+    r'page': PropertySchema(
+      id: 10,
+      name: r'page',
+      type: IsarType.long,
+    ),
+    r'pdfUuid': PropertySchema(
+      id: 11,
+      name: r'pdfUuid',
+      type: IsarType.string,
+    ),
+    r'position': PropertySchema(
+      id: 12,
+      name: r'position',
+      type: IsarType.object,
+      target: r'IsarPoint',
+    ),
+    r'showBorder': PropertySchema(
+      id: 13,
+      name: r'showBorder',
+      type: IsarType.bool,
+    ),
+    r'updatedAt': PropertySchema(
+      id: 14,
+      name: r'updatedAt',
+      type: IsarType.long,
+    ),
+    r'uuid': PropertySchema(
+      id: 15,
+      name: r'uuid',
+      type: IsarType.string,
+    )
+  },
+  estimateSize: _isarCommentEstimateSize,
+  serialize: _isarCommentSerialize,
+  deserialize: _isarCommentDeserialize,
+  deserializeProp: _isarCommentDeserializeProp,
+  idName: r'id',
+  indexes: {
+    r'uuid': IndexSchema(
+      id: 2134397340427724972,
+      name: r'uuid',
+      unique: true,
+      replace: false,
+      properties: [
+        IndexPropertySchema(
+          name: r'uuid',
+          type: IndexType.hash,
+          caseSensitive: true,
+        )
+      ],
+    ),
+    r'pdfUuid': IndexSchema(
+      id: -4929012433447133390,
+      name: r'pdfUuid',
+      unique: false,
+      replace: false,
+      properties: [
+        IndexPropertySchema(
+          name: r'pdfUuid',
+          type: IndexType.hash,
+          caseSensitive: true,
+        )
+      ],
+    )
+  },
+  links: {},
+  embeddedSchemas: {r'IsarPoint': IsarPointSchema},
+  getId: _isarCommentGetId,
+  getLinks: _isarCommentGetLinks,
+  attach: _isarCommentAttach,
+  version: '3.1.0+1',
+);
+
+int _isarCommentEstimateSize(
+  IsarComment object,
+  List<int> offsets,
+  Map<Type, List<int>> allOffsets,
+) {
+  var bytesCount = offsets.last;
+  bytesCount += 3 + object.content.length * 3;
+  bytesCount += 3 + object.fontFamily.length * 3;
+  bytesCount += 3 + object.pdfUuid.length * 3;
+  {
+    final value = object.position;
+    if (value != null) {
+      bytesCount += 3 +
+          IsarPointSchema.estimateSize(
+              value, allOffsets[IsarPoint]!, allOffsets);
+    }
+  }
+  bytesCount += 3 + object.uuid.length * 3;
+  return bytesCount;
+}
+
+void _isarCommentSerialize(
+  IsarComment object,
+  IsarWriter writer,
+  List<int> offsets,
+  Map<Type, List<int>> allOffsets,
+) {
+  writer.writeLong(offsets[0], object.bgColor);
+  writer.writeLong(offsets[1], object.borderColor);
+  writer.writeLong(offsets[2], object.color);
+  writer.writeString(offsets[3], object.content);
+  writer.writeDateTime(offsets[4], object.date);
+  writer.writeString(offsets[5], object.fontFamily);
+  writer.writeDouble(offsets[6], object.fontSize);
+  writer.writeBool(offsets[7], object.isBold);
+  writer.writeBool(offsets[8], object.isLatex);
+  writer.writeBool(offsets[9], object.isSynced);
+  writer.writeLong(offsets[10], object.page);
+  writer.writeString(offsets[11], object.pdfUuid);
+  writer.writeObject<IsarPoint>(
+    offsets[12],
+    allOffsets,
+    IsarPointSchema.serialize,
+    object.position,
+  );
+  writer.writeBool(offsets[13], object.showBorder);
+  writer.writeLong(offsets[14], object.updatedAt);
+  writer.writeString(offsets[15], object.uuid);
+}
+
+IsarComment _isarCommentDeserialize(
+  Id id,
+  IsarReader reader,
+  List<int> offsets,
+  Map<Type, List<int>> allOffsets,
+) {
+  final object = IsarComment();
+  object.bgColor = reader.readLong(offsets[0]);
+  object.borderColor = reader.readLong(offsets[1]);
+  object.color = reader.readLong(offsets[2]);
+  object.content = reader.readString(offsets[3]);
+  object.date = reader.readDateTime(offsets[4]);
+  object.fontFamily = reader.readString(offsets[5]);
+  object.fontSize = reader.readDouble(offsets[6]);
+  object.id = id;
+  object.isBold = reader.readBool(offsets[7]);
+  object.isLatex = reader.readBool(offsets[8]);
+  object.isSynced = reader.readBool(offsets[9]);
+  object.page = reader.readLong(offsets[10]);
+  object.pdfUuid = reader.readString(offsets[11]);
+  object.position = reader.readObjectOrNull<IsarPoint>(
+    offsets[12],
+    IsarPointSchema.deserialize,
+    allOffsets,
+  );
+  object.showBorder = reader.readBool(offsets[13]);
+  object.updatedAt = reader.readLong(offsets[14]);
+  object.uuid = reader.readString(offsets[15]);
+  return object;
+}
+
+P _isarCommentDeserializeProp<P>(
+  IsarReader reader,
+  int propertyId,
+  int offset,
+  Map<Type, List<int>> allOffsets,
+) {
+  switch (propertyId) {
+    case 0:
+      return (reader.readLong(offset)) as P;
+    case 1:
+      return (reader.readLong(offset)) as P;
+    case 2:
+      return (reader.readLong(offset)) as P;
+    case 3:
+      return (reader.readString(offset)) as P;
+    case 4:
+      return (reader.readDateTime(offset)) as P;
+    case 5:
+      return (reader.readString(offset)) as P;
+    case 6:
+      return (reader.readDouble(offset)) as P;
+    case 7:
+      return (reader.readBool(offset)) as P;
+    case 8:
+      return (reader.readBool(offset)) as P;
+    case 9:
+      return (reader.readBool(offset)) as P;
+    case 10:
+      return (reader.readLong(offset)) as P;
+    case 11:
+      return (reader.readString(offset)) as P;
+    case 12:
+      return (reader.readObjectOrNull<IsarPoint>(
+        offset,
+        IsarPointSchema.deserialize,
+        allOffsets,
+      )) as P;
+    case 13:
+      return (reader.readBool(offset)) as P;
+    case 14:
+      return (reader.readLong(offset)) as P;
+    case 15:
+      return (reader.readString(offset)) as P;
+    default:
+      throw IsarError('Unknown property with id $propertyId');
+  }
+}
+
+Id _isarCommentGetId(IsarComment object) {
+  return object.id;
+}
+
+List<IsarLinkBase<dynamic>> _isarCommentGetLinks(IsarComment object) {
+  return [];
+}
+
+void _isarCommentAttach(
+    IsarCollection<dynamic> col, Id id, IsarComment object) {
+  object.id = id;
+}
+
+extension IsarCommentByIndex on IsarCollection<IsarComment> {
+  Future<IsarComment?> getByUuid(String uuid) {
+    return getByIndex(r'uuid', [uuid]);
+  }
+
+  IsarComment? getByUuidSync(String uuid) {
+    return getByIndexSync(r'uuid', [uuid]);
+  }
+
+  Future<bool> deleteByUuid(String uuid) {
+    return deleteByIndex(r'uuid', [uuid]);
+  }
+
+  bool deleteByUuidSync(String uuid) {
+    return deleteByIndexSync(r'uuid', [uuid]);
+  }
+
+  Future<List<IsarComment?>> getAllByUuid(List<String> uuidValues) {
+    final values = uuidValues.map((e) => [e]).toList();
+    return getAllByIndex(r'uuid', values);
+  }
+
+  List<IsarComment?> getAllByUuidSync(List<String> uuidValues) {
+    final values = uuidValues.map((e) => [e]).toList();
+    return getAllByIndexSync(r'uuid', values);
+  }
+
+  Future<int> deleteAllByUuid(List<String> uuidValues) {
+    final values = uuidValues.map((e) => [e]).toList();
+    return deleteAllByIndex(r'uuid', values);
+  }
+
+  int deleteAllByUuidSync(List<String> uuidValues) {
+    final values = uuidValues.map((e) => [e]).toList();
+    return deleteAllByIndexSync(r'uuid', values);
+  }
+
+  Future<Id> putByUuid(IsarComment object) {
+    return putByIndex(r'uuid', object);
+  }
+
+  Id putByUuidSync(IsarComment object, {bool saveLinks = true}) {
+    return putByIndexSync(r'uuid', object, saveLinks: saveLinks);
+  }
+
+  Future<List<Id>> putAllByUuid(List<IsarComment> objects) {
+    return putAllByIndex(r'uuid', objects);
+  }
+
+  List<Id> putAllByUuidSync(List<IsarComment> objects,
+      {bool saveLinks = true}) {
+    return putAllByIndexSync(r'uuid', objects, saveLinks: saveLinks);
+  }
+}
+
+extension IsarCommentQueryWhereSort
+    on QueryBuilder<IsarComment, IsarComment, QWhere> {
+  QueryBuilder<IsarComment, IsarComment, QAfterWhere> anyId() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(const IdWhereClause.any());
+    });
+  }
+}
+
+extension IsarCommentQueryWhere
+    on QueryBuilder<IsarComment, IsarComment, QWhereClause> {
+  QueryBuilder<IsarComment, IsarComment, QAfterWhereClause> idEqualTo(Id id) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IdWhereClause.between(
+        lower: id,
+        upper: id,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterWhereClause> idNotEqualTo(
+      Id id) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(
+              IdWhereClause.lessThan(upper: id, includeUpper: false),
+            )
+            .addWhereClause(
+              IdWhereClause.greaterThan(lower: id, includeLower: false),
+            );
+      } else {
+        return query
+            .addWhereClause(
+              IdWhereClause.greaterThan(lower: id, includeLower: false),
+            )
+            .addWhereClause(
+              IdWhereClause.lessThan(upper: id, includeUpper: false),
+            );
+      }
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterWhereClause> idGreaterThan(Id id,
+      {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(
+        IdWhereClause.greaterThan(lower: id, includeLower: include),
+      );
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterWhereClause> idLessThan(Id id,
+      {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(
+        IdWhereClause.lessThan(upper: id, includeUpper: include),
+      );
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterWhereClause> idBetween(
+    Id lowerId,
+    Id upperId, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IdWhereClause.between(
+        lower: lowerId,
+        includeLower: includeLower,
+        upper: upperId,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterWhereClause> uuidEqualTo(
+      String uuid) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'uuid',
+        value: [uuid],
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterWhereClause> uuidNotEqualTo(
+      String uuid) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'uuid',
+              lower: [],
+              upper: [uuid],
+              includeUpper: false,
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'uuid',
+              lower: [uuid],
+              includeLower: false,
+              upper: [],
+            ));
+      } else {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'uuid',
+              lower: [uuid],
+              includeLower: false,
+              upper: [],
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'uuid',
+              lower: [],
+              upper: [uuid],
+              includeUpper: false,
+            ));
+      }
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterWhereClause> pdfUuidEqualTo(
+      String pdfUuid) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'pdfUuid',
+        value: [pdfUuid],
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterWhereClause> pdfUuidNotEqualTo(
+      String pdfUuid) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'pdfUuid',
+              lower: [],
+              upper: [pdfUuid],
+              includeUpper: false,
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'pdfUuid',
+              lower: [pdfUuid],
+              includeLower: false,
+              upper: [],
+            ));
+      } else {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'pdfUuid',
+              lower: [pdfUuid],
+              includeLower: false,
+              upper: [],
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'pdfUuid',
+              lower: [],
+              upper: [pdfUuid],
+              includeUpper: false,
+            ));
+      }
+    });
+  }
+}
+
+extension IsarCommentQueryFilter
+    on QueryBuilder<IsarComment, IsarComment, QFilterCondition> {
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> bgColorEqualTo(
+      int value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'bgColor',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      bgColorGreaterThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'bgColor',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> bgColorLessThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'bgColor',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> bgColorBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'bgColor',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      borderColorEqualTo(int value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'borderColor',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      borderColorGreaterThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'borderColor',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      borderColorLessThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'borderColor',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      borderColorBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'borderColor',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> colorEqualTo(
+      int value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'color',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      colorGreaterThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'color',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> colorLessThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'color',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> colorBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'color',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> contentEqualTo(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'content',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      contentGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'content',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> contentLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'content',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> contentBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'content',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      contentStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'content',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> contentEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'content',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> contentContains(
+      String value,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'content',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> contentMatches(
+      String pattern,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'content',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      contentIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'content',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      contentIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'content',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> dateEqualTo(
+      DateTime value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'date',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> dateGreaterThan(
+    DateTime value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'date',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> dateLessThan(
+    DateTime value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'date',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> dateBetween(
+    DateTime lower,
+    DateTime upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'date',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      fontFamilyEqualTo(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'fontFamily',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      fontFamilyGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'fontFamily',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      fontFamilyLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'fontFamily',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      fontFamilyBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'fontFamily',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      fontFamilyStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'fontFamily',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      fontFamilyEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'fontFamily',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      fontFamilyContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'fontFamily',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      fontFamilyMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'fontFamily',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      fontFamilyIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'fontFamily',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      fontFamilyIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'fontFamily',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> fontSizeEqualTo(
+    double value, {
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'fontSize',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      fontSizeGreaterThan(
+    double value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'fontSize',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      fontSizeLessThan(
+    double value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'fontSize',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> fontSizeBetween(
+    double lower,
+    double upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'fontSize',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> idEqualTo(
+      Id value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'id',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> idGreaterThan(
+    Id value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'id',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> idLessThan(
+    Id value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'id',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> idBetween(
+    Id lower,
+    Id upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'id',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> isBoldEqualTo(
+      bool value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'isBold',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> isLatexEqualTo(
+      bool value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'isLatex',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> isSyncedEqualTo(
+      bool value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'isSynced',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> pageEqualTo(
+      int value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'page',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> pageGreaterThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'page',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> pageLessThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'page',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> pageBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'page',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> pdfUuidEqualTo(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'pdfUuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      pdfUuidGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'pdfUuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> pdfUuidLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'pdfUuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> pdfUuidBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'pdfUuid',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      pdfUuidStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'pdfUuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> pdfUuidEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'pdfUuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> pdfUuidContains(
+      String value,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'pdfUuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> pdfUuidMatches(
+      String pattern,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'pdfUuid',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      pdfUuidIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'pdfUuid',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      pdfUuidIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'pdfUuid',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      positionIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'position',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      positionIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'position',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      showBorderEqualTo(bool value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'showBorder',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      updatedAtEqualTo(int value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'updatedAt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      updatedAtGreaterThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'updatedAt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      updatedAtLessThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'updatedAt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      updatedAtBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'updatedAt',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> uuidEqualTo(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'uuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> uuidGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'uuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> uuidLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'uuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> uuidBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'uuid',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> uuidStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'uuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> uuidEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'uuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> uuidContains(
+      String value,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'uuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> uuidMatches(
+      String pattern,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'uuid',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> uuidIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'uuid',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      uuidIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'uuid',
+        value: '',
+      ));
+    });
+  }
+}
+
+extension IsarCommentQueryObject
+    on QueryBuilder<IsarComment, IsarComment, QFilterCondition> {
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> position(
+      FilterQuery<IsarPoint> q) {
+    return QueryBuilder.apply(this, (query) {
+      return query.object(q, r'position');
+    });
+  }
+}
+
+extension IsarCommentQueryLinks
+    on QueryBuilder<IsarComment, IsarComment, QFilterCondition> {}
+
+extension IsarCommentQuerySortBy
+    on QueryBuilder<IsarComment, IsarComment, QSortBy> {
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByBgColor() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'bgColor', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByBgColorDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'bgColor', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByBorderColor() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'borderColor', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByBorderColorDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'borderColor', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByColor() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'color', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByColorDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'color', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByContent() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'content', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByContentDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'content', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByDate() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'date', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByDateDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'date', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByFontFamily() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'fontFamily', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByFontFamilyDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'fontFamily', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByFontSize() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'fontSize', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByFontSizeDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'fontSize', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByIsBold() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isBold', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByIsBoldDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isBold', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByIsLatex() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isLatex', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByIsLatexDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isLatex', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByIsSynced() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isSynced', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByIsSyncedDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isSynced', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByPage() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'page', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByPageDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'page', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByPdfUuid() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'pdfUuid', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByPdfUuidDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'pdfUuid', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByShowBorder() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'showBorder', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByShowBorderDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'showBorder', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByUpdatedAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'updatedAt', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByUpdatedAtDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'updatedAt', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByUuid() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'uuid', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByUuidDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'uuid', Sort.desc);
+    });
+  }
+}
+
+extension IsarCommentQuerySortThenBy
+    on QueryBuilder<IsarComment, IsarComment, QSortThenBy> {
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByBgColor() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'bgColor', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByBgColorDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'bgColor', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByBorderColor() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'borderColor', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByBorderColorDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'borderColor', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByColor() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'color', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByColorDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'color', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByContent() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'content', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByContentDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'content', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByDate() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'date', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByDateDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'date', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByFontFamily() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'fontFamily', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByFontFamilyDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'fontFamily', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByFontSize() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'fontSize', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByFontSizeDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'fontSize', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenById() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'id', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'id', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByIsBold() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isBold', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByIsBoldDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isBold', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByIsLatex() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isLatex', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByIsLatexDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isLatex', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByIsSynced() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isSynced', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByIsSyncedDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isSynced', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByPage() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'page', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByPageDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'page', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByPdfUuid() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'pdfUuid', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByPdfUuidDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'pdfUuid', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByShowBorder() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'showBorder', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByShowBorderDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'showBorder', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByUpdatedAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'updatedAt', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByUpdatedAtDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'updatedAt', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByUuid() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'uuid', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByUuidDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'uuid', Sort.desc);
+    });
+  }
+}
+
+extension IsarCommentQueryWhereDistinct
+    on QueryBuilder<IsarComment, IsarComment, QDistinct> {
+  QueryBuilder<IsarComment, IsarComment, QDistinct> distinctByBgColor() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'bgColor');
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QDistinct> distinctByBorderColor() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'borderColor');
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QDistinct> distinctByColor() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'color');
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QDistinct> distinctByContent(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'content', caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QDistinct> distinctByDate() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'date');
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QDistinct> distinctByFontFamily(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'fontFamily', caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QDistinct> distinctByFontSize() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'fontSize');
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QDistinct> distinctByIsBold() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'isBold');
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QDistinct> distinctByIsLatex() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'isLatex');
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QDistinct> distinctByIsSynced() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'isSynced');
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QDistinct> distinctByPage() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'page');
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QDistinct> distinctByPdfUuid(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'pdfUuid', caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QDistinct> distinctByShowBorder() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'showBorder');
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QDistinct> distinctByUpdatedAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'updatedAt');
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QDistinct> distinctByUuid(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'uuid', caseSensitive: caseSensitive);
+    });
+  }
+}
+
+extension IsarCommentQueryProperty
+    on QueryBuilder<IsarComment, IsarComment, QQueryProperty> {
+  QueryBuilder<IsarComment, int, QQueryOperations> idProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'id');
+    });
+  }
+
+  QueryBuilder<IsarComment, int, QQueryOperations> bgColorProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'bgColor');
+    });
+  }
+
+  QueryBuilder<IsarComment, int, QQueryOperations> borderColorProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'borderColor');
+    });
+  }
+
+  QueryBuilder<IsarComment, int, QQueryOperations> colorProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'color');
+    });
+  }
+
+  QueryBuilder<IsarComment, String, QQueryOperations> contentProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'content');
+    });
+  }
+
+  QueryBuilder<IsarComment, DateTime, QQueryOperations> dateProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'date');
+    });
+  }
+
+  QueryBuilder<IsarComment, String, QQueryOperations> fontFamilyProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'fontFamily');
+    });
+  }
+
+  QueryBuilder<IsarComment, double, QQueryOperations> fontSizeProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'fontSize');
+    });
+  }
+
+  QueryBuilder<IsarComment, bool, QQueryOperations> isBoldProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'isBold');
+    });
+  }
+
+  QueryBuilder<IsarComment, bool, QQueryOperations> isLatexProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'isLatex');
+    });
+  }
+
+  QueryBuilder<IsarComment, bool, QQueryOperations> isSyncedProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'isSynced');
+    });
+  }
+
+  QueryBuilder<IsarComment, int, QQueryOperations> pageProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'page');
+    });
+  }
+
+  QueryBuilder<IsarComment, String, QQueryOperations> pdfUuidProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'pdfUuid');
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarPoint?, QQueryOperations> positionProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'position');
+    });
+  }
+
+  QueryBuilder<IsarComment, bool, QQueryOperations> showBorderProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'showBorder');
+    });
+  }
+
+  QueryBuilder<IsarComment, int, QQueryOperations> updatedAtProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'updatedAt');
+    });
+  }
+
+  QueryBuilder<IsarComment, String, QQueryOperations> uuidProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'uuid');
+    });
+  }
+}
+
+// coverage:ignore-file
+// ignore_for_file: duplicate_ignore, non_constant_identifier_names, constant_identifier_names, invalid_use_of_protected_member, unnecessary_cast, prefer_const_constructors, lines_longer_than_80_chars, require_trailing_commas, inference_failure_on_function_invocation, unnecessary_parenthesis, unnecessary_raw_strings, unnecessary_null_checks, join_return_with_assignment, prefer_final_locals, avoid_js_rounded_ints, avoid_positional_boolean_parameters, always_specify_types
+
+extension GetIsarBookmarkCollection on Isar {
+  IsarCollection<IsarBookmark> get isarBookmarks => this.collection();
+}
+
+const IsarBookmarkSchema = CollectionSchema(
+  name: r'IsarBookmark',
+  id: 4634539686431133545,
+  properties: {
+    r'name': PropertySchema(
+      id: 0,
+      name: r'name',
+      type: IsarType.string,
+    ),
+    r'page': PropertySchema(
+      id: 1,
+      name: r'page',
+      type: IsarType.long,
+    ),
+    r'pdfUuid': PropertySchema(
+      id: 2,
+      name: r'pdfUuid',
+      type: IsarType.string,
+    ),
+    r'uuid': PropertySchema(
+      id: 3,
+      name: r'uuid',
+      type: IsarType.string,
+    )
+  },
+  estimateSize: _isarBookmarkEstimateSize,
+  serialize: _isarBookmarkSerialize,
+  deserialize: _isarBookmarkDeserialize,
+  deserializeProp: _isarBookmarkDeserializeProp,
+  idName: r'id',
+  indexes: {
+    r'uuid': IndexSchema(
+      id: 2134397340427724972,
+      name: r'uuid',
+      unique: true,
+      replace: false,
+      properties: [
+        IndexPropertySchema(
+          name: r'uuid',
+          type: IndexType.hash,
+          caseSensitive: true,
+        )
+      ],
+    ),
+    r'pdfUuid': IndexSchema(
+      id: -4929012433447133390,
+      name: r'pdfUuid',
+      unique: false,
+      replace: false,
+      properties: [
+        IndexPropertySchema(
+          name: r'pdfUuid',
+          type: IndexType.hash,
+          caseSensitive: true,
+        )
+      ],
+    )
+  },
+  links: {},
+  embeddedSchemas: {},
+  getId: _isarBookmarkGetId,
+  getLinks: _isarBookmarkGetLinks,
+  attach: _isarBookmarkAttach,
+  version: '3.1.0+1',
+);
+
+int _isarBookmarkEstimateSize(
+  IsarBookmark object,
+  List<int> offsets,
+  Map<Type, List<int>> allOffsets,
+) {
+  var bytesCount = offsets.last;
+  bytesCount += 3 + object.name.length * 3;
+  bytesCount += 3 + object.pdfUuid.length * 3;
+  bytesCount += 3 + object.uuid.length * 3;
+  return bytesCount;
+}
+
+void _isarBookmarkSerialize(
+  IsarBookmark object,
+  IsarWriter writer,
+  List<int> offsets,
+  Map<Type, List<int>> allOffsets,
+) {
+  writer.writeString(offsets[0], object.name);
+  writer.writeLong(offsets[1], object.page);
+  writer.writeString(offsets[2], object.pdfUuid);
+  writer.writeString(offsets[3], object.uuid);
+}
+
+IsarBookmark _isarBookmarkDeserialize(
+  Id id,
+  IsarReader reader,
+  List<int> offsets,
+  Map<Type, List<int>> allOffsets,
+) {
+  final object = IsarBookmark();
+  object.id = id;
+  object.name = reader.readString(offsets[0]);
+  object.page = reader.readLong(offsets[1]);
+  object.pdfUuid = reader.readString(offsets[2]);
+  object.uuid = reader.readString(offsets[3]);
+  return object;
+}
+
+P _isarBookmarkDeserializeProp<P>(
+  IsarReader reader,
+  int propertyId,
+  int offset,
+  Map<Type, List<int>> allOffsets,
+) {
+  switch (propertyId) {
+    case 0:
+      return (reader.readString(offset)) as P;
+    case 1:
+      return (reader.readLong(offset)) as P;
+    case 2:
+      return (reader.readString(offset)) as P;
+    case 3:
+      return (reader.readString(offset)) as P;
+    default:
+      throw IsarError('Unknown property with id $propertyId');
+  }
+}
+
+Id _isarBookmarkGetId(IsarBookmark object) {
+  return object.id;
+}
+
+List<IsarLinkBase<dynamic>> _isarBookmarkGetLinks(IsarBookmark object) {
+  return [];
+}
+
+void _isarBookmarkAttach(
+    IsarCollection<dynamic> col, Id id, IsarBookmark object) {
+  object.id = id;
+}
+
+extension IsarBookmarkByIndex on IsarCollection<IsarBookmark> {
+  Future<IsarBookmark?> getByUuid(String uuid) {
+    return getByIndex(r'uuid', [uuid]);
+  }
+
+  IsarBookmark? getByUuidSync(String uuid) {
+    return getByIndexSync(r'uuid', [uuid]);
+  }
+
+  Future<bool> deleteByUuid(String uuid) {
+    return deleteByIndex(r'uuid', [uuid]);
+  }
+
+  bool deleteByUuidSync(String uuid) {
+    return deleteByIndexSync(r'uuid', [uuid]);
+  }
+
+  Future<List<IsarBookmark?>> getAllByUuid(List<String> uuidValues) {
+    final values = uuidValues.map((e) => [e]).toList();
+    return getAllByIndex(r'uuid', values);
+  }
+
+  List<IsarBookmark?> getAllByUuidSync(List<String> uuidValues) {
+    final values = uuidValues.map((e) => [e]).toList();
+    return getAllByIndexSync(r'uuid', values);
+  }
+
+  Future<int> deleteAllByUuid(List<String> uuidValues) {
+    final values = uuidValues.map((e) => [e]).toList();
+    return deleteAllByIndex(r'uuid', values);
+  }
+
+  int deleteAllByUuidSync(List<String> uuidValues) {
+    final values = uuidValues.map((e) => [e]).toList();
+    return deleteAllByIndexSync(r'uuid', values);
+  }
+
+  Future<Id> putByUuid(IsarBookmark object) {
+    return putByIndex(r'uuid', object);
+  }
+
+  Id putByUuidSync(IsarBookmark object, {bool saveLinks = true}) {
+    return putByIndexSync(r'uuid', object, saveLinks: saveLinks);
+  }
+
+  Future<List<Id>> putAllByUuid(List<IsarBookmark> objects) {
+    return putAllByIndex(r'uuid', objects);
+  }
+
+  List<Id> putAllByUuidSync(List<IsarBookmark> objects,
+      {bool saveLinks = true}) {
+    return putAllByIndexSync(r'uuid', objects, saveLinks: saveLinks);
+  }
+}
+
+extension IsarBookmarkQueryWhereSort
+    on QueryBuilder<IsarBookmark, IsarBookmark, QWhere> {
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterWhere> anyId() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(const IdWhereClause.any());
+    });
+  }
+}
+
+extension IsarBookmarkQueryWhere
+    on QueryBuilder<IsarBookmark, IsarBookmark, QWhereClause> {
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterWhereClause> idEqualTo(Id id) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IdWhereClause.between(
+        lower: id,
+        upper: id,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterWhereClause> idNotEqualTo(
+      Id id) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(
+              IdWhereClause.lessThan(upper: id, includeUpper: false),
+            )
+            .addWhereClause(
+              IdWhereClause.greaterThan(lower: id, includeLower: false),
+            );
+      } else {
+        return query
+            .addWhereClause(
+              IdWhereClause.greaterThan(lower: id, includeLower: false),
+            )
+            .addWhereClause(
+              IdWhereClause.lessThan(upper: id, includeUpper: false),
+            );
+      }
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterWhereClause> idGreaterThan(
+      Id id,
+      {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(
+        IdWhereClause.greaterThan(lower: id, includeLower: include),
+      );
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterWhereClause> idLessThan(Id id,
+      {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(
+        IdWhereClause.lessThan(upper: id, includeUpper: include),
+      );
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterWhereClause> idBetween(
+    Id lowerId,
+    Id upperId, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IdWhereClause.between(
+        lower: lowerId,
+        includeLower: includeLower,
+        upper: upperId,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterWhereClause> uuidEqualTo(
+      String uuid) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'uuid',
+        value: [uuid],
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterWhereClause> uuidNotEqualTo(
+      String uuid) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'uuid',
+              lower: [],
+              upper: [uuid],
+              includeUpper: false,
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'uuid',
+              lower: [uuid],
+              includeLower: false,
+              upper: [],
+            ));
+      } else {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'uuid',
+              lower: [uuid],
+              includeLower: false,
+              upper: [],
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'uuid',
+              lower: [],
+              upper: [uuid],
+              includeUpper: false,
+            ));
+      }
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterWhereClause> pdfUuidEqualTo(
+      String pdfUuid) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'pdfUuid',
+        value: [pdfUuid],
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterWhereClause> pdfUuidNotEqualTo(
+      String pdfUuid) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'pdfUuid',
+              lower: [],
+              upper: [pdfUuid],
+              includeUpper: false,
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'pdfUuid',
+              lower: [pdfUuid],
+              includeLower: false,
+              upper: [],
+            ));
+      } else {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'pdfUuid',
+              lower: [pdfUuid],
+              includeLower: false,
+              upper: [],
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'pdfUuid',
+              lower: [],
+              upper: [pdfUuid],
+              includeUpper: false,
+            ));
+      }
+    });
+  }
+}
+
+extension IsarBookmarkQueryFilter
+    on QueryBuilder<IsarBookmark, IsarBookmark, QFilterCondition> {
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition> idEqualTo(
+      Id value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'id',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition> idGreaterThan(
+    Id value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'id',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition> idLessThan(
+    Id value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'id',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition> idBetween(
+    Id lower,
+    Id upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'id',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition> nameEqualTo(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'name',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition>
+      nameGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'name',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition> nameLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'name',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition> nameBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'name',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition>
+      nameStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'name',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition> nameEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'name',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition> nameContains(
+      String value,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'name',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition> nameMatches(
+      String pattern,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'name',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition>
+      nameIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'name',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition>
+      nameIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'name',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition> pageEqualTo(
+      int value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'page',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition>
+      pageGreaterThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'page',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition> pageLessThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'page',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition> pageBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'page',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition>
+      pdfUuidEqualTo(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'pdfUuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition>
+      pdfUuidGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'pdfUuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition>
+      pdfUuidLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'pdfUuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition>
+      pdfUuidBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'pdfUuid',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition>
+      pdfUuidStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'pdfUuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition>
+      pdfUuidEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'pdfUuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition>
+      pdfUuidContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'pdfUuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition>
+      pdfUuidMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'pdfUuid',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition>
+      pdfUuidIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'pdfUuid',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition>
+      pdfUuidIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'pdfUuid',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition> uuidEqualTo(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'uuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition>
+      uuidGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'uuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition> uuidLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'uuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition> uuidBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'uuid',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition>
+      uuidStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'uuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition> uuidEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'uuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition> uuidContains(
+      String value,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'uuid',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition> uuidMatches(
+      String pattern,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'uuid',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition>
+      uuidIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'uuid',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterFilterCondition>
+      uuidIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'uuid',
+        value: '',
+      ));
+    });
+  }
+}
+
+extension IsarBookmarkQueryObject
+    on QueryBuilder<IsarBookmark, IsarBookmark, QFilterCondition> {}
+
+extension IsarBookmarkQueryLinks
+    on QueryBuilder<IsarBookmark, IsarBookmark, QFilterCondition> {}
+
+extension IsarBookmarkQuerySortBy
+    on QueryBuilder<IsarBookmark, IsarBookmark, QSortBy> {
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterSortBy> sortByName() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'name', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterSortBy> sortByNameDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'name', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterSortBy> sortByPage() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'page', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterSortBy> sortByPageDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'page', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterSortBy> sortByPdfUuid() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'pdfUuid', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterSortBy> sortByPdfUuidDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'pdfUuid', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterSortBy> sortByUuid() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'uuid', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterSortBy> sortByUuidDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'uuid', Sort.desc);
+    });
+  }
+}
+
+extension IsarBookmarkQuerySortThenBy
+    on QueryBuilder<IsarBookmark, IsarBookmark, QSortThenBy> {
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterSortBy> thenById() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'id', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterSortBy> thenByIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'id', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterSortBy> thenByName() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'name', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterSortBy> thenByNameDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'name', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterSortBy> thenByPage() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'page', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterSortBy> thenByPageDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'page', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterSortBy> thenByPdfUuid() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'pdfUuid', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterSortBy> thenByPdfUuidDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'pdfUuid', Sort.desc);
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterSortBy> thenByUuid() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'uuid', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QAfterSortBy> thenByUuidDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'uuid', Sort.desc);
+    });
+  }
+}
+
+extension IsarBookmarkQueryWhereDistinct
+    on QueryBuilder<IsarBookmark, IsarBookmark, QDistinct> {
+  QueryBuilder<IsarBookmark, IsarBookmark, QDistinct> distinctByName(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'name', caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QDistinct> distinctByPage() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'page');
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QDistinct> distinctByPdfUuid(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'pdfUuid', caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<IsarBookmark, IsarBookmark, QDistinct> distinctByUuid(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'uuid', caseSensitive: caseSensitive);
+    });
+  }
+}
+
+extension IsarBookmarkQueryProperty
+    on QueryBuilder<IsarBookmark, IsarBookmark, QQueryProperty> {
+  QueryBuilder<IsarBookmark, int, QQueryOperations> idProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'id');
+    });
+  }
+
+  QueryBuilder<IsarBookmark, String, QQueryOperations> nameProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'name');
+    });
+  }
+
+  QueryBuilder<IsarBookmark, int, QQueryOperations> pageProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'page');
+    });
+  }
+
+  QueryBuilder<IsarBookmark, String, QQueryOperations> pdfUuidProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'pdfUuid');
+    });
+  }
+
+  QueryBuilder<IsarBookmark, String, QQueryOperations> uuidProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'uuid');
+    });
+  }
+}
+
+// coverage:ignore-file
+// ignore_for_file: duplicate_ignore, non_constant_identifier_names, constant_identifier_names, invalid_use_of_protected_member, unnecessary_cast, prefer_const_constructors, lines_longer_than_80_chars, require_trailing_commas, inference_failure_on_function_invocation, unnecessary_parenthesis, unnecessary_raw_strings, unnecessary_null_checks, join_return_with_assignment, prefer_final_locals, avoid_js_rounded_ints, avoid_positional_boolean_parameters, always_specify_types
+
 extension GetStudyTaskCollection on Isar {
   IsarCollection<StudyTask> get studyTasks => this.collection();
 }
@@ -9216,3 +14492,647 @@ extension StudyTaskQueryProperty
     });
   }
 }
+
+// **************************************************************************
+// IsarEmbeddedGenerator
+// **************************************************************************
+
+// coverage:ignore-file
+// ignore_for_file: duplicate_ignore, non_constant_identifier_names, constant_identifier_names, invalid_use_of_protected_member, unnecessary_cast, prefer_const_constructors, lines_longer_than_80_chars, require_trailing_commas, inference_failure_on_function_invocation, unnecessary_parenthesis, unnecessary_raw_strings, unnecessary_null_checks, join_return_with_assignment, prefer_final_locals, avoid_js_rounded_ints, avoid_positional_boolean_parameters, always_specify_types
+
+const IsarPointSchema = Schema(
+  name: r'IsarPoint',
+  id: -4063623505548704747,
+  properties: {
+    r'dx': PropertySchema(
+      id: 0,
+      name: r'dx',
+      type: IsarType.double,
+    ),
+    r'dy': PropertySchema(
+      id: 1,
+      name: r'dy',
+      type: IsarType.double,
+    )
+  },
+  estimateSize: _isarPointEstimateSize,
+  serialize: _isarPointSerialize,
+  deserialize: _isarPointDeserialize,
+  deserializeProp: _isarPointDeserializeProp,
+);
+
+int _isarPointEstimateSize(
+  IsarPoint object,
+  List<int> offsets,
+  Map<Type, List<int>> allOffsets,
+) {
+  var bytesCount = offsets.last;
+  return bytesCount;
+}
+
+void _isarPointSerialize(
+  IsarPoint object,
+  IsarWriter writer,
+  List<int> offsets,
+  Map<Type, List<int>> allOffsets,
+) {
+  writer.writeDouble(offsets[0], object.dx);
+  writer.writeDouble(offsets[1], object.dy);
+}
+
+IsarPoint _isarPointDeserialize(
+  Id id,
+  IsarReader reader,
+  List<int> offsets,
+  Map<Type, List<int>> allOffsets,
+) {
+  final object = IsarPoint();
+  object.dx = reader.readDoubleOrNull(offsets[0]);
+  object.dy = reader.readDoubleOrNull(offsets[1]);
+  return object;
+}
+
+P _isarPointDeserializeProp<P>(
+  IsarReader reader,
+  int propertyId,
+  int offset,
+  Map<Type, List<int>> allOffsets,
+) {
+  switch (propertyId) {
+    case 0:
+      return (reader.readDoubleOrNull(offset)) as P;
+    case 1:
+      return (reader.readDoubleOrNull(offset)) as P;
+    default:
+      throw IsarError('Unknown property with id $propertyId');
+  }
+}
+
+extension IsarPointQueryFilter
+    on QueryBuilder<IsarPoint, IsarPoint, QFilterCondition> {
+  QueryBuilder<IsarPoint, IsarPoint, QAfterFilterCondition> dxIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'dx',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarPoint, IsarPoint, QAfterFilterCondition> dxIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'dx',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarPoint, IsarPoint, QAfterFilterCondition> dxEqualTo(
+    double? value, {
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'dx',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarPoint, IsarPoint, QAfterFilterCondition> dxGreaterThan(
+    double? value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'dx',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarPoint, IsarPoint, QAfterFilterCondition> dxLessThan(
+    double? value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'dx',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarPoint, IsarPoint, QAfterFilterCondition> dxBetween(
+    double? lower,
+    double? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'dx',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarPoint, IsarPoint, QAfterFilterCondition> dyIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'dy',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarPoint, IsarPoint, QAfterFilterCondition> dyIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'dy',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarPoint, IsarPoint, QAfterFilterCondition> dyEqualTo(
+    double? value, {
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'dy',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarPoint, IsarPoint, QAfterFilterCondition> dyGreaterThan(
+    double? value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'dy',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarPoint, IsarPoint, QAfterFilterCondition> dyLessThan(
+    double? value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'dy',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarPoint, IsarPoint, QAfterFilterCondition> dyBetween(
+    double? lower,
+    double? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'dy',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        epsilon: epsilon,
+      ));
+    });
+  }
+}
+
+extension IsarPointQueryObject
+    on QueryBuilder<IsarPoint, IsarPoint, QFilterCondition> {}
+
+// coverage:ignore-file
+// ignore_for_file: duplicate_ignore, non_constant_identifier_names, constant_identifier_names, invalid_use_of_protected_member, unnecessary_cast, prefer_const_constructors, lines_longer_than_80_chars, require_trailing_commas, inference_failure_on_function_invocation, unnecessary_parenthesis, unnecessary_raw_strings, unnecessary_null_checks, join_return_with_assignment, prefer_final_locals, avoid_js_rounded_ints, avoid_positional_boolean_parameters, always_specify_types
+
+const IsarRectSchema = Schema(
+  name: r'IsarRect',
+  id: -8574240323163365727,
+  properties: {
+    r'bottom': PropertySchema(
+      id: 0,
+      name: r'bottom',
+      type: IsarType.double,
+    ),
+    r'left': PropertySchema(
+      id: 1,
+      name: r'left',
+      type: IsarType.double,
+    ),
+    r'right': PropertySchema(
+      id: 2,
+      name: r'right',
+      type: IsarType.double,
+    ),
+    r'top': PropertySchema(
+      id: 3,
+      name: r'top',
+      type: IsarType.double,
+    )
+  },
+  estimateSize: _isarRectEstimateSize,
+  serialize: _isarRectSerialize,
+  deserialize: _isarRectDeserialize,
+  deserializeProp: _isarRectDeserializeProp,
+);
+
+int _isarRectEstimateSize(
+  IsarRect object,
+  List<int> offsets,
+  Map<Type, List<int>> allOffsets,
+) {
+  var bytesCount = offsets.last;
+  return bytesCount;
+}
+
+void _isarRectSerialize(
+  IsarRect object,
+  IsarWriter writer,
+  List<int> offsets,
+  Map<Type, List<int>> allOffsets,
+) {
+  writer.writeDouble(offsets[0], object.bottom);
+  writer.writeDouble(offsets[1], object.left);
+  writer.writeDouble(offsets[2], object.right);
+  writer.writeDouble(offsets[3], object.top);
+}
+
+IsarRect _isarRectDeserialize(
+  Id id,
+  IsarReader reader,
+  List<int> offsets,
+  Map<Type, List<int>> allOffsets,
+) {
+  final object = IsarRect();
+  object.bottom = reader.readDoubleOrNull(offsets[0]);
+  object.left = reader.readDoubleOrNull(offsets[1]);
+  object.right = reader.readDoubleOrNull(offsets[2]);
+  object.top = reader.readDoubleOrNull(offsets[3]);
+  return object;
+}
+
+P _isarRectDeserializeProp<P>(
+  IsarReader reader,
+  int propertyId,
+  int offset,
+  Map<Type, List<int>> allOffsets,
+) {
+  switch (propertyId) {
+    case 0:
+      return (reader.readDoubleOrNull(offset)) as P;
+    case 1:
+      return (reader.readDoubleOrNull(offset)) as P;
+    case 2:
+      return (reader.readDoubleOrNull(offset)) as P;
+    case 3:
+      return (reader.readDoubleOrNull(offset)) as P;
+    default:
+      throw IsarError('Unknown property with id $propertyId');
+  }
+}
+
+extension IsarRectQueryFilter
+    on QueryBuilder<IsarRect, IsarRect, QFilterCondition> {
+  QueryBuilder<IsarRect, IsarRect, QAfterFilterCondition> bottomIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'bottom',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarRect, IsarRect, QAfterFilterCondition> bottomIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'bottom',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarRect, IsarRect, QAfterFilterCondition> bottomEqualTo(
+    double? value, {
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'bottom',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarRect, IsarRect, QAfterFilterCondition> bottomGreaterThan(
+    double? value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'bottom',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarRect, IsarRect, QAfterFilterCondition> bottomLessThan(
+    double? value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'bottom',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarRect, IsarRect, QAfterFilterCondition> bottomBetween(
+    double? lower,
+    double? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'bottom',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarRect, IsarRect, QAfterFilterCondition> leftIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'left',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarRect, IsarRect, QAfterFilterCondition> leftIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'left',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarRect, IsarRect, QAfterFilterCondition> leftEqualTo(
+    double? value, {
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'left',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarRect, IsarRect, QAfterFilterCondition> leftGreaterThan(
+    double? value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'left',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarRect, IsarRect, QAfterFilterCondition> leftLessThan(
+    double? value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'left',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarRect, IsarRect, QAfterFilterCondition> leftBetween(
+    double? lower,
+    double? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'left',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarRect, IsarRect, QAfterFilterCondition> rightIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'right',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarRect, IsarRect, QAfterFilterCondition> rightIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'right',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarRect, IsarRect, QAfterFilterCondition> rightEqualTo(
+    double? value, {
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'right',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarRect, IsarRect, QAfterFilterCondition> rightGreaterThan(
+    double? value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'right',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarRect, IsarRect, QAfterFilterCondition> rightLessThan(
+    double? value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'right',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarRect, IsarRect, QAfterFilterCondition> rightBetween(
+    double? lower,
+    double? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'right',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarRect, IsarRect, QAfterFilterCondition> topIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'top',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarRect, IsarRect, QAfterFilterCondition> topIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'top',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarRect, IsarRect, QAfterFilterCondition> topEqualTo(
+    double? value, {
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'top',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarRect, IsarRect, QAfterFilterCondition> topGreaterThan(
+    double? value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'top',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarRect, IsarRect, QAfterFilterCondition> topLessThan(
+    double? value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'top',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarRect, IsarRect, QAfterFilterCondition> topBetween(
+    double? lower,
+    double? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'top',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        epsilon: epsilon,
+      ));
+    });
+  }
+}
+
+extension IsarRectQueryObject
+    on QueryBuilder<IsarRect, IsarRect, QFilterCondition> {}

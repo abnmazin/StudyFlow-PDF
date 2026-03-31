@@ -67,6 +67,14 @@ class _DeveloperModalState extends State<DeveloperModal>
     _controller.dispose();
     super.dispose();
   }
+  // Helper to close modal with animation
+  void _handleClose() {
+    _controller.reverse().then((_) {
+      if (mounted) {
+        widget.onClose();
+      }
+    });
+  }
 
   Future<void> _launchUrl(String url) async {
     final Uri uri = Uri.parse(url);
@@ -92,7 +100,7 @@ class _DeveloperModalState extends State<DeveloperModal>
             children: [
               // Backdrop with dark blue blur
               GestureDetector(
-                onTap: widget.onClose,
+                onTap: _handleClose,
                 child: BackdropFilter(
                   filter: ImageFilter.blur(
                     sigmaX: _blurAnimation.value,
@@ -341,9 +349,8 @@ class _DeveloperModalState extends State<DeveloperModal>
                   offset: const Offset(0, 5),
                 ),
               ],
-            ),
-            child: ElevatedButton(
-              onPressed: widget.onClose,
+            ),            child: ElevatedButton(
+              onPressed: _handleClose,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.transparent,
                 shadowColor: Colors.transparent,
