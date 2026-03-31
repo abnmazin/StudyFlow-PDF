@@ -17,7 +17,7 @@ extension _PDFViewerWidgetStateGestures on _PDFViewerWidgetState {
     }
 
     if (_tool == ToolType.eraser) {
-      _eraseAt(position / scale, page.pageNumber);
+      _eraseAt(position / scale, page.pageNumber, scale);
       return;
     }
 
@@ -32,7 +32,7 @@ extension _PDFViewerWidgetStateGestures on _PDFViewerWidgetState {
     // Guard: only drawing tools reach here (Listener in overlay enforces this)
     if (!_tool.isDrawingTool()) return;
     if (_tool == ToolType.eraser) {
-      _eraseAt(position / scale, page.pageNumber);
+      _eraseAt(position / scale, page.pageNumber, scale);
     } else {
       if (_currentPath != null) {
         setState(() {
@@ -105,11 +105,11 @@ extension _PDFViewerWidgetStateGestures on _PDFViewerWidgetState {
     }
   }
 
-  void _eraseAt(Offset pt, int pageNumber) {
+  void _eraseAt(Offset pt, int pageNumber, double scale) {
     final app = context.read<AppProvider>();
     final pdf = app.activePdf;
     if (pdf == null) return;
-    const double hitRadius = 20.0;
+    final double hitRadius = 20.0 / scale; // Tolerance in PDF units (20px screen)
     List<Highlight> toRemove = [];
 
     for (var h in pdf.highlights) {
@@ -133,19 +133,25 @@ extension _PDFViewerWidgetStateGestures on _PDFViewerWidgetState {
           h.path.length >= 2) {
         final p1 = h.path.first;
         final p2 = h.path.last;
+        final double effectiveRadius = (h.strokeWidth / 2) + hitRadius;
 
         if (h.type == HighlightType.arrow) {
           final d = _distanceToSegment(pt, p1, p2);
-          hit = d <= hitRadius;
+          hit = d <= effectiveRadius;
         } else if (h.type == HighlightType.rectangle) {
           final rect = Rect.fromPoints(p1, p2);
-          final inside = rect.inflate(hitRadius).contains(pt);
-          if (inside) {
-            final onEdge = pt.dx <= rect.left + hitRadius ||
-                pt.dx >= rect.right - hitRadius ||
-                pt.dy <= rect.top + hitRadius ||
-                pt.dy >= rect.bottom - hitRadius;
-            hit = onEdge || rect.contains(pt);
+          // Better logic: inside inflated rect, but specifically hitting the stroke or the fill
+          if (rect.inflate(effectiveRadius).contains(pt)) {
+            // Hit edge
+            final onEdge = (pt.dx - rect.left).abs() <= effectiveRadius ||
+                (pt.dx - rect.right).abs() <= effectiveRadius ||
+                (pt.dy - rect.top).abs() <= effectiveRadius ||
+                (pt.dy - rect.bottom).abs() <= effectiveRadius;
+            
+            // Hit interior if it has a background fill
+            final filled = h.backgroundColor != null && rect.contains(pt);
+            
+            hit = onEdge || filled;
           }
         } else if (h.type == HighlightType.circle) {
           final rect = Rect.fromPoints(p1, p2);
@@ -153,25 +159,44 @@ extension _PDFViewerWidgetStateGestures on _PDFViewerWidgetState {
           final cy = (rect.top + rect.bottom) / 2;
           final rx = rect.width / 2;
           final ry = rect.height / 2;
+
           if (rx > 0 && ry > 0) {
-            final nx = (pt.dx - cx) / rx;
-            final ny = (pt.dy - cy) / ry;
-            final v = nx * nx + ny * ny;
-            hit = v <= 1.15; // include border tolerance
+            // Distance from center relative to radius (ellipsoid distance)
+            final dx = (pt.dx - cx);
+            final dy = (pt.dy - cy);
+            
+            // Check border hit
+            // In a circle rx=ry=R, distance is sqrt(dx^2+dy^2). Hit if distance close to R.
+            // For ellipses, we check if the point is within tolerance of the edge
+            final double distFromCenter = (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry);
+            
+            // Border tolerance: 1.0 is the exact edge. 
+            // We want to be within tolerance on either side of 1.0
+            final double tol = effectiveRadius / ((rx + ry) / 2);
+            final hitBorder = (distFromCenter - 1.0).abs() <= tol;
+            final hitFill = h.backgroundColor != null && distFromCenter <= 1.0;
+            
+            hit = hitBorder || hitFill;
           }
         }
       }
-      // Ø¥Ø°Ø§ ÙƒØ§Ù† ØªØ¸Ù„ÙŠÙ„Ø§Ù‹ Ø­Ø±Ø§Ù‹ Ø£Ùˆ Ù‚Ù„Ù…Ø§Ù‹
+      // Freehand pen or highlight
       else {
+        // PER-STROKE HIT DETECTION: 
+        // strokeWidth / 2 (the radius of the line) + base tolerance (hitRadius already in PDF units)
+        final double effectiveRadius = (h.strokeWidth / 2) + hitRadius;
+
         for (var i = 0; i < h.path.length; i++) {
           final p = h.path[i];
-          if ((p - pt).distance < hitRadius) {
+          // 1. Direct point hit
+          if ((p - pt).distance < effectiveRadius) {
             hit = true;
             break;
           }
+          // 2. Segment hit (allowing swipes across any part of the line)
           if (i > 0) {
             final d = _distanceToSegment(pt, h.path[i - 1], p);
-            if (d <= hitRadius) {
+            if (d <= effectiveRadius) {
               hit = true;
               break;
             }

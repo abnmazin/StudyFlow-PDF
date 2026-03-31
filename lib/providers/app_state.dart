@@ -97,6 +97,13 @@ class AppProvider extends ChangeNotifier {
       _saveTimer!.cancel();
       _saveState(); // Flush pending save immediately
     }
+
+    // FINAL FLUSH: If there are unsaved changes, trigger sync immediately before shutdown
+    if (_hasUnsavedChanges) {
+      _syncDebounce?.cancel();
+      // Use fire-and-forget for the final sync attempt in dispose
+      performBidirectionalSync(silent: true);
+    }
     super.dispose();
   }
 
@@ -320,7 +327,7 @@ class AppProvider extends ChangeNotifier {
   void triggerDebouncedSync({bool silent = true}) {
     if (!_hasUnsavedChanges) return;
     _syncDebounce?.cancel();
-    _syncDebounce = Timer(const Duration(milliseconds: 1800), () {
+    _syncDebounce = Timer(const Duration(milliseconds: 3000), () {
       performBidirectionalSync(silent: silent);
     });
   }
@@ -348,60 +355,10 @@ class AppProvider extends ChangeNotifier {
   void _triggerSync(String fileHash) {
     if (_currentUser?.role != 'lecturer') return;
     
-    final code = _pdfSessionCodes[fileHash];
-    if (code == null) return;
-    
-    // Find a PDF with this hash to get its highlights
-    PdfItem? pdf;
-    for (var cls in _classes) {
-       for (var p in cls.pdfs) {
-         if (p.fileHash == fileHash) {
-            pdf = p;
-            break;
-         }
-       }
-       if (pdf != null) break;
-    }
-    if (pdf == null) return;
-
-    if (_drawingSyncStrategy == DrawingSyncStrategy.disabled) {
-      return;
-    } else if (_drawingSyncStrategy == DrawingSyncStrategy.immediate) {
-      // Unawaited background sync to avoid blocking UI mutation
-      _syncService.uploadDelta(
-        code,
-        fileHash,
-        pdf.highlights,
-        pdf.comments,
-      ).catchError((e) {
-        debugPrint('❌ Sync Error: $e');
-      });
-      debugPrint('DEBUG: Drawing captured. Size: ${pdf.highlights.isNotEmpty ? pdf.highlights.last.path.length : 0} points. Destination: sync_sessions/$code/annotations/$fileHash.');
-    } else if (_drawingSyncStrategy == DrawingSyncStrategy.buffered) {
-      _pendingSyncs[fileHash] = true;
-      if (_syncTimers[fileHash] == null || !_syncTimers[fileHash]!.isActive) {
-        _syncTimers[fileHash] = Timer(const Duration(seconds: 5), () {
-          if (_pendingSyncs[fileHash] == true) {
-            _pendingSyncs[fileHash] = false;
-            _syncService.uploadDelta(code, fileHash, pdf!.highlights, pdf.comments).catchError((e) {
-              debugPrint('❌ Buffered Sync Error: $e');
-            });
-            debugPrint('DEBUG: Buffered Sync Triggered for $fileHash.');
-          }
-        });
-      }
-      debugPrint('DEBUG: Drawing captured (Buffered). Size: ${pdf.highlights.isNotEmpty ? pdf.highlights.last.path.length : 0} points.');
-      // Rule #1: NO FIREBASE IN ISOLATES.
-      // Move model serialization to Main Isolate. JSON conversion is instant.
-      final hJson = pdf.highlights.map((h) => {...h.toJson(), 'kind': 'highlight'}).toList();
-      final cJson = pdf.comments.map((c) => {...c.toJson(), 'kind': 'comment'}).toList();
-      final serialized = [...hJson, ...cJson];
-      
-      _syncService.uploadSerializedDelta(code, fileHash, serialized).catchError((e) {
-        debugPrint('❌ Isolate Sync Error: $e');
-      });
-      debugPrint('DEBUG: Drawing captured (Main Isolate). Size: ${pdf.highlights.isNotEmpty ? pdf.highlights.last.path.length : 0} points.');
-    }
+    // REDIRECT TO DEBOUNCED SYNC: 
+    // Following the 'File-Based Debounced Sync' optimization mandate (3000ms).
+    _markUnsavedChanges();
+    triggerDebouncedSync(silent: true);
   }
 
   void _notify() {
@@ -1641,16 +1598,10 @@ class AppProvider extends ChangeNotifier {
       _notify();
       _saveTimer?.cancel();
       _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
-      
-      // Anti-Resurrection: Immediate server-side delete if session is active
-      final code = _pdfSessionCodes[pdf.fileHash];
-      if (code != null && highlight.isSynced) {
-        _syncService.deleteAnnotation(code, pdf.fileHash ?? '', highlight.id).catchError((e) {
-          debugPrint('❌ deleteAnnotation failed: $e');
-        });
-      } else {
-        _triggerSync(pdf.fileHash ?? '');
-      }
+
+      // DEBOUNCED SYNC: Rely entirely on batching. No immediate deleteAnnotation call.
+      _markUnsavedChanges();
+      triggerDebouncedSync(silent: true);
       return;
     }
   }
@@ -1726,16 +1677,9 @@ class AppProvider extends ChangeNotifier {
       _saveTimer?.cancel();
       _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
 
-      // Anti-Resurrection: Immediate server-side delete if session is active
-      final code = _pdfSessionCodes[pdf.fileHash];
-      if (code != null && comment.isSynced) {
-        _syncService.deleteAnnotation(code, pdf.fileHash ?? '', comment.id).catchError((e) {
-          debugPrint('❌ deleteComment failed: $e');
-        });
-      } else {
-        _markUnsavedChanges();
-        triggerDebouncedSync(silent: true);
-      }
+      // DEBOUNCED SYNC: Batching all mutations (including deletions tracked in _locallyDeletedIds)
+      _markUnsavedChanges();
+      triggerDebouncedSync(silent: true);
       return;
     }
   }
@@ -1776,20 +1720,9 @@ class AppProvider extends ChangeNotifier {
       _saveTimer?.cancel();
       _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
 
-      // PHASE 10: If a session is active, wipe that fileHash's server doc
-      // immediately so the next sync won't pull back deleted items.
-      final fileHash = pdf.fileHash;
-      final sessionCode = fileHash != null ? _pdfSessionCodes[fileHash] : null;
-      if (fileHash != null && fileHash.isNotEmpty && sessionCode != null) {
-        _syncService.clearAnnotationsForHash(sessionCode, fileHash).catchError((e) {
-          debugPrint('clearAnnotationsForHash failed: $e');
-        });
-        debugPrint('DEBUG: Cleared server annotations for $fileHash (session: $sessionCode).');
-      } else {
-        // No session — standard buffered sync (will push empty list)
-        _markUnsavedChanges();
-        triggerDebouncedSync(silent: true);
-      }
+      // Standard debounced sync: will push the empty state after 3s
+      _markUnsavedChanges();
+      triggerDebouncedSync(silent: true);
       return;
     }
   }

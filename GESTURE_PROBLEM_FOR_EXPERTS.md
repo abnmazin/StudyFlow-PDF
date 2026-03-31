@@ -1,586 +1,429 @@
-# Flutter PDF Viewer — Gesture Architecture Problem (For Expert Review)
-# مشكلة الإيماءات في مشغل PDF — للمراجعة من قِبل الخبراء
+# StudyFlow — Full Project Analysis
+
+## 1. Project Identity
+
+| Property | Value |
+|---|---|
+| **App Name** | StudyFlow (package: `pdfreader`) |
+| **Version** | 1.0.0+1 |
+| **SDK** | dart ^3.10.7 |
+| **Platform** | Windows-first (file associations, wmic, registry hardware ID) |
+| **Architecture** | Provider + Isar + Firestore |
+| **Locale** | Arabic ([ar](file:///d:/Programing/flutter/app/lib.rar)) primary, English fallback |
 
 ---
 
-## 📋 SUMMARY OF THE CORE PROBLEM | ملخص المشكلة الأساسية
-
-We are building a **Flutter PDF annotation app** (desktop + tablet) using the [`pdfrx`](https://pub.dev/packages/pdfrx) package.
-
-**The fundamental conflict:**
-- `pdfrx` uses `PdfViewer.file(...)` with `pageOverlaysBuilder` to inject custom widgets on top of each page.
-- We need these overlays to handle **drawing gestures** (pan/drag to draw shapes, highlight, pen strokes).
-- BUT we also need `pdfrx`'s native behavior to work **at the same time**:
-  - ✅ Two-finger pinch-zoom
-  - ✅ Two-finger pan / scroll
-  - ✅ Mouse wheel scroll
-  - ✅ Spacebar / arrow key navigation
-  - ✅ Native text selection (pdfrx built-in)
-  - ✅ Right-click context menus
-
-**The conflict:** Any gesture widget placed in the overlay either:
-1. **Blocks pdfrx completely** (GestureDetector with opaque behavior), OR
-2. **Gets blocked by pdfrx** (nothing works), OR
-3. **Interferes with the Flutter Gesture Arena** in subtle ways (freezes, wrong coordinates, chaos lines on multi-touch)
-
----
-
-## 🏗️ PROJECT STRUCTURE
+## 2. Directory Structure
 
 ```
-StudyFlowPdf/
+app/
 ├── lib/
+│   ├── main.dart                  # Entry point, single-instance server, RootWrapper
+│   ├── firebase_options.dart      # Firebase config
+│   ├── models/
+│   │   ├── annotations.dart       # Highlight, PdfComment, PdfBookmark
+│   │   ├── app_user.dart          # AppUser (uid, username, role, hardwareId)
+│   │   ├── enums.dart             # ToolType, HighlightType
+│   │   ├── isar_models.dart       # ClassFolder, PdfDocument, PdfSnapshot, TrashItem, StudyTask
+│   │   ├── models.dart            # Barrel export
+│   │   ├── print_settings.dart
+│   │   └── structure.dart         # PdfItem, ClassItem (in-memory runtime models)
+│   ├── providers/
+│   │   └── app_state.dart         # AppProvider (2681 lines — central state machine)
+│   ├── services/
+│   │   ├── auth_service.dart      # loginAndBind (Firestore-based, device-bound)
+│   │   ├── file_hash_service.dart # SHA-256 file hashing
+│   │   ├── file_manager_service.dart  # Isar DB wrapper (folders, PDFs, tasks)
+│   │   ├── hardware_service.dart  # Windows device UUID (wmic/CIM/registry)
+│   │   ├── pdf_tools_service.dart # PDF merge/split utilities (Syncfusion)
+│   │   ├── print_service.dart     # Print pipeline
+│   │   └── sync_service.dart      # Firestore real-time sync (671 lines)
+│   ├── screens/
+│   │   ├── admin/dev_dashboard.dart   # Developer/Admin control panel
+│   │   └── auth/login_screen.dart     # Username + device-bound login UI
 │   ├── widgets/
-│   │   ├── pdf_viewer_widget_w.dart          ← main widget (~900 lines)
-│   │   ├── pdf_viewer_widget_overlay.dart    ← page overlay builder (THIS FILE)
-│   │   ├── pdf_viewer_widget_gestures.dart   ← pan/draw handlers
-│   │   ├── pdf_viewer_widget_style.dart      ← shape selection hit-testing
-│   │   ├── pdf_viewer_widget_actions.dart    ← toolbar actions
-│   │   ├── pdf_viewer_widget_dashboard.dart  ← dashboard UI
+│   │   ├── sidebar_w.dart             # Left navigation sidebar
+│   │   ├── pdf_viewer_widget_w.dart   # Main PDF viewer (51KB)
+│   │   ├── pdf_viewer_widget_gestures.dart
+│   │   ├── pdf_viewer_widget_actions.dart
+│   │   ├── pdf_viewer_widget_overlay.dart
+│   │   ├── pdf_viewer_widget_print.dart
+│   │   ├── pdf_viewer_widget_style.dart
+│   │   ├── pdf_viewer_widget_dashboard.dart  # Dashboard home screen
+│   │   ├── draggable_text_widget.dart
+│   │   ├── developer_modal_w.dart
+│   │   ├── global_settings_modal.dart
+│   │   ├── dialogs/
+│   │   │   ├── images_to_pdf_dialog.dart
+│   │   │   └── merge_pdf_dialog.dart
 │   │   └── viewer_components/
-│   │       ├── viewer_toolbar.dart           ← top toolbar
-│   │       └── viewer_right_panel.dart       ← right properties panel
-│   └── models/
-│       └── enums.dart                        ← ToolType, HighlightType enums
-```
-
-**Package versions (pubspec.yaml):**
-```yaml
-pdfrx: ^1.x.x   # exact version — check pubspec.lock
-provider: ^6.x.x
-lucide_icons: ^0.x.x
-isar: ^3.1.0
+│   │       ├── viewer_toolbar.dart    # Top toolbar (tools, undo, page nav)
+│   │       ├── viewer_right_panel.dart  # Annotation properties panel (97KB)
+│   │       ├── session_cards.dart     # Session/Sync UI cards
+│   │       ├── print_dialog.dart
+│   │       ├── mini_calculator_widget.dart
+│   │       └── join_master_modal.dart
+│   ├── painters/
+│   │   └── highlight_painter.dart    # CustomPainter for all annotations
+│   └── utils/
+│       └── print_utils.dart
+├── pubspec.yaml
+├── firestore.rules
+└── windows/                          # Windows platform target
 ```
 
 ---
 
-## 🔢 TOOL TYPES (enums.dart)
+## 3. Key Dependencies
+
+| Package | Purpose |
+|---|---|
+| `provider ^6.1.5` | State management |
+| `pdfrx ^2.2.24` | PDF rendering |
+| `isar ^3.1.0` | Local embedded database |
+| `cloud_firestore ^5.0.0` | Real-time sync backend |
+| `firebase_core ^3.0.0` | Firebase init |
+| `syncfusion_flutter_pdf ^32.2.4` | PDF manipulation (edit, merge, pages) |
+| `printing ^5.13.2` | Print pipeline |
+| `file_picker ^10.3.10` | File open dialog |
+| `desktop_drop ^0.7.0` | Drag & drop PDF support |
+| `shared_preferences ^2.5.4` | Persistent settings & session |
+| `google_generative_ai ^0.4.6` | Gemini AI integration |
+| `http ^1.3.0` | Groq AI API calls |
+| `flutter_math_fork ^0.7.4` | LaTeX rendering in comments |
+| `uuid ^4.5.2` | UUID generation |
+| `crypto ^3.0.3` | SHA-256 file hashing |
+| `flutter_dotenv ^5.1.0` | [.env](file:///d:/Programing/flutter/app/.env) API key loading |
+
+---
+
+## 4. Data Models
+
+### 4.1 In-Memory Runtime Models ([structure.dart](file:///d:/Programing/flutter/app/lib/models/structure.dart))
+
+**[PdfItem](file:///d:/Programing/flutter/app/lib/models/structure.dart#3-102)** — One open PDF document:
+- [id](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#60-2677), `name`, `path` (working copy), `originalPath`
+- `fileHash` (SHA-256), `pageCount`
+- `highlights: List<Highlight>`, `comments: List<PdfComment>`, `bookmarks: List<PdfBookmark>`
+- `scrollTop`, `lastPage`, `lastModified`
+- Full JSON serialization for `SharedPreferences` persistence
+
+**[ClassItem](file:///d:/Programing/flutter/app/lib/models/structure.dart#103-132)** — A named folder of PDFs:
+- [id](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#60-2677), `name`, `pdfs: List<PdfItem>`, `lastActivePdfId`
+
+### 4.2 Annotation Models ([annotations.dart](file:///d:/Programing/flutter/app/lib/models/annotations.dart))
+
+**[Highlight](file:///d:/Programing/flutter/app/lib/models/annotations.dart#4-109)** — Drawing, pen stroke, shape, or text highlight:
+- [id](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#60-2677), `path: List<Offset>`, `color`, `page`, `strokeWidth`
+- `type: HighlightType` (highlight/pen/text/arrow/rectangle/circle/select)
+- `rects: List<Rect>?` (for text selection highlights)
+- `backgroundColor` (int, fill color for shapes)
+- `isSynced: bool`, `updatedAt` (timestamp for Last-Writer-Wins)
+- Cached [Path](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1230-1299) object for fast paint
+
+**[PdfComment](file:///d:/Programing/flutter/app/lib/models/annotations.dart#110-221)** — Draggable sticky note / text box:
+- [id](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#60-2677), `page`, `position: Offset`, `content`, [date](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#416-437)
+- `color`, `fontSize`, `isBold`, `isLatex`, `fontFamily`
+- `showBorder`, `borderColor`, `bgColor`
+- `isSynced`, `updatedAt`
+
+**[PdfBookmark](file:///d:/Programing/flutter/app/lib/models/annotations.dart#222-235)** — Page bookmark: [id](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#60-2677), `page`, `name`
+
+### 4.3 Isar Persistent Models ([isar_models.dart](file:///d:/Programing/flutter/app/lib/models/isar_models.dart))
+
+| Collection | Purpose |
+|---|---|
+| [ClassFolder](file:///d:/Programing/flutter/app/lib/models/isar_models.dart#10-46) | Mirrors ClassItem in the local DB. Holds `uuid`, `name`, `icon`, `color`, `orderIndex`, `pdfIds[]` |
+| [PdfDocument](file:///d:/Programing/flutter/app/lib/models/isar_models.dart#51-134) | Tracks imported PDFs with working copy, page, zoom, scroll, annotation counts |
+| [PdfSnapshot](file:///d:/Programing/flutter/app/lib/models/isar_models.dart#139-181) | Point-in-time versioned copies for undo history |
+| [TrashItem](file:///d:/Programing/flutter/app/lib/models/isar_models.dart#186-236) | Soft-deleted PDFs retained 30 days |
+| [StudyTask](file:///d:/Programing/flutter/app/lib/models/isar_models.dart#241-268) | Daily to-do items: `uuid`, `title`, `isDone`, `createdAt` |
+
+### 4.4 User Model ([app_user.dart](file:///d:/Programing/flutter/app/lib/models/app_user.dart))
+
+```dart
+AppUser { uid, username, role, hardwareId }
+```
+- `role` values: `developer`, `lecturer`, `member`
+- `developer` bypasses device binding; all others are strictly bound to one device
+
+---
+
+## 5. Enums ([enums.dart](file:///d:/Programing/flutter/app/lib/models/enums.dart))
 
 ```dart
 enum ToolType { cursor, select, highlight, pen, text, eraser, arrow, rectangle, circle }
-//              ^^^^^^  ^^^^^^
-//              Hand    Select
-//         (pure scroll) (shape hit-test)
-
-extension ToolTypeExtension on ToolType {
-  bool isDrawingTool() {
-    return switch (this) {
-      ToolType.pen ||
-      ToolType.highlight ||
-      ToolType.arrow ||
-      ToolType.rectangle ||
-      ToolType.circle ||
-      ToolType.eraser => true,
-      _ => false,
-    };
-  }
-
-  bool isSelectionTool() {
-    return this == ToolType.select || this == ToolType.text;
-  }
-
-  bool isHandTool() {
-    return this == ToolType.cursor;
-  }
-}
+enum HighlightType { highlight, pen, text, comment, arrow, rectangle, circle, select }
 ```
 
-- **`cursor`** (Hand tool): `isHandTool()` → `IgnorePointer(ignoring: true)` passes all events to pdfrx.
-- **`select`** / **`text`**: `isSelectionTool()` → Listener detects manual tap (distance < 5px, duration < 300ms).
-- **`highlight`, `pen`, `arrow`, `rectangle`, `circle`, `eraser`**: `isDrawingTool()` → Listener captures single-finger pan for drawing, second finger aborts the stroke so pdfrx can pinch-zoom.
+Extensions provide `.isDrawingTool()`, `.isSelectionTool()`, `.isHandTool()`, `.isDrawing`, `.isTapOnly`, `.isHand`.
 
 ---
 
-## 📄 CURRENT CODE STATE (pdf_viewer_widget_overlay.dart)
+## 6. AppProvider — Central State Machine ([providers/app_state.dart](file:///d:/Programing/flutter/app/lib/providers/app_state.dart), 2681 lines)
 
-**State variables added to `_PDFViewerWidgetState` (pdf_viewer_widget_w.dart):**
-```dart
-// Raw pointer tracking — replaces old int _activePointerCount
-final Set<int> _activePointerIds = <int>{};
-int? _primaryPointerId;
-Offset? _pointerDownPosition;
-DateTime? _pointerDownTime;
-```
+### 6.1 Core State Fields
+- `_classes: List<ClassItem>` — all folders and PDFs
+- `_activeClassId`, `_activePdfId` — current selection
+- `_currentUser: AppUser?` — logged-in user (null → LoginScreen)
+- `_pdfSessionCodes: Map<String, String>` — fileHash → sessionCode mapping
+- `_actionHistory`, `_redoHistory: List<ActionRecord>` — undo/redo stack
+- `_initCompleter` — `Future<void> initialized` for async startup
 
-**Overlay (pure Listener — NO GestureDetector):**
-```dart
-part of 'pdf_viewer_widget_w.dart';
+### 6.2 Initialization Flow
+1. [_loadState()](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#824-928) — loads from `SharedPreferences` (user, classes, active IDs, session codes, AI settings)
+2. [_syncFoldersWithIsar()](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1314-1381) — mirrors [ClassItem](file:///d:/Programing/flutter/app/lib/models/structure.dart#103-132) list to Isar [ClassFolder](file:///d:/Programing/flutter/app/lib/models/isar_models.dart#10-46) table
+3. [_loadTasks()](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#2631-2640) — loads [StudyTask](file:///d:/Programing/flutter/app/lib/models/isar_models.dart#241-268) list from Isar
+4. Startup Security Guard — verifies `_currentUser.uid` still exists in Firestore; force-logout if not
+5. [_startUserMonitor()](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#519-527) — attaches a Firestore snapshot listener to detect account deletion in real time
+6. `_initCompleter.complete()` — signals [RootWrapper](file:///d:/Programing/flutter/app/lib/main.dart#213-265) to show either [MainLayout](file:///d:/Programing/flutter/app/lib/main.dart#266-274) or [LoginScreen](file:///d:/Programing/flutter/app/lib/screens/auth/login_screen.dart#11-17)
 
-extension _PDFViewerWidgetStateOverlay on _PDFViewerWidgetState {
-  Widget _buildPageOverlay(
-    BuildContext context,
-    Rect pageRect,
-    PdfPage page,
-    PdfItem pdf,
-  ) {
-    final scale = pageRect.width / page.width;
-    // Hand tool → IgnorePointer passes all events to pdfrx natively.
-    final ignoring = _tool.isHandTool();
+### 6.3 Persistence
+- **`SharedPreferences`**: classes, active class, session codes, user JSON, AI settings, dark mode
+- **[Isar](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1314-1381)**: [ClassFolder](file:///d:/Programing/flutter/app/lib/models/isar_models.dart#10-46), [StudyTask](file:///d:/Programing/flutter/app/lib/models/isar_models.dart#241-268) (via `FileManagerService`)
+- [_saveState()](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#973-1013) is debounced (500ms) with a write-lock guard (`_isSaving`, `_needsSave`)
+- [_cleanupTempFiles()](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#929-972) runs on startup to delete orphaned `_studyflow_temp_*.pdf` files
 
-    Widget overlay = Stack(
-      children: [
-        // 1. Saved highlights/shapes (CustomPaint — no gestures)
-        CustomPaint(
-          size: Size(pageRect.width, pageRect.height),
-          painter: HighlightPainter(
-            highlights: pdf.highlights.where((h) => h.page == page.pageNumber).toList(),
-            scale: scale,
-            isCurrent: false,
-            selectedHighlightId: _selectedHighlightId,
-          ),
-        ),
+### 6.4 Key Actions
+| Method | Description |
+|---|---|
+| [setActiveClass(id)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1079-1101) | Switch class, auto-open last active PDF |
+| [setActivePdf(id)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1102-1155) | Open PDF, trigger auto-join if lecturer/student |
+| [loadPdfFromPath(path)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1230-1299) | Windows file association — opens via CLI arg |
+| [uploadPdf(classId)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1399-1435) | File picker → add PDF to class |
+| [addClass(name)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1300-1313) / [deleteClass](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#2488-2499) | Class CRUD |
+| [deletePdf(classId, pdfId)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#2500-2537) | Removes from disk + state |
+| [movePdf(...)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#2567-2602) | Move PDF between classes |
+| [addHighlight(pdfId, h)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1436-1462) | Adds annotation, records to undo history, triggers sync |
+| [removeHighlight(...)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1481-1512) | Removes, anti-resurrection server delete |
+| [addComment(...)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1531-1563) / [removeComment()](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1564-1595) | Same pattern as highlight |
+| [updateComment(...)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1750-1810) / [updateHighlight(...)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#370-415) | In-place update, records undo state |
+| [undoLastAction()](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1812-1974) / [redoLastAction()](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1975-2120) | Full undo/redo for all annotation types |
+| [clearAllAnnotations(pdfId)](file:///d:/Programing/flutter/app/lib/services/sync_service.dart#181-188) | Wipes all highlights + comments locally + on Firestore |
+| [deletePage(pdfId, pageIndex)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#2287-2354) | Isolate-based page removal with annotation shift |
+| [addPage(pdfId)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#2355-2425) | Isolate-based page insertion |
+| [addTask(title)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#2641-2647) / [toggleTask(uuid)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#2648-2656) / [deleteTask(uuid)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#2657-2662) | StudyTask CRUD via Isar |
+| [joinSession(code)](file:///d:/Programing/flutter/app/lib/services/sync_service.dart#545-595) | Student joins a sync session by code |
+| [linkMasterBundle(bundle)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#567-608) | Links multiple PDFs → session codes via master bundle |
+| [logout()](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#609-619) | Clears user, session codes, stops listeners |
 
-        // 2. Live drawing preview (CustomPaint — no gestures)
-        if (_currentPage == page.pageNumber && _currentPath != null)
-          CustomPaint(
-            size: Size(pageRect.width, pageRect.height),
-            painter: HighlightPainter(
-              highlights: [
-                Highlight(
-                  id: 'temp_drawing_id',
-                  path: _currentPath!,
-                  color: _currentColor,
-                  page: page.pageNumber,
-                  strokeWidth: _currentStrokeWidth,
-                  type: _getActiveToolType(),
-                ),
-              ],
-              scale: scale,
-              isCurrent: true,
-              selectedHighlightId: null,
-            ),
-          ),
+### 6.5 Sync Strategy ([DrawingSyncStrategy](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#90-94))
+- `disabled` — no live sync
+- `immediate` — every annotation triggers an upload
+- `buffered` — batches uploads every 5 seconds
+- `isolate` — serialization runs in a Dart Isolate before upload
 
-        // 3. Interaction layer — RAW POINTER ROUTING ONLY, no GestureDetector.
-        // IgnorePointer(ignoring: true) when Hand tool → pdfrx gets 100% control.
-        Positioned.fill(
-          child: IgnorePointer(
-            ignoring: ignoring,
-            child: Listener(
-              behavior: HitTestBehavior.translucent,
-              onPointerDown: (event) {
-                _activePointerIds.add(event.pointer);
-
-                if (_activePointerIds.length == 1) {
-                  _primaryPointerId = event.pointer;
-                  _pointerDownPosition = event.localPosition;
-                  _pointerDownTime = DateTime.now();
-
-                  if (_tool.isDrawingTool()) {
-                    _handlePanStart(event.localPosition, page, scale);
-                  }
-                } else {
-                  // Second finger: abort current stroke so pdfrx can pinch-zoom
-                  if (_tool.isDrawingTool() && _currentPath != null) {
-                    setState(() => _currentPath = null);
-                  }
-                }
-              },
-              onPointerMove: (event) {
-                if (_activePointerIds.length == 1 &&
-                    _primaryPointerId == event.pointer &&
-                    _tool.isDrawingTool() &&
-                    _currentPath != null &&
-                    _selectedHighlightId == null) {
-                  _handlePanUpdate(event.localPosition, page, scale);
-                }
-              },
-              onPointerUp: (event) {
-                final wasPrimary = _primaryPointerId == event.pointer;
-
-                // End drawing stroke
-                if (wasPrimary &&
-                    _tool.isDrawingTool() &&
-                    _currentPath != null) {
-                  _handlePanEnd(pdf);
-                }
-
-                // Manual tap detection for select / text tools
-                if (wasPrimary &&
-                    _tool.isSelectionTool() &&
-                    _pointerDownPosition != null &&
-                    _pointerDownTime != null) {
-                  final distance =
-                      (event.localPosition - _pointerDownPosition!).distance;
-                  final duration =
-                      DateTime.now().difference(_pointerDownTime!);
-                  if (distance < 5.0 && duration.inMilliseconds < 300) {
-                    final appProvider = context.read<AppProvider>();
-                    if (appProvider.activeEditingCommentId == null) {
-                      if (_tool == ToolType.select) {
-                        _handleSelectionTap(
-                            event.localPosition, page, pdf, scale);
-                      } else if (_tool == ToolType.text) {
-                        _addTextAt(
-                            event.localPosition / scale, page.pageNumber);
-                      }
-                    }
-                  }
-                }
-
-                _activePointerIds.remove(event.pointer);
-                if (_activePointerIds.isEmpty) {
-                  _primaryPointerId = null;
-                  _pointerDownPosition = null;
-                  _pointerDownTime = null;
-                }
-              },
-              onPointerCancel: (event) {
-                _activePointerIds.remove(event.pointer);
-                if (_tool.isDrawingTool() && _currentPath != null) {
-                  setState(() => _currentPath = null);
-                }
-                if (_activePointerIds.isEmpty) {
-                  _primaryPointerId = null;
-                  _pointerDownPosition = null;
-                  _pointerDownTime = null;
-                }
-              },
-              child: const SizedBox.expand(),
-            ),
-          ),
-        ),
-
-        // 4. DraggableTextWidget annotations (always on top)
-        ...pdf.comments.where((c) => c.page == page.pageNumber).map((c) {
-          return Positioned(
-            left: c.position.dx,
-            top: c.position.dy,
-            child: DraggableTextWidget( ... ),
-          );
-        }),
-      ],
-    );
-
-    return RepaintBoundary(child: overlay);
-  }
-}
-```
+### 6.6 Security System
+- [_startKickListener(code)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#632-692) — watches Firestore session doc for:
+  - Session deletion → force logout
+  - `kicked_uids` match → kick
+  - `isLocked` toggle → clear unsynced annotations, switch to cursor tool
+  - Student removed from `participants` → kick
+- [_startUserMonitor(uid)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#519-527) — Firestore stream to detect account deletion
+- [_handleForceLogout(reason)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#698-735) — wipes session data, triggers UI redirect
 
 ---
 
-## 🔧 _buildPdfViewerCore (pdf_viewer_widget_w.dart)
+## 7. Services
 
-```dart
-Widget _buildPdfViewerCore(PdfItem pdf) {
-  return Listener(
-    onPointerSignal: (pointerSignal) {
-      // Auto-switch to Hand when scrolling with mouse wheel during drawing
-      if (pointerSignal is PointerScrollEvent &&
-          _tool != ToolType.cursor &&
-          _tool != ToolType.select) {
-        setState(() => _tool = ToolType.cursor);
-      }
-    },
-    child: PdfViewer.file(
-      pdf.path,
-      controller: _pdfController,
-      params: PdfViewerParams(
-        maxScale: 4.0,
-        minScale: 0.5,
-        scrollByMouseWheel: 0.8,
-        pageOverlaysBuilder: (context, pageRect, page) {
-          return [
-            RepaintBoundary(
-              child: _buildPageOverlay(context, pageRect, page, pdf),
-            ),
-          ];
-        },
-        enableKeyboardNavigation: _editingCommentId == null && !_isSearchVisible,
-        textSelectionParams: PdfTextSelectionParams(
-          onTextSelectionChange: (selection) {
-            if (!mounted) return;
-            if (_suppressTextSelection) return;
-            setState(() => _textSelection = selection);
-          },
-        ),
-      ),
-    ),
-  );
-}
-```
+### [SyncService](file:///d:/Programing/flutter/app/lib/services/sync_service.dart#14-671) ([sync_service.dart](file:///d:/Programing/flutter/app/lib/services/sync_service.dart), 671 lines)
+Firestore schema: `sync_sessions/{code}` with sub-collection `annotations/{fileHash}`.
 
----
+| Method | Description |
+|---|---|
+| [generateSessionCode(...)](file:///d:/Programing/flutter/app/lib/services/sync_service.dart#78-113) | Creates a new 6-char session, idempotent |
+| [findExistingSession(user, hash)](file:///d:/Programing/flutter/app/lib/services/sync_service.dart#61-77) | Lecturer auto-join: finds their existing session |
+| [joinSession(...)](file:///d:/Programing/flutter/app/lib/services/sync_service.dart#545-595) | Student enrollment with file hash + page count validation |
+| [watchSessionSecurity(code)](file:///d:/Programing/flutter/app/lib/services/sync_service.dart#128-144) | Real-time stream of kicks, locks, participants |
+| [syncExistingAnnotations(...)](file:///d:/Programing/flutter/app/lib/services/sync_service.dart#381-539) | Full 5-phase bidirectional reconciliation (LWW) |
+| [uploadDelta(...)](file:///d:/Programing/flutter/app/lib/services/sync_service.dart#600-616) | Simple immediate upload (all annotations) |
+| [kickParticipant(code, username)](file:///d:/Programing/flutter/app/lib/services/sync_service.dart#292-318) | Ban + remove from participants |
+| [deleteAnnotation(code, hash, id)](file:///d:/Programing/flutter/app/lib/services/sync_service.dart#361-380) | Surgical single annotation server delete |
+| [deleteSession(code)](file:///d:/Programing/flutter/app/lib/services/sync_service.dart#200-219) | Deletes session + all annotation sub-docs |
+| [watchAllMasterBundles()](file:///d:/Programing/flutter/app/lib/services/sync_service.dart#23-29) | Stream for dev dashboard |
+| [createMasterBundle(owner, bundle)](file:///d:/Programing/flutter/app/lib/services/sync_service.dart#30-43) | 8-char master code linking multiple sessions |
+| [isDeviceBlacklisted(hardwareId)](file:///d:/Programing/flutter/app/lib/services/sync_service.dart#171-180) | Checks `blacklisted_devices` collection |
+| [checkUserExists(uid)](file:///d:/Programing/flutter/app/lib/services/sync_service.dart#161-170) | One-shot user existence check |
 
-## ❌ ATTEMPTED SOLUTIONS (ALL FAILED)
+### [AuthService](file:///d:/Programing/flutter/app/lib/services/auth_service.dart#6-61) ([auth_service.dart](file:///d:/Programing/flutter/app/lib/services/auth_service.dart))
+- [loginAndBind(username)](file:///d:/Programing/flutter/app/lib/services/auth_service.dart#14-60):
+  1. Device blacklist check
+  2. Username lookup in `users` Firestore collection
+  3. `developer` role → no device binding
+  4. First login → binds `hardwareId` to account
+  5. Subsequent login → strict device match
 
-### Attempt 1: Simple GestureDetector (translucent) directly in overlay
-```dart
-Positioned.fill(
-  child: GestureDetector(
-    behavior: HitTestBehavior.translucent,
-    onPanStart: ...,
-    onPanUpdate: ...,
-    onPanEnd: ...,
-  ),
-)
-```
-**Result:** Drawing worked, BUT:
-- Two-finger pinch-zoom stopped working (GestureDetector won the pan arena).
-- Spacebar navigation stopped (GestureDetector was receiving focus).
-- Text selection was unreliable.
+### [HardwareService](file:///d:/Programing/flutter/app/lib/services/hardware_service.dart#3-97) ([hardware_service.dart](file:///d:/Programing/flutter/app/lib/services/hardware_service.dart))
+Gets a stable device UUID on Windows via (in order of priority):
+1. `wmic csproduct get uuid`
+2. PowerShell `Get-CimInstance Win32_ComputerSystemProduct`
+3. Registry `HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid`
+
+### `FileManagerService` ([file_manager_service.dart](file:///d:/Programing/flutter/app/lib/services/file_manager_service.dart))
+- Isar DB wrapper (`ChangeNotifier`)
+- Manages [ClassFolder](file:///d:/Programing/flutter/app/lib/models/isar_models.dart#10-46), [PdfDocument](file:///d:/Programing/flutter/app/lib/models/isar_models.dart#51-134), [PdfSnapshot](file:///d:/Programing/flutter/app/lib/models/isar_models.dart#139-181), [TrashItem](file:///d:/Programing/flutter/app/lib/models/isar_models.dart#186-236), [StudyTask](file:///d:/Programing/flutter/app/lib/models/isar_models.dart#241-268)
+- `getAllTasks()`, `saveTask(task)`, `deleteTaskByUuid(uuid)`
+- `isInitialized` guard + [init()](file:///d:/Programing/flutter/app/lib/main.dart#296-319) method
+
+### `FileHashService` ([file_hash_service.dart](file:///d:/Programing/flutter/app/lib/services/file_hash_service.dart))
+- `calculateFileHash(path)` → SHA-256 hex string
 
 ---
 
-### Attempt 2: GestureDetector with null pan callbacks + onTapUp only
-```dart
-GestureDetector(
-  behavior: HitTestBehavior.translucent,
-  onTapUp: ...,
-  onPanStart: null,
-  onPanUpdate: null,
-  onPanEnd: null,
-)
-```
-**Result:** Tap worked, BUT even with `null` pan callbacks the GestureDetector still entered the tap arena and delayed/blocked pdfrx's focus management. Spacebar still broken.
+## 8. UI Screens & Widgets
+
+### [main.dart](file:///d:/Programing/flutter/app/lib/main.dart) — App Entry
+- **Single-instance server** on port `45678`: if a second instance launches with a PDF path, it forwards the path to the running instance via TCP socket and exits.
+- [RootWrapper](file:///d:/Programing/flutter/app/lib/main.dart#213-265) → `FutureBuilder` on `app.initialized`:
+  - `currentUser != null` → [MainLayout](file:///d:/Programing/flutter/app/lib/main.dart#266-274)
+  - otherwise → [LoginScreen](file:///d:/Programing/flutter/app/lib/screens/auth/login_screen.dart#11-17)
+- [MainLayout](file:///d:/Programing/flutter/app/lib/main.dart#266-274) — Scaffold with `DropTarget` (drag-and-drop PDF), [Sidebar](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1025-1029) (desktop), `PDFViewerWidget`, `DeveloperModal`, `GlobalSettingsModal`. Has [_securityListener](file:///d:/Programing/flutter/app/lib/main.dart#327-363) for real-time kick/force-logout UI handling.
+
+### [LoginScreen](file:///d:/Programing/flutter/app/lib/screens/auth/login_screen.dart#11-17) ([screens/auth/login_screen.dart](file:///d:/Programing/flutter/app/lib/screens/auth/login_screen.dart))
+- Username text field + device ID display
+- Calls `AuthService.loginAndBind()`, then `AppProvider.setCurrentUser()`
+- Dark card UI on [Color(0xFF1E1E1E)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#2135-2139)
+
+### [Sidebar](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1025-1029) ([widgets/sidebar_w.dart](file:///d:/Programing/flutter/app/lib/widgets/sidebar_w.dart))
+- Class/folder list, PDF list, add/delete/reorder operations
+- Shows session sync status badges
+
+### `PDFViewerWidget` ([widgets/pdf_viewer_widget_w.dart](file:///d:/Programing/flutter/app/lib/widgets/pdf_viewer_widget_w.dart), 51KB)
+- Main viewer using `pdfrx` package
+- Hosts the dashboard view (when no PDF is open) and the full viewer
+- **Dashboard** ([pdf_viewer_widget_dashboard.dart](file:///d:/Programing/flutter/app/lib/widgets/pdf_viewer_widget_dashboard.dart)): Stats cards, recent PDFs, Daily To-Do list
+
+### Viewer Sub-Widgets
+| File | Responsibility |
+|---|---|
+| [viewer_toolbar.dart](file:///d:/Programing/flutter/app/lib/widgets/viewer_components/viewer_toolbar.dart) | Tool buttons, undo/redo, page counter, zoom |
+| [viewer_right_panel.dart](file:///d:/Programing/flutter/app/lib/widgets/viewer_components/viewer_right_panel.dart) | Annotation properties (color, stroke, font, LaTeX) — 97KB |
+| [session_cards.dart](file:///d:/Programing/flutter/app/lib/widgets/viewer_components/session_cards.dart) | Lecturer: generate code, lock/unlock. Student: join session, sync status |
+| [pdf_viewer_widget_overlay.dart](file:///d:/Programing/flutter/app/lib/widgets/pdf_viewer_widget_overlay.dart) | Annotation rendering overlay |
+| [pdf_viewer_widget_gestures.dart](file:///d:/Programing/flutter/app/lib/widgets/pdf_viewer_widget_gestures.dart) | Gesture handling for drawing/selecting |
+| [pdf_viewer_widget_actions.dart](file:///d:/Programing/flutter/app/lib/widgets/pdf_viewer_widget_actions.dart) | Context menu actions |
+| [pdf_viewer_widget_print.dart](file:///d:/Programing/flutter/app/lib/widgets/pdf_viewer_widget_print.dart) | Print integration |
+| [pdf_viewer_widget_style.dart](file:///d:/Programing/flutter/app/lib/widgets/pdf_viewer_widget_style.dart) | Styling constants |
+| [draggable_text_widget.dart](file:///d:/Programing/flutter/app/lib/widgets/draggable_text_widget.dart) | Movable comment sticky note |
+| [mini_calculator_widget.dart](file:///d:/Programing/flutter/app/lib/widgets/viewer_components/mini_calculator_widget.dart) | In-app calculator |
+| [join_master_modal.dart](file:///d:/Programing/flutter/app/lib/widgets/viewer_components/join_master_modal.dart) | Student master bundle join UI |
+| [print_dialog.dart](file:///d:/Programing/flutter/app/lib/widgets/viewer_components/print_dialog.dart) | Print configuration |
+
+### `DevDashboard` ([screens/admin/dev_dashboard.dart](file:///d:/Programing/flutter/app/lib/screens/admin/dev_dashboard.dart))
+- Developer/Admin panel: user management, device blacklisting, session management, master bundles, global stats
 
 ---
 
-### Attempt 3: Listener-only (no GestureDetector) for cursor mode
-```dart
-if (isCursorOrText)
-  Positioned.fill(
-    child: Listener(
-      behavior: HitTestBehavior.translucent,
-      onPointerUp: (event) {
-        // handle tap equivalent
-      },
-    ),
-  ),
-if (!isCursorOrText)
-  Positioned.fill(
-    child: GestureDetector( ... ),
-  ),
-```
-**Result:** Closest to working. Cursor tool scrolling was restored. BUT:
-- Drawing tools still had two-finger zoom issues.
-- Switching between tools caused GestureDetector to appear/disappear from tree → caused arena inconsistencies.
+## 9. Feature Summary
+
+### PDF Annotation
+- **Tools**: Highlight, Pen, Arrow, Rectangle, Circle (vector shapes), Text/Comment, Eraser, Select/Move
+- **Highlights**: path-based freehand + rect-based text, with optional fill color
+- **Comments**: Draggable sticky notes with LaTeX, bold, custom fonts, border/bg colors
+- **Bookmarks**: Named page markers
+- **Undo/Redo**: Full action history for add/update/delete on all annotation types
+
+### Real-Time Sync (Lecturer–Student)
+- Lecturer generates a 6-char session code tied to `SHA-256(fileHash)` + `pageCount`
+- Students join with the code; file hash + page count **must** match exactly
+- Bidirectional reconciliation: Last-Writer-Wins via `updatedAt` timestamps
+- Anti-resurrection: deleted annotations tracked in `locallyDeletedIds`, immediate server delete
+- 4 sync strategies selectable at runtime
+
+### Master Bundle (Phase 13)
+- Lecturer packages multiple `{hash, sessionCode, name}` entries into one 8-char master code
+- Students scan master code → links all PDFs in their library automatically
+
+### Security
+- Device blacklist (`blacklisted_devices` Firestore collection)
+- Strict hardware binding (one account ↔ one device UUID)
+- Startup account existence check
+- Real-time account deletion monitoring
+- Session-level kick, lock, join-lock mechanisms
+
+### Study Tasks (Daily To-Do)
+- [StudyTask](file:///d:/Programing/flutter/app/lib/models/isar_models.dart#241-268) Isar model with `title`, `isDone`, `createdAt`
+- Shown on the dashboard; add/toggle/delete with full Isar persistence
+
+### PDF Editing
+- Delete/add pages via Dart Isolate (non-blocking)
+- Annotations shift correctly after page deletion
+- Merge PDFs, images-to-PDF dialogs
+- Print pipeline with Syncfusion + `printing` package
+
+### AI Integration
+- Supports **Gemini** (google_generative_ai) and **Groq** (http + REST)
+- Model and API keys configurable via `GlobalSettingsModal`
+- Keys stored in `SharedPreferences`
 
 ---
 
-### Attempt 4: IgnorePointer(ignoring: true) for cursor, wrapping Positioned.fill
-```dart
-// WRONG ORDER — caused crash:
-IgnorePointer(
-  ignoring: ignoring,
-  child: Positioned.fill(   // ← ERROR: Positioned must be direct Stack child!
-    child: GestureDetector(...)
-  ),
-)
-```
-**Error received:**
-```
-The following assertion was thrown while applying parent data:
-Incorrect use of ParentDataWidget.
-The ParentDataWidget Positioned(left:0, top:0, right:0, bottom:0) wants to apply 
-ParentData of type StackParentData to a RenderObject, which has been set up to 
-accept ParentData of incompatible type ParentData.
-Usually, this means that the Positioned widget has the wrong ancestor RenderObjectWidget.
-Typically, Positioned widgets are placed directly inside Stack widgets.
-The offending Positioned is currently placed inside a IgnorePointer widget.
-```
+## 10. Firestore Collections
 
-**Fix applied** (corrected order):
-```dart
-Positioned.fill(           // ← direct Stack child (correct)
-  child: IgnorePointer(
-    ignoring: ignoring,
-    child: GestureDetector(...)
-  ),
-)
-```
-**Result:** Crash fixed. BUT panning / drawing still does not work correctly with either tool.
+| Collection | Purpose |
+|---|---|
+| `users/{uid}` | User records: `username`, `role`, `hardwareId` |
+| `blacklisted_devices/{hardwareId}` | Banned device registry |
+| `sync_sessions/{code}` | Session docs: `createdBy`, `fileHash`, `pageCount`, `isLocked`, `joinLocked`, `kicked_uids`, `participants` |
+| `sync_sessions/{code}/annotations/{fileHash}` | Annotation data array |
+| `master_sessions/{code}` | Master bundle: `ownerName`, `bundle[]`, `isLocked`, `bannedUsernames`, `activators` |
 
----
 
-### Attempt 5: Per-page pointer counting with setState
-```dart
-// Per-page Listener tracking _activePointerCount with setState
-Listener(
-  onPointerDown: (_) => setState(() => _activePointerCount++),
-  onPointerUp: (_) => setState(() => _activePointerCount--),
-  ...
-)
-```
-**Result:** Caused excessive rebuilds, performance degraded, centroid chaos lines when second finger touched a different page (each page had its own counter stuck at 1).
 
-**Fix:** Moved counter to global (no setState, silent mutation):
-```dart
-int _activePointerCount = 0;  // in _PDFViewerWidgetState
+# بحث: استخدام الذاكرة RAM عند الانتقال بين الصفحات
 
-// In overlay Listener (no setState):
-onPointerDown: (_) => _activePointerCount++,
-onPointerUp: (_) => _activePointerCount--,
-onPointerCancel: (_) => _activePointerCount = 0,
-```
+تاريخ الفحص: 2026-03-27
 
----
+## النتيجة المختصرة
 
-### Attempt 6: RawGestureDetector with custom SingleFingerPanRecognizer
-```dart
-RawGestureDetector(
-  gestures: {
-    _SingleFingerPanRecognizer: GestureRecognizerFactoryWithHandlers<_SingleFingerPanRecognizer>(
-      () => _SingleFingerPanRecognizer(),
-      (instance) {
-        instance.onStart = ...;
-        instance.onUpdate = ...;
-        instance.onEnd = ...;
-      },
-    ),
-  },
-)
-```
-**Result:** Broke cursor mode entirely (opaque hit-test). The custom recognizer was incorrectly stealing all events. Also accidentally deleted `_handleSelectionTap` and `_highlightTypeToToolType` methods during this attempt (had to restore them).
+نعم، المشروع يستفيد من الذاكرة RAM أثناء التنقل، ولكن ليس عبر `PageStorage` أو `AutomaticKeepAliveClientMixin`.
 
----
+الاستفادة الأساسية تتم عبر:
 
-### Attempt 7: Root Listener in _buildPdfViewerCore for pointer counting
-```dart
-return Listener(
-  onPointerDown: (_) => _activePointerCount++,   // SILENT
-  onPointerUp: (_) => _activePointerCount--,     // SILENT
-  onPointerCancel: (_) => _activePointerCount = 0,
-  onPointerSignal: ...,
-  child: PdfViewer.file(...)
-);
-```
-**Result:** The Listener at root level intercepted events before pdfrx's internal hit-testing. Although Listener doesn't enter the arena, it still affected timing. Drawing chaos was partially fixed but scrolling was still blocked by the overlay GestureDetector.
+- حالة عامة في الذاكرة باستخدام `Provider` (`AppProvider`) على مستوى التطبيق.
+- إبقاء Widgets حيّة داخل نفس الشاشة عبر `IndexedStack`.
+- كاش الصور `imageCache` (مع حدود مضبوطة لتقليل استهلاك RAM).
+- دعم إضافي عبر `SharedPreferences` لحفظ الحالة عند إعادة تشغيل التطبيق (ليس RAM فقط، بل تخزين محلي دائم).
 
----
+## أدلة من الكود
 
-### Attempt 8: Pure Listener overlay + pointer-ID Set tracking (CURRENT STATE)
+1. مزود حالة عام (In-Memory State)
+- في `main.dart` يتم إنشاء `ChangeNotifierProvider(create: (_) => AppProvider())` داخل `MultiProvider`.
+- هذا يعني أن حالة `AppProvider` تبقى موجودة في RAM طوال عمر التطبيق، ولا تضيع عند `pushReplacement` بين `LoginScreen` و `MainLayout`.
 
-Key changes:
-- Replaced `int _activePointerCount` with `final Set<int> _activePointerIds = <int>{}`.
-- Added `int? _primaryPointerId`, `Offset? _pointerDownPosition`, `DateTime? _pointerDownTime` for manual tap detection without GestureDetector.
-- Removed `GestureDetector` entirely from the overlay — using only `Listener` with `HitTestBehavior.translucent`.
-- Since `Listener` never enters the Flutter Gesture Arena, pdfrx's own recognizers should compete freely.
-- Second finger detected via `_activePointerIds.length > 1`: immediately aborts current stroke and lets pdfrx handle pinch-zoom.
-- Added `ToolTypeExtension` on `ToolType` with `isHandTool()`, `isDrawingTool()`, `isSelectionTool()` helpers.
+2. التنقل بين الشاشات
+- من شاشة الدخول يتم `pushReplacement` إلى `MainLayout`.
+- عند تسجيل الخروج/الحذف يتم `pushAndRemoveUntil` إلى `LoginScreen`.
+- لأن `AppProvider` موجود أعلى الشجرة (تحت `MaterialApp` مباشرة)، الحالة المشتركة تستمر غالبًا أثناء التنقل العادي.
 
-```dart
-// In _PDFViewerWidgetState:
-final Set<int> _activePointerIds = <int>{};
-int? _primaryPointerId;
-Offset? _pointerDownPosition;
-DateTime? _pointerDownTime;
+3. حفظ التبويبات داخليًا عبر `IndexedStack`
+- في اللوحة اليمنى (`viewer_right_panel.dart`) يوجد `IndexedStack` للتبويبات.
+- هذا يحافظ على حالة كل تبويب في RAM بدل إعادة بنائه كل مرة عند تغيير التبويب.
 
-// In overlay Listener:
-onPointerDown: (event) {
-  _activePointerIds.add(event.pointer);
-  if (_activePointerIds.length == 1) {
-    _primaryPointerId = event.pointer;
-    _pointerDownPosition = event.localPosition;
-    _pointerDownTime = DateTime.now();
-    if (_tool.isDrawingTool()) _handlePanStart(event.localPosition, page, scale);
-  } else {
-    // 2nd finger → abort stroke, pdfrx pinch-zoom takes over
-    if (_tool.isDrawingTool() && _currentPath != null)
-      setState(() => _currentPath = null);
-  }
-},
-onPointerMove: (event) {
-  if (_activePointerIds.length == 1 &&
-      _primaryPointerId == event.pointer &&
-      _tool.isDrawingTool() &&
-      _currentPath != null &&
-      _selectedHighlightId == null)
-    _handlePanUpdate(event.localPosition, page, scale);
-},
-onPointerUp: (event) {
-  final wasPrimary = _primaryPointerId == event.pointer;
-  if (wasPrimary && _tool.isDrawingTool() && _currentPath != null)
-    _handlePanEnd(pdf);
-  // Manual tap detection (no GestureDetector)
-  if (wasPrimary && _tool.isSelectionTool() && ...) {
-    if (distance < 5.0 && duration.inMilliseconds < 300) {
-      // route to _handleSelectionTap or _addTextAt
-    }
-  }
-  _activePointerIds.remove(event.pointer);
-  if (_activePointerIds.isEmpty) { _primaryPointerId = null; ... }
-},
-```
+4. كاش الصور في RAM
+- في `main.dart`:
+	- `PaintingBinding.instance.imageCache.maximumSizeBytes = 10 * 1024 * 1024;`
+	- `PaintingBinding.instance.imageCache.maximumSize = 20;`
+- هذا كاش RAM مقصود لتحسين الأداء مع حد أقصى لمنع التضخم.
 
-**Result:** No `GestureDetector` in the tree → Gesture Arena is no longer polluted by the overlay at all, since `Listener` is arena-transparent. The `IgnorePointer(ignoring: _tool.isHandTool())` still gives pdfrx full control in Hand mode.
-- ✅ No more Spacebar/focus breakage from `GestureDetector` tap arena.
-- ✅ No more centroid chaos lines from per-page pointer counters (Set<int> is global).
-- ❓ **Two-finger pinch-zoom during drawing: NOT YET CONFIRMED** — pdfrx must still win its own ScaleGestureRecognizer while the Listener processes the first pointer only.
+5. تكامل RAM + تخزين دائم
+- `AppProvider` يحمل بيانات مثل `classes`, `activeClassId`, `activePdfId` داخل الذاكرة.
+- نفس الحالة يتم تحميلها/حفظها عبر `SharedPreferences` في `_loadState()` و `_saveState()`.
+- النتيجة: سرعة أثناء التشغيل (RAM) + استمرارية بعد إغلاق التطبيق (Disk).
 
----
+## ما لم أجده
 
-## 🐛 CURRENT REMAINING BUGS
+- لا يوجد استخدام لـ `PageStorage`.
+- لا يوجد استخدام لـ `AutomaticKeepAliveClientMixin`.
+- لا يوجد استخدام لـ `RestorationMixin` في ملفات `app/lib`.
 
-After Attempt 8 (pure `Listener`, pointer-ID Set, no `GestureDetector`):
+## تقييم عملي
 
-1. **`cursor` (Hand) tool**: `IgnorePointer(ignoring: _tool.isHandTool())` passes all events to pdfrx.
-   - ✅ Mouse wheel scroll works.
-   - ✅ Spacebar navigation — no GestureDetector in tree anymore, focus management restored.
-   - ❓ **Two-finger scroll/pinch-zoom: NOT CONFIRMED ON TABLET/TOUCH.**
+التصميم الحالي جيد لفكرة "الاستفادة من RAM أثناء الانتقال بين الصفحات" لأنه يعتمد على `Provider` + `IndexedStack`.
 
-2. **Drawing tools** (`pen`, `highlight`, `arrow`, `rectangle`, `circle`, `eraser`):
-   - `IgnorePointer(ignoring: false)` → pure `Listener(translucent)`. No GestureDetector.
-   - `_activePointerIds.length == 1` → draw. Second finger detected → abort stroke immediately.
-   - ❓ **Single-finger drawing: NOT CONFIRMED WORKING** (Listener `onPointerDown`/`onPointerMove`/`onPointerUp` pipeline not yet tested end-to-end).
-   - ❓ **Two-finger pinch-zoom while drawing: NOT CONFIRMED.** The core open question: does pdfrx win its internal `ScaleGestureRecognizer` after our `Listener` aborts the stroke on 2nd pointer?
+لكن لو الهدف هو الحفاظ على حالة صفحات منفصلة في Navigator عميق (مثلا Tabs مستقلة لكل route)، يمكن إضافة:
 
-3. **`select` / `text` tools**: Manual tap detection in `onPointerUp` (distance < 5px, duration < 300ms).
-   - ❓ **Tap detection: NOT CONFIRMED** (threshold values not battle-tested on touch).
-   - ❓ **Select-tool shape hit-testing: NOT CONFIRMED.**
+- `PageStorageKey` لبعض القوائم/التمرير.
+- `AutomaticKeepAliveClientMixin` لبعض الشاشات الثقيلة داخل `TabBarView`.
+- أو `RestorationMixin` إذا أردت استرجاعًا أدق بعد قتل التطبيق من النظام.
 
-4. **`eraser` tool**: Included in `isDrawingTool()` — uses the same pan pipeline.
-   - ❓ **Eraser drag: NOT CONFIRMED.**
-
----
-
-## ❓ KEY QUESTIONS FOR EXPERTS
-
-1. **Is `GestureDetector(behavior: translucent)` inside `pageOverlaysBuilder` guaranteed to not block pdfrx's own gesture recognizers?**
-   - Or does pdfrx use its own internal hit-testing that bypasses the normal Flutter gesture arena?
-
-2. **What is the correct widget tree for "draw on top of pdfrx page but let two-finger pinch-zoom pass through"?**
-   - Does pdfrx expose any API to register custom gesture recognizers alongside its own?
-
-3. **Does `IgnorePointer(ignoring: true)` fully remove a subtree from ALL gesture processing including pdfrx's internal recognizers?**
-
-4. **Is there a known pattern for "draw overlay + native scroll" in pdfrx?**
-   - The pdfrx GitHub issues/examples don't show annotation examples.
-
-5. **Why does even a `GestureDetector` with ALL callbacks set to `null` still interfere with focus management and Spacebar navigation?**
-
----
-
-## 🔗 RELEVANT LINKS
-
-- pdfrx package: https://pub.dev/packages/pdfrx
-- pdfrx GitHub: https://github.com/espresso3389/pdfrx
-- Flutter Gesture Arena docs: https://docs.flutter.dev/ui/advanced/gestures
-
----
-
-## 📱 TARGET PLATFORMS
-
-- Windows (desktop, mouse + keyboard)
-- Android tablet (touch, stylus)
-- iPad (touch, Apple Pencil)
-
----
-
-## 💡 WHAT WE NEED
-
-A Flutter widget tree pattern that allows:
-
-```
-PdfViewer (pdfrx)
-  └── pageOverlaysBuilder → CustomWidget per page
-        ├── CustomPaint (draws saved annotations)
-        ├── CustomPaint (draws live annotation path)
-        └── INTERACTION LAYER that:
-              • When tool == Hand:   lets pdfrx handle 100% of gestures (scroll, zoom, text select)
-              • When tool == Draw:   captures single-finger pan for drawing
-                                    lets TWO-finger pinch-zoom pass through to pdfrx
-              • When tool == Select: captures single tap to hit-test shapes
-```
-
-The pinch-to-zoom passing through while single-finger drawing works is the **hardest unsolved part**.
