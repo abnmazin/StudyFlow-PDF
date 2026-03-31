@@ -65,12 +65,13 @@ extension ActionTypes on AppProvider {
   static const String ACTION_DELETE_COMMENT = 'delete_comment';
 }
 
-class AppProvider extends ChangeNotifier {
+class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   final SyncService _syncService = SyncService();
 
   AppProvider() {
     _initConnectivity();
     _initialize();
+    WidgetsBinding.instance.addObserver(this);
   }
 
   void _initConnectivity() {
@@ -86,6 +87,7 @@ class AppProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _connectivitySub?.cancel();
     _stopKickListener();
     _stopUserMonitor();
@@ -118,7 +120,7 @@ class AppProvider extends ChangeNotifier {
   List<ActionRecord> _actionHistory = [];
   List<ActionRecord> _redoHistory = [];
   StreamSubscription? _kickSub;
-  StreamSubscription? _userDocSub;
+  Timer? _userMonitorTimer;
   String? _forcedLogoutReason;
   bool _isGlobalLogout = false;
   bool _isKicked = false;
@@ -363,17 +365,41 @@ class AppProvider extends ChangeNotifier {
 
   void _notify() {
     // Phase 11.6: Flutter Threading Shield (Fix shell.cc errors)
-    // Ensures state updates from Firestore background threads are safely 
-    // dispatched to the Main/Platform thread for UI rendering.
     if (SchedulerBinding.instance.schedulerPhase == SchedulerPhase.persistentCallbacks) {
       SchedulerBinding.instance.addPostFrameCallback((_) => notifyListeners());
     } else {
       try {
         notifyListeners();
       } catch (_) {
-        // Fallback for background threads
         SchedulerBinding.instance.addPostFrameCallback((_) => notifyListeners());
       }
+    }
+  }
+
+  // --- LIFECYCLE MANAGEMENT (Patch 2) ---
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    debugPrint('📱 AppLifecycleState changed to: $state');
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
+      _pauseAllListeners();
+    } else if (state == AppLifecycleState.resumed) {
+      _resumeAllListeners();
+    }
+  }
+
+  void _pauseAllListeners() {
+    debugPrint('⏸️ Pausing background listeners & timers.');
+    _kickSub?.pause();
+    _userMonitorTimer?.cancel();
+    _userMonitorTimer = null;
+    _syncDebounce?.cancel(); // Stop pending syncs
+  }
+
+  void _resumeAllListeners() {
+    debugPrint('▶️ Resuming background listeners & timers.');
+    _kickSub?.resume();
+    if (_currentUser != null && _currentUser!.uid.isNotEmpty) {
+      _startUserMonitor(_currentUser!.uid);
     }
   }
 
@@ -397,6 +423,7 @@ class AppProvider extends ChangeNotifier {
           pdfId: pdfId,
           itemId: oldHighlight.id,
           actionType: ActionTypes.ACTION_UPDATE_HIGHLIGHT,
+          notify: false, // PATCH 3: Avoid double notify
           oldState: {
             'color': oldHighlight.color.value,
             'strokeWidth': oldHighlight.strokeWidth,
@@ -414,7 +441,7 @@ class AppProvider extends ChangeNotifier {
                 .toList(),
           },
         );
-        _notify();
+        _notify(); // Single notify here
         _saveTimer?.cancel();
         _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
         _triggerSync(pdf.fileHash ?? '');
@@ -429,6 +456,7 @@ class AppProvider extends ChangeNotifier {
     required String actionType,
     required Map<String, dynamic> oldState,
     required Map<String, dynamic> newState,
+    bool notify = true, // PATCH 3
   }) {
     _actionHistory.add(
       ActionRecord(
@@ -442,7 +470,7 @@ class AppProvider extends ChangeNotifier {
     _redoHistory.clear();
     _saveTimer?.cancel();
     _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
-    _notify();
+    if (notify) _notify();
   }
 
   // --- Statistics Getters ---
@@ -551,17 +579,28 @@ class AppProvider extends ChangeNotifier {
   }
 
   void _startUserMonitor(String uid) {
-    _userDocSub?.cancel();
-    _userDocSub = _syncService.watchUserExists(uid).listen((exists) {
+    _userMonitorTimer?.cancel();
+    
+    // Initial check
+    _syncService.checkUserExists(uid).then((exists) {
       if (!exists) {
         _handleForceLogout('تم حذف حسابك من النظام. يرجى تسجيل الدخول مجدداً.');
+      }
+    });
+
+    // Patch 1: 5-minute Polling instead of snapshots
+    _userMonitorTimer = Timer.periodic(const Duration(minutes: 5), (timer) async {
+      final exists = await _syncService.checkUserExists(uid);
+      if (!exists) {
+        timer.cancel();
+        _handleForceLogout('تم حذف حسابك من النظام (تم التأكد عبر الفحص الدوري).');
       }
     });
   }
 
   void _stopUserMonitor() {
-    _userDocSub?.cancel();
-    _userDocSub = null;
+    _userMonitorTimer?.cancel();
+    _userMonitorTimer = null;
   }
 
   void toggleSettings(bool open) {
@@ -1854,6 +1893,7 @@ class AppProvider extends ChangeNotifier {
           pdfId: pdfId,
           itemId: updated.id,
           actionType: ActionTypes.ACTION_UPDATE_COMMENT,
+          notify: false, // PATCH 3: Avoid double notify
           oldState: {
             'content': oldComment.content,
             'color': oldComment.color.value,
@@ -1885,6 +1925,9 @@ class AppProvider extends ChangeNotifier {
             },
           },
         );
+        _notify(); // Single notify
+        _saveTimer?.cancel();
+        _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
         _markUnsavedChanges();
         triggerDebouncedSync(silent: true);
       }
