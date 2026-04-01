@@ -149,7 +149,7 @@ class _SidebarState extends State<Sidebar> {
                         ),
                         SizedBox(width: 8),
                         Text(
-                          'StudyFlow pdf',
+                          'StudyFlow PDF',
                           style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,

@@ -196,7 +196,7 @@ class MyApp extends StatelessWidget {
             (app) => app.isDarkMode ? ThemeMode.dark : ThemeMode.light,
           );
           return MaterialApp(
-            title: 'StudyFlow pdf',
+            title: 'StudyFlow PDF',
             debugShowCheckedModeBanner: false,
             locale: const Locale('ar'),
             supportedLocales: const [Locale('ar'), Locale('en')],
@@ -278,7 +278,7 @@ class RootWrapper extends StatelessWidget {
                 ),
                 SizedBox(height: 24),
                 Text(
-                  'StudyFlow pdf',
+                  'StudyFlow PDF',
                   style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.bold,

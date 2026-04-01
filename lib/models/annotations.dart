@@ -3,6 +3,7 @@ import 'enums.dart';
 
 class Highlight {
   final String id;
+  final String? createdBy;
   final List<Offset> path;
   final Color color;  // Stroke/border color
   final int page;
@@ -15,6 +16,7 @@ class Highlight {
 
   Highlight({
     required this.id,
+    this.createdBy,
     required this.path,
     required this.color,
     required this.page,
@@ -42,6 +44,7 @@ class Highlight {
 
   Map<String, dynamic> toJson({bool isExisting = false}) => {
     'id': id,
+    if (createdBy != null) 'createdBy': createdBy,
     'path': path.map((o) => {'dx': o.dx, 'dy': o.dy}).toList(),
     'color': color.value,
     'page': page,
@@ -60,6 +63,7 @@ class Highlight {
   factory Highlight.fromJson(Map<String, dynamic> json) {
     return Highlight(
       id: json['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      createdBy: json['createdBy'] as String?,
       path: (json['path'] as List)
           .map((p) => Offset(p['dx'], p['dy']))
           .toList(),
@@ -82,6 +86,7 @@ class Highlight {
   }
   Highlight copyWith({
     String? id,
+    String? createdBy,
     List<Offset>? path,
     Color? color,
     int? page,
@@ -94,6 +99,7 @@ class Highlight {
   }) {
     return Highlight(
       id: id ?? this.id,
+      createdBy: createdBy ?? this.createdBy,
       path: path ?? this.path,
       color: color ?? this.color,
       page: page ?? this.page,

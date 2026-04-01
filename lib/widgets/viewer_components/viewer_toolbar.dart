@@ -8,6 +8,7 @@ import '../../providers/app_state.dart';
 class StudyFlowToolbar extends StatefulWidget {
   final ToolType activeTool;
   final ToolType? selectedAnnotationTool;
+  final String? selectedShapeAuthor;
   final bool isRightPanelOpen;
   final bool isShapesPaletteVisible;
   final bool isDarkMode;
@@ -19,12 +20,15 @@ class StudyFlowToolbar extends StatefulWidget {
   final VoidCallback onToggleRightPanel;
   final VoidCallback onToggleSettings;
   final VoidCallback onToggleSearch;
+  final VoidCallback onSyncPressed;
+  final bool isSyncing;
   final Function(PdfItem) onAddBookmark;
 
   const StudyFlowToolbar({
     super.key,
     required this.activeTool,
     this.selectedAnnotationTool,
+    this.selectedShapeAuthor,
     required this.isRightPanelOpen,
     required this.isShapesPaletteVisible,
     required this.isDarkMode,
@@ -36,6 +40,8 @@ class StudyFlowToolbar extends StatefulWidget {
     required this.onToggleRightPanel,
     required this.onToggleSettings,
     required this.onToggleSearch,
+    required this.onSyncPressed,
+    required this.isSyncing,
     required this.onAddBookmark,
   });
 
@@ -165,12 +171,10 @@ Widget _buildEditableChip({
     width: width,
     height: height,
     decoration: BoxDecoration(
-      color: backgroundColor,
+      // Keep dimensions/tap area but remove the outer box visuals.
+      color: backgroundColor.withOpacity(0),
       borderRadius: BorderRadius.circular(10),
-      border: Border.all(
-        color: isEditing ? const Color(0xFF3B82F6) : borderColor,
-        width: isEditing ? 1.4 : 1,
-      ),
+      border: Border.all(color: borderColor.withOpacity(0), width: 0),
 
     ),
     child: AnimatedSwitcher(
@@ -274,6 +278,7 @@ Widget _buildEditableChip({
             // ─── LEFT: Sidebar + Page Counter + Zoom ───────────────
             Row(
               children: [
+                
                 const SizedBox(width: 2),
                 if (isMobile)
                   _buildToolButton(
@@ -293,11 +298,19 @@ Widget _buildEditableChip({
                 if (isMobile || app.isSidebarCollapsed)
                   const SizedBox(width: 8),
 
+                _buildToolButton(
+                  icon: LucideIcons.x,
+                  isActive: false,
+                  onTap: () => app.closeActivePdf(),
+                  tooltip: 'إغلاق الملف',
+                  iconMuted: iconMuted,
+                ),
+                const SizedBox(width: 4),
                 // Page Counter
                 if (pdf != null)
   _buildEditableChip(
     isEditing: _isEditingPage,
-    width: 92,
+    width: 60,
     height: 40,
     backgroundColor: chipBg,
     borderColor: inputBorder,
@@ -356,89 +369,10 @@ Widget _buildEditableChip({
       ),
     ),
   ),
-                const SizedBox(width: 8),
 
-                // Zoom Controls
-                Container(
-                  decoration: BoxDecoration(
-                    color: chipBg,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  padding: const EdgeInsets.all(2),
-                  child: Row(
-                    children: [
-                      _buildToolButton(
-                        icon: LucideIcons.zoomOut,
-                        isActive: false,
-                        onTap: () => _stepZoom(false),
-                        tooltip: 'تصغير',
-                        iconMuted: iconMuted,
-                      ),
-                      const SizedBox(width: 4),
-                      _buildEditableChip(
-                        isEditing: _isEditingZoom,
-                        width: 76,
-                        height: 36,
-                        backgroundColor: barBg,
-                        borderColor: inputBorder,
-                        onTap: () {
-                          setState(() {
-                            _isEditingZoom = true;
-                            _zoomInputController.text =
-                                (_currentZoomRatio() * 100).toStringAsFixed(0);
-                          });
-                        },
-                        displayChild: Center(
-                          child: Text(
-                            _currentZoomLabel(),
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: textPrimary,
-                            ),
-                          ),
-                        ),
-                        editChild: Center(
-                          child: SizedBox(
-                            width: double.infinity,
-                            child: TextField(
-                              key: const ValueKey('zoomField'),
-                              controller: _zoomInputController,
-                              autofocus: true,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: textPrimary,
-                              ),
-                              decoration: const InputDecoration(
-                                border: InputBorder.none,
-                                isDense: true,
-                                contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                              ),
-                              onSubmitted: _submitZoomText,
-                              onTapOutside: (_) => _submitZoomText(_zoomInputController.text),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      _buildToolButton(
-                        icon: LucideIcons.zoomIn,
-                        isActive: false,
-                        onTap: () => _stepZoom(true),
-                        tooltip: 'تكبير',
-                        iconMuted: iconMuted,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+  ],
             ),
 
-            // ─── RIGHT: Tools + Utility Buttons ────────────────────
-            // ─── MIDDLE: Tools (Centered) ──────────────────────────
             Expanded(
               child: Center(
                 child: SingleChildScrollView(
@@ -454,6 +388,44 @@ Widget _buildEditableChip({
                         tooltip: 'بحث (Ctrl+F)',
                         iconMuted: iconMuted,
                       ),
+
+                      if (widget.selectedShapeAuthor != null) ...[
+                        const SizedBox(width: 8),
+                        Container(width: 1, height: 28, color: separatorColor),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF3B82F6).withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: const Color(0xFF3B82F6).withOpacity(0.4),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                LucideIcons.user,
+                                size: 14,
+                                color: Color(0xFF3B82F6),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                widget.selectedShapeAuthor!,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF3B82F6),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
 
                       // ─── Divider ──
                       const SizedBox(width: 8),
@@ -588,49 +560,100 @@ Widget _buildEditableChip({
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Sync Status Indicator
-                if (app.isSyncing) ...[
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF3B82F6)),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'جاري...',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                          color: textPrimary.withOpacity(0.8),
-                          fontFamily: 'Cairo',
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(width: 12),
-                ],
-
-                Container(width: 1, height: 28, color: separatorColor),
-                const SizedBox(width: 8),
-
-                // Close File
+                // Zoom controls (without outer box)
                 _buildToolButton(
-                  icon: LucideIcons.x,
+                  icon: LucideIcons.zoomOut,
                   isActive: false,
-                  onTap: () => app.closeActivePdf(),
-                  tooltip: 'إغلاق الملف',
+                  onTap: () => _stepZoom(false),
+                  tooltip: 'تصغير',
                   iconMuted: iconMuted,
                 ),
                 const SizedBox(width: 4),
+                _buildEditableChip(
+                  isEditing: _isEditingZoom,
+                  width: 70,
+                  height: 34,
+                  backgroundColor: chipBg,
+                  borderColor: inputBorder,
+                  onTap: () {
+                    setState(() {
+                      _isEditingZoom = true;
+                      _zoomInputController.text =
+                          (_currentZoomRatio() * 100).toStringAsFixed(0);
+                    });
+                  },
+                  displayChild: Center(
+                    child: Text(
+                      _currentZoomLabel(),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: textPrimary,
+                      ),
+                    ),
+                  ),
+                  editChild: Center(
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: TextField(
+                        key: const ValueKey('zoomField'),
+                        controller: _zoomInputController,
+                        autofocus: true,
+                        keyboardType:
+                            const TextInputType.numberWithOptions(decimal: true),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: textPrimary,
+                        ),
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 7,
+                          ),
+                        ),
+                        onSubmitted: _submitZoomText,
+                        onTapOutside: (_) =>
+                            _submitZoomText(_zoomInputController.text),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                _buildToolButton(
+                  icon: LucideIcons.zoomIn,
+                  isActive: false,
+                  onTap: () => _stepZoom(true),
+                  tooltip: 'تكبير',
+                  iconMuted: iconMuted,
+                ),
 
+                const SizedBox(width: 8),
 
-                // Right Panel Toggle
+                if (app.currentSessionCode != null) ...[
+                  const SizedBox(width: 8),
+                  IconButton(
+                    tooltip: 'مزامنة (Ctrl+S)',
+                    onPressed: widget.isSyncing ? null : widget.onSyncPressed,
+                    icon: widget.isSyncing
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Icon(LucideIcons.refreshCw, color: iconMuted, size: 20),
+                  ),
+                ],
+
+                const SizedBox(width: 8),
+                Container(width: 1, height: 28, color: separatorColor),
+                const SizedBox(width: 8),
+
+                // Close + right panel toggle (anchored to the far right)
+
                 _buildToolButton(
                   icon: widget.isRightPanelOpen
                       ? LucideIcons.panelRightClose

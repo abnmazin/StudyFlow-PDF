@@ -801,8 +801,12 @@ class SyncService {
     if (sessionFileHash == null || sessionFileHash != studentFileHash) {
       return 'الملف غير مطابق أو لم يتم تعيين بصمة له. تأكد من فتح نفس النسخة التي يستخدمها المحاضر.';
     }
-    if (sessionPageCount == null || sessionPageCount != studentPageCount) {
-      return 'عدد الصفحات غير مطابق. تأكد من فتح نفس النسخة.';
+    // If hash matches, allow join even if page counts differ.
+    // Local page count can vary due to metadata/cache timing and should not block valid files.
+    if (sessionPageCount != null && sessionPageCount != studentPageCount) {
+      debugPrint(
+        '⚠️ [SyncService] joinSession pageCount mismatch ignored: server=$sessionPageCount local=$studentPageCount',
+      );
     }
 
     final kickedUsernames = List<String>.from(data['kicked_usernames'] ?? []);

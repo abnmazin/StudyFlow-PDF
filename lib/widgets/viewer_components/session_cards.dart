@@ -44,7 +44,10 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
   bool _joinLocking = false; // NEW
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _sub;
   List<Map<String, dynamic>> _participants = [];
+  String _sessionOwnerName = '';
   String? _error; // Added for error handling in generateCode
+
+  String _norm(String? value) => (value ?? '').trim().toLowerCase();
 
   @override
   void initState() {
@@ -69,15 +72,22 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
       SchedulerBinding.instance.addPostFrameCallback((_) {
         if (!mounted || !snap.exists) return;
         final data = snap.data()!;
-        final raw = data['participants'] ?? [];
-        if (raw is List) {
-          setState(() {
-            _participants = raw
-                .whereType<Map>()
-                .map((p) => Map<String, dynamic>.from(p))
-                .toList();
-          });
-        }
+        final ownerName = (data['ownerName'] as String?) ?? '';
+        final allParticipants = data['participants'] ?? [];
+        final raw = (allParticipants is List)
+            ? allParticipants.where((p) {
+                final username =
+                    (p is Map ? p['username'] : p)?.toString() ?? '';
+                return username != ownerName;
+              }).toList()
+            : [];
+        setState(() {
+          _sessionOwnerName = ownerName;
+          _participants = raw
+              .whereType<Map>()
+              .map((p) => Map<String, dynamic>.from(p))
+              .toList();
+        });
         final locked = data['isLocked'] as bool? ?? false;
         widget.app.setSessionLocked(locked);
         final joinLocked = data['joinLocked'] as bool? ?? false;
@@ -277,6 +287,7 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
       }
 
       widget.app.setSessionCode(code);
+  _sessionOwnerName = widget.app.currentUser?.username ?? '';
       _startListening(code);
     } catch (e) {
       if (mounted) {
@@ -346,11 +357,11 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
     }
   }
 
-  Future<void> _kick(String uid) async {
+  Future<void> _kick(String username) async {
     final code = widget.app.currentSessionCode;
     if (code == null) return;
     try {
-      await widget.syncService.kickParticipant(code, uid);
+      await widget.syncService.kickParticipant(code, username);
       if (mounted) {
         SchedulerBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
@@ -373,11 +384,11 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
     }
   }
 
-  Future<void> _unkick(String uid) async {
+  Future<void> _unkick(String username) async {
     final code = widget.app.currentSessionCode;
     if (code == null) return;
     try {
-      await widget.syncService.unkickParticipant(code, uid);
+      await widget.syncService.unkickParticipant(code, username);
       if (mounted) {
         SchedulerBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
@@ -405,16 +416,6 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
     if (widget.app.currentSessionCode == null || widget.app.activePdf == null) return;
 
     setState(() => _syncingNow = true);
-
-    // Removed loading message - user requested it removed (too annoying)
-    // if (mounted) {
-    //   ScaffoldMessenger.of(context).showSnackBar(
-    //     const SnackBar(
-    //       content: Text('جاري مطابقة البيانات مع السيرفر...'),
-    //       duration: Duration(seconds: 60),
-    //     ),
-    //   );
-    // }
 
     try {
       await widget.app.performBidirectionalSync();
@@ -458,6 +459,14 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
     final app = context.watch<AppProvider>();
     final code = app.currentSessionCode;
     final locked = app.sessionLocked;
+    final currentUsername = _norm(app.currentUser?.username);
+    final ownerUsername = _norm(_sessionOwnerName);
+    final canManageSession =
+      app.currentUser != null &&
+      (app.currentUser!.role == 'lecturer' ||
+        app.currentUser!.role == 'developer') &&
+      ownerUsername.isNotEmpty &&
+      currentUsername == ownerUsername;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -570,189 +579,238 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
           ),
           const SizedBox(height: 10),
 
-          // Lock Drawing toggle
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    locked ? LucideIcons.lock : LucideIcons.unlock,
-                    size: 16,
-                    color: locked ? const Color(0xFFF87171) : widget.textMuted,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    locked ? 'رسم الطلاب مقفل' : 'قفل رسم الطلاب',
-                    style: TextStyle(
-                      color: locked ? const Color(0xFFF87171) : widget.textPrimary,
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-              ),
-              _locking
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: const RepaintBoundary(child: CircularProgressIndicator(strokeWidth: 2)),
-                    )
-                  : Switch(
-                      value: locked,
-                      onChanged: (_) => _toggleLock(),
-                      activeTrackColor: const Color(0xFFF87171),
-                    ),
-            ],
-          ),
-          const SizedBox(height: 6),
-
-          // Join Lock toggle
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    app.sessionJoinLocked ? LucideIcons.userX : LucideIcons.userPlus,
-                    size: 16,
-                    color: app.sessionJoinLocked ? const Color(0xFFFACC15) : widget.textMuted,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    app.sessionJoinLocked ? 'الدخول مغلق (Join Locked)' : 'قفل دخول الطلاب الجدد',
-                    style: TextStyle(
-                      color: app.sessionJoinLocked ? const Color(0xFFFACC15) : widget.textPrimary,
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-              ),
-              _joinLocking
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: const RepaintBoundary(child: CircularProgressIndicator(strokeWidth: 2)),
-                    )
-                  : Switch(
-                      value: app.sessionJoinLocked,
-                      onChanged: (_) => _toggleJoinLock(),
-                      activeTrackColor: const Color(0xFFFACC15),
-                    ),
-            ],
-          ),
-          const SizedBox(height: 6),
-
-          // Clear Annotations
-          TextButton.icon(
-            onPressed: _clearing ? null : _clearAnnotations,
-            icon: _clearing
-                ? const SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: const RepaintBoundary(child: CircularProgressIndicator(strokeWidth: 2)),
-                  )
-                : const Icon(LucideIcons.trash2, size: 14, color: Color(0xFFF87171)),
-            label: const Text(
-              'مسح كل رسومات الطلاب من السيرفر',
-              style: TextStyle(color: Color(0xFFF87171), fontSize: 13),
-            ),
-            style: TextButton.styleFrom(
-              padding: EdgeInsets.zero,
-              alignment: Alignment.centerLeft,
-            ),
-          ),
-          const SizedBox(height: 10),
-
-          // Live Participants header
-          Row(
-            children: [
-              Icon(LucideIcons.users, size: 14, color: widget.textMuted),
-              const SizedBox(width: 6),
-              Text(
-                'المشاركون النشطون (${_participants.length})',
-                style: TextStyle(
-                  color: widget.textMuted,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-
-          if (_participants.isEmpty)
-            Text(
-              'لا يوجد مشاركين بعد.',
-              style: TextStyle(color: widget.textMuted, fontSize: 13),
-            )
-          else
-            ..._participants.map((p) {
-              final username = p['username']?.toString() ?? 'Unknown';
-              final uid = p['uid']?.toString() ?? '';
-              final isKicked = p['isKicked'] == true;
-
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Row(
+          if (canManageSession) ...[
+            // Lock Drawing toggle
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
                   children: [
-                     Icon(
-                      isKicked ? LucideIcons.userX : LucideIcons.user,
-                      size: 14,
-                      color: isKicked ? const Color(0xFFF87171) : const Color(0xFF60A5FA),
+                    Icon(
+                      locked ? LucideIcons.lock : LucideIcons.unlock,
+                      size: 16,
+                      color: locked ? const Color(0xFFF87171) : widget.textMuted,
                     ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        isKicked ? '$username (مطرود)' : username,
-                        style: TextStyle(
-                          color: isKicked ? widget.textMuted : widget.textPrimary,
-                          fontSize: 13,
-                          decoration: isKicked ? TextDecoration.lineThrough : null,
-                        ),
-                        overflow: TextOverflow.ellipsis,
+                    const SizedBox(width: 8),
+                    Text(
+                      locked ? 'رسم الطلاب مقفل' : 'قفل رسم الطلاب',
+                      style: TextStyle(
+                        color: locked ? const Color(0xFFF87171) : widget.textPrimary,
+                        fontSize: 13,
                       ),
                     ),
-                    if (isKicked)
-                      InkWell(
-                        onTap: () => _unkick(uid),
-                        borderRadius: BorderRadius.circular(4),
-                        child: Padding(
-                          padding: const EdgeInsets.all(4),
-                          child: Row(
-                            children: const [
-                              Icon(LucideIcons.userCheck, size: 14, color: Color(0xFF16A34A)),
-                              SizedBox(width: 4),
-                              Text(
-                                'إلغاء الحظر',
-                                style: TextStyle(
-                                  color: Color(0xFF16A34A),
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                    else
-                      TextButton(
-                        onPressed: () => _kick(uid),
-                        child: const Text(
-                          'طرد',
-                          style: TextStyle(
-                            color: Colors.red,
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
                   ],
                 ),
-              );
-            }),
+                _locking
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: RepaintBoundary(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    : Switch(
+                        value: locked,
+                        onChanged: (_) => _toggleLock(),
+                        activeTrackColor: const Color(0xFFF87171),
+                      ),
+              ],
+            ),
+            const SizedBox(height: 6),
 
-          const SizedBox(height: 8),
-          TextButton(
-            onPressed: () async {
+            // Join Lock toggle
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      app.sessionJoinLocked
+                          ? LucideIcons.userX
+                          : LucideIcons.userPlus,
+                      size: 16,
+                      color: app.sessionJoinLocked
+                          ? const Color(0xFFFACC15)
+                          : widget.textMuted,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      app.sessionJoinLocked
+                          ? 'الدخول مغلق (Join Locked)'
+                          : 'قفل دخول الطلاب الجدد',
+                      style: TextStyle(
+                        color: app.sessionJoinLocked
+                            ? const Color(0xFFFACC15)
+                            : widget.textPrimary,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+                _joinLocking
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: RepaintBoundary(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    : Switch(
+                        value: app.sessionJoinLocked,
+                        onChanged: (_) => _toggleJoinLock(),
+                        activeTrackColor: const Color(0xFFFACC15),
+                      ),
+              ],
+            ),
+            const SizedBox(height: 6),
+
+            // Clear Annotations
+            TextButton.icon(
+              onPressed: _clearing ? null : _clearAnnotations,
+              icon: _clearing
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: RepaintBoundary(
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  : const Icon(
+                      LucideIcons.trash2,
+                      size: 14,
+                      color: Color(0xFFF87171),
+                    ),
+              label: const Text(
+                'مسح كل رسومات الطلاب من السيرفر',
+                style: TextStyle(color: Color(0xFFF87171), fontSize: 13),
+              ),
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                alignment: Alignment.centerLeft,
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+
+          if (canManageSession) ...[
+            // Live Participants header
+            Row(
+              children: [
+                Icon(LucideIcons.users, size: 14, color: widget.textMuted),
+                const SizedBox(width: 6),
+                Text(
+                  'المشاركون النشطون (${_participants.length})',
+                  style: TextStyle(
+                    color: widget.textMuted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+
+            if (_participants.isEmpty)
+              Text(
+                'لا يوجد مشاركين بعد.',
+                style: TextStyle(color: widget.textMuted, fontSize: 13),
+              )
+            else
+              ..._participants.map((p) {
+                final username = p['username']?.toString() ?? 'Unknown';
+                final isKicked = p['isKicked'] == true;
+
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    children: [
+                      Icon(
+                        isKicked ? LucideIcons.userX : LucideIcons.user,
+                        size: 14,
+                        color: isKicked
+                            ? const Color(0xFFF87171)
+                            : const Color(0xFF60A5FA),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          isKicked ? '$username (مطرود)' : username,
+                          style: TextStyle(
+                            color: isKicked
+                                ? widget.textMuted
+                                : widget.textPrimary,
+                            fontSize: 13,
+                            decoration:
+                                isKicked ? TextDecoration.lineThrough : null,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (isKicked)
+                        InkWell(
+                          onTap: () => _unkick(username),
+                          borderRadius: BorderRadius.circular(4),
+                          child: Padding(
+                            padding: const EdgeInsets.all(4),
+                            child: Row(
+                              children: const [
+                                Icon(
+                                  LucideIcons.userCheck,
+                                  size: 14,
+                                  color: Color(0xFF16A34A),
+                                ),
+                                SizedBox(width: 4),
+                                Text(
+                                  'إلغاء الحظر',
+                                  style: TextStyle(
+                                    color: Color(0xFF16A34A),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      else
+                        TextButton(
+                          onPressed: () => _kick(username),
+                          child: const Text(
+                            'طرد',
+                            style: TextStyle(
+                              color: Colors.red,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                );
+              }),
+
+            const SizedBox(height: 8),
+          ],
+
+          if (!canManageSession)
+            TextButton(
+              onPressed: () {
+                _sub?.cancel();
+                widget.app.setSessionCode(null);
+                setState(() => _participants = []);
+              },
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                alignment: Alignment.centerLeft,
+              ),
+              child: Text(
+                'مغادرة الدرس',
+                style: TextStyle(color: widget.textMuted, fontSize: 13),
+              ),
+            ),
+
+          if (canManageSession)
+            TextButton(
+              onPressed: () async {
               // 1. Permanently delete the session from the server (Phase 12.2)
               final code = widget.app.currentSessionCode;
               if (code != null) {
@@ -762,16 +820,16 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
               _sub?.cancel();
               widget.app.setSessionCode(null);
               setState(() => _participants = []);
-            },
-            style: TextButton.styleFrom(
-              padding: EdgeInsets.zero,
-              alignment: Alignment.centerLeft,
+              },
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                alignment: Alignment.centerLeft,
+              ),
+              child: Text(
+                'إنهاء الجلسة',
+                style: TextStyle(color: widget.textMuted, fontSize: 13),
+              ),
             ),
-            child: Text(
-              'إنهاء الجلسة',
-              style: TextStyle(color: widget.textMuted, fontSize: 13),
-            ),
-          ),
         ],
       ],
     );
@@ -835,7 +893,7 @@ class _MemberSessionCardState extends State<MemberSessionCard> {
 
     setState(() {
       _joining = true;
-      _error = 'جارِ التحقق من هوية الملف...';
+      _error = null;
     });
 
     try {

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/app_user.dart';
 import '../../providers/app_state.dart';
@@ -100,6 +101,11 @@ class _LoginScreenState extends State<LoginScreen> {
         });
       }
     }
+  }
+
+  Future<void> _openTelegram() async {
+    final uri = Uri.parse('https://t.me/ffff_6');
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   @override
@@ -417,6 +423,26 @@ class _LoginScreenState extends State<LoginScreen> {
                               style: TextStyle(color: textMuted, fontSize: 11),
                             ),
                           ],
+
+                          const SizedBox(height: 14),
+                          MouseRegion(
+                            cursor: SystemMouseCursors.click,
+                            child: GestureDetector(
+                              onTap: _openTelegram,
+                              child: Text(
+                                '© 2026 AbnMazin',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: textMuted.withOpacity(0.85),
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w500,
+                                  decoration: TextDecoration.underline,
+                                  decorationColor: textMuted.withOpacity(0.55),
+                                  decorationThickness: 1,
+                                ),
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ),

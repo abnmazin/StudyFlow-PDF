@@ -1825,7 +1825,7 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
     {
       'role': 'ai',
       'content':
-          'مرحباً بك! أنا مساعدك الذكي في StudyFlow pdf. كيف يمكنني مساعدتك في فهم هذه الملزمة؟',
+          'مرحباً بك! أنا مساعدك الذكي في StudyFlow PDF. كيف يمكنني مساعدتك في فهم هذه الملزمة؟',
     },
   ];
   final TextEditingController _controller = TextEditingController();
@@ -1843,7 +1843,7 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
     {
       'role': 'ai',
       'content':
-          'مرحباً بك! أنا مساعدك الذكي في StudyFlow pdf. كيف يمكنني مساعدتك في فهم هذه الملزمة؟',
+          'مرحباً بك! أنا مساعدك الذكي في StudyFlow PDF. كيف يمكنني مساعدتك في فهم هذه الملزمة؟',
     },
   ];
 

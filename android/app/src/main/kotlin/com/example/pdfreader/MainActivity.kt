@@ -1,4 +1,4 @@
-package com.example.StudyFlowPdf
+package com.example.studyflowpdf
 
 import io.flutter.embedding.android.FlutterActivity
 

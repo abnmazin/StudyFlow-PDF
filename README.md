@@ -1,4 +1,4 @@
-# StudyFlowPdf
+# StudyFlow PDF
 
 A new Flutter project.
 

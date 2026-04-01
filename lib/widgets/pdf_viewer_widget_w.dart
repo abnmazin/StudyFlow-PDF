@@ -301,23 +301,9 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
         });
       });
 
-      _annotationsSub = SyncService().streamAnnotations(code).listen((snap) {
-        SchedulerBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-
-          for (var doc in snap.docs) {
-            if (doc.id == fileHash) {
-              final pdfData = doc.data()['data'] as List?;
-              if (pdfData != null) {
-                app.syncFromFirestore(fileHash, pdfData);
-                debugPrint(
-                  'DEBUG: Received ${pdfData.length} annotations from Firestore for $fileHash',
-                );
-              }
-            }
-          }
-        });
-      });
+      // Real-time annotation stream intentionally disabled.
+      // Sync is now manual only via toolbar button / Ctrl+S.
+      _annotationsSub = null;
     }
   }
 
@@ -375,6 +361,43 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
 
     debugPrint('â†ªï¸ Redo: Reapplying last annotation...');
     app.redoLastAction();
+  }
+
+  Future<void> _syncNow() async {
+    final app = context.read<AppProvider>();
+    if (app.isSyncing) return;
+    if (app.currentSessionCode == null || app.activePdf == null) return;
+
+    try {
+      await app.performBidirectionalSync();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'تمت المزامنة بنجاح. تم تحديث وحذف العناصر غير المتطابقة.',
+                ),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('فشل التزامن: $e')),
+            );
+          }
+        });
+      }
+    }
   }
 
   void _activateTool(ToolType nextTool) {
@@ -449,6 +472,14 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     return _selectedAnnotationTool(pdf) ?? _tool;
   }
 
+  String? _selectedShapeAuthor(PdfItem? pdf) {
+    if (_selectedHighlightId == null || pdf == null) return null;
+    final selected = pdf.highlights
+        .where((h) => h.id == _selectedHighlightId)
+        .firstOrNull;
+    return selected?.createdBy;
+  }
+
   bool _isTypingInTextField() {
     try {
       final focused = FocusManager.instance.primaryFocus;
@@ -494,6 +525,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     final app = context.read<AppProvider>();
 
     final selectedAnnotationTool = _selectedAnnotationTool(pdf);
+    final selectedShapeAuthor = _selectedShapeAuthor(pdf);
     final panelTool = _panelTool(pdf);
 
     // Strict Controller Cycle Management
@@ -502,6 +534,11 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
         // First load
         _currentPdfId = pdf.id;
         _lastModified = pdf.lastModified;
+        if (app.currentSessionCode != null && pdf.fileHash != null) {
+          SchedulerBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _syncNow();
+          });
+        }
       } else if (_currentPdfId != pdf.id || _lastModified != pdf.lastModified) {
         // Detected change or modification - FORCE RESET
         _pdfController.removeListener(_onControllerChanged);
@@ -516,6 +553,11 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
         _isSearchVisible = false;
         _textSelection = null;
         _isTextSelectionMenuVisible = false;
+        if (app.currentSessionCode != null && pdf.fileHash != null) {
+          SchedulerBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _syncNow();
+          });
+        }
       }
     }
 
@@ -569,12 +611,12 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                     setState(() => _isRightPanelOpen = !_isRightPanelOpen);
                     _forcePdfRelayout();
                   }),
-                  // Ctrl+S â†’ Bookmark current page
+                  // Ctrl+S -> Manual sync
                   const SingleActivator(
                     LogicalKeyboardKey.keyS,
                     control: true,
                   ): () =>
-                      _runShortcut(() => _showAddBookmarkDialog(pdf)),
+                      _runShortcut(() => _syncNow()),
                   // Ctrl+= â†’ Zoom in
                   const SingleActivator(
                     LogicalKeyboardKey.equal,
@@ -628,10 +670,12 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                 StudyFlowToolbar(
                   activeTool: _tool,
                   selectedAnnotationTool: selectedAnnotationTool,
+                  selectedShapeAuthor: selectedShapeAuthor,
                   isRightPanelOpen: _isRightPanelOpen,
                   isShapesPaletteVisible: _isShapesPaletteVisible,
                   isDarkMode: isDarkMode,
                   isSearchVisible: _isSearchVisible,
+                  isSyncing: app.isSyncing,
                   activePdf: pdf,
                   pdfController: _pdfController,
                   onToggleShapesPalette: () {
@@ -665,6 +709,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                       }
                     });
                   },
+                  onSyncPressed: _syncNow,
                   onAddBookmark: (pdf) => _showAddBookmarkDialog(pdf),
                 ),
                 // 2. Main Content Area (Viewer + Right Panel)

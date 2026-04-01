@@ -1,6 +1,6 @@
 # Project-level configuration.
 cmake_minimum_required(VERSION 3.14)
-project(pdfreader LANGUAGES CXX)
+project(studyflow_pdf LANGUAGES CXX)
 
 # Workaround for Firebase C++ SDK using cmake_minimum_required < 3.5
 # which is no longer supported by modern CMake versions.
@@ -8,7 +8,7 @@ set(CMAKE_POLICY_VERSION_MINIMUM 3.10 CACHE STRING "" FORCE)
 
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
-set(BINARY_NAME "StudyFlowPdf")
+set(BINARY_NAME "StudyFlowPDF")
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.

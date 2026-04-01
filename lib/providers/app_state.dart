@@ -108,12 +108,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       _saveState(); // Flush pending save immediately
     }
 
-    // FINAL FLUSH: If there are unsaved changes, trigger sync immediately before shutdown
-    if (_hasUnsavedChanges) {
-      _syncDebounce?.cancel();
-      // Use fire-and-forget for the final sync attempt in dispose
-      performBidirectionalSync(silent: true);
-    }
+    // Auto-sync disabled by design: no network flush on dispose.
 
     if (_readingStateTimer != null && _readingStateTimer!.isActive) {
       _readingStateTimer!.cancel();
@@ -217,10 +212,34 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   final Map<String, Timer?> _syncTimers = {};
   final Map<String, bool> _pendingSyncs = {};
   final Map<String, Set<String>> _locallyDeletedIds = {}; // Key: fileHash
+  final Set<String> _intentionallyDeletedIds = {};
 
-  // Helper to trigger sync in background safely
-  void triggerSync(String fileHash) {
-    _triggerSync(fileHash);
+  Future<void> triggerSync() async {
+    if (_isSyncing) return;
+    final code = currentSessionCode;
+    final pdf = activePdf;
+    final fileHash = pdf?.fileHash;
+    if (code == null || fileHash == null || pdf == null) return;
+
+    _isSyncing = true;
+    notifyListeners();
+
+    try {
+      await _syncService.uploadDelta(
+        code,
+        fileHash,
+        pdf.highlights,
+        pdf.comments,
+      );
+
+      final serverData = await _syncService.getServerAnnotations(code, fileHash);
+      syncFromFirestore(fileHash, serverData.items);
+    } catch (e) {
+      debugPrint('Sync error: $e');
+    } finally {
+      _isSyncing = false;
+      notifyListeners();
+    }
   }
 
   /// Fetch → Purge orphans → Download missing → Upload new.
@@ -305,6 +324,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       final localHighlights = List.of(activePdf.highlights);
       for (final h in localHighlights) {
         if (orphans.contains(h.id)) {
+          if (_intentionallyDeletedIds.contains(h.id)) continue;
           activePdf.highlights.removeWhere((item) => item.id == h.id);
         } else if (serverIds.contains(h.id)) {
           if (!h.isSynced) {
@@ -321,6 +341,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       final localComments = List.of(activePdf.comments);
       for (final c in localComments) {
         if (orphans.contains(c.id)) {
+          if (_intentionallyDeletedIds.contains(c.id)) continue;
           activePdf.comments.removeWhere((item) => item.id == c.id);
         } else if (serverIds.contains(c.id)) {
           if (!c.isSynced) {
@@ -338,6 +359,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
           final h = Highlight.fromJson(
             Map<String, dynamic>.from(json),
           ).copyWith(isSynced: true);
+          if (_intentionallyDeletedIds.contains(h.id)) continue;
           final idx = activePdf.highlights.indexWhere(
             (item) => item.id == h.id,
           );
@@ -358,6 +380,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
           final c = PdfComment.fromJson(
             Map<String, dynamic>.from(json),
           ).copyWith(isSynced: true);
+          if (_intentionallyDeletedIds.contains(c.id)) continue;
           final idx = activePdf.comments.indexWhere((item) => item.id == c.id);
           if (idx != -1) {
             activePdf.comments[idx] = c;
@@ -391,11 +414,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// Triggers a debounced bidirectional sync (default 1.8s).
   /// Used for gestures and tool changes to avoid UI lag.
   void triggerDebouncedSync({bool silent = true}) {
-    if (!_hasUnsavedChanges) return;
+    // Auto-sync disabled: keep method as a no-op for compatibility.
     _syncDebounce?.cancel();
-    _syncDebounce = Timer(const Duration(milliseconds: 3000), () {
-      performBidirectionalSync(silent: silent);
-    });
   }
 
   /// Cancels any pending debounced sync.
@@ -421,12 +441,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void _triggerSync(String fileHash) {
-    if (_currentUser?.role != 'lecturer') return;
-
-    // REDIRECT TO DEBOUNCED SYNC:
-    // Following the 'File-Based Debounced Sync' optimization mandate (3000ms).
-    _markUnsavedChanges();
-    triggerDebouncedSync(silent: true);
+    // Auto-sync disabled: no periodic/background push.
   }
 
   void _notify() {
@@ -607,6 +622,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   bool get showDevInfo => _showDevInfo;
   bool get isSidebarCollapsed => _isSidebarCollapsed;
   bool get isDarkMode => _isDarkMode;
+  Set<String> get intentionallyDeletedIds =>
+      Set.unmodifiable(_intentionallyDeletedIds);
   bool get isSettingsOpen => _isSettingsOpen;
   String get aiProvider => _aiProvider;
   String get geminiModel => _geminiModel;
@@ -1000,6 +1017,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
               final data = Map<String, dynamic>.from(item);
               final kind = data['kind'];
               final id = data['id'] as String?;
+              if (id != null && _intentionallyDeletedIds.contains(id)) {
+                continue;
+              }
               
               if (kind == 'highlight' && id != null) {
                 final highlight = Highlight.fromJson(data);
@@ -1046,6 +1066,10 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       _saveTimer?.cancel();
       _saveTimer = Timer(const Duration(milliseconds: 1000), _saveState);
     }
+  }
+
+  void clearDeletionIntent(String pdfId) {
+    _intentionallyDeletedIds.clear();
   }
 
   PdfItem? get activePdf {
@@ -1999,7 +2023,10 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     for (var cls in _classes) {
       var pdfIndex = cls.pdfs.indexWhere((p) => p.id == pdfId);
       if (pdfIndex != -1) {
-        final newH = highlight.copyWith(
+        final highlightWithAuthor = highlight.copyWith(
+          createdBy: _currentUser?.username,
+        );
+        final newH = highlightWithAuthor.copyWith(
           updatedAt: DateTime.now().millisecondsSinceEpoch,
           isSynced: false,
         );
@@ -2018,7 +2045,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         _notify();
         _markPdfDirty(pdfId);
         _markUnsavedChanges();
-        triggerDebouncedSync(silent: true);
+        triggerSync();
         return;
       }
     }
@@ -2127,7 +2154,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       _markPdfDirty(pdfId);
 
       _markUnsavedChanges();
-      triggerDebouncedSync(silent: true);
+      triggerSync();
       return;
     }
   }
@@ -2183,6 +2210,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       );
       if (pdf.id.isEmpty) continue;
 
+      _intentionallyDeletedIds.addAll(pdf.highlights.map((h) => h.id));
+      _intentionallyDeletedIds.addAll(pdf.comments.map((c) => c.id));
+
       pdf.highlights.clear();
       pdf.comments.clear();
 
@@ -2196,6 +2226,12 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       // Standard debounced sync: will push the empty state after 3s
       _markUnsavedChanges();
       triggerDebouncedSync(silent: true);
+      if (currentSessionCode != null && activePdf?.fileHash != null) {
+        _syncService.clearAnnotationsForHash(
+          currentSessionCode!,
+          activePdf!.fileHash!,
+        ).then((_) => clearDeletionIntent(pdfId));
+      }
       return;
     }
   }
@@ -2228,6 +2264,12 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       );
       if (pdf.id.isEmpty) continue;
 
+      _intentionallyDeletedIds.addAll(
+        pdf.highlights
+            .where((h) => h.type == HighlightType.highlight)
+            .map((h) => h.id),
+      );
+
       pdf.highlights.removeWhere((h) => h.type == HighlightType.highlight);
 
       _actionHistory.removeWhere((a) => a.pdfId == pdfId);
@@ -2237,6 +2279,12 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       _markPdfDirty(pdfId);
       _markUnsavedChanges();
       triggerDebouncedSync(silent: true);
+      if (currentSessionCode != null && activePdf?.fileHash != null) {
+        _syncService.clearAnnotationsForHash(
+          currentSessionCode!,
+          activePdf!.fileHash!,
+        ).then((_) => clearDeletionIntent(pdfId));
+      }
       return;
     }
   }
@@ -2248,6 +2296,18 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         orElse: () => PdfItem(id: '', name: '', path: ''),
       );
       if (pdf.id.isEmpty) continue;
+
+      _intentionallyDeletedIds.addAll(
+        pdf.highlights
+            .where(
+              (h) =>
+                  h.type == HighlightType.pen ||
+                  h.type == HighlightType.arrow ||
+                  h.type == HighlightType.rectangle ||
+                  h.type == HighlightType.circle,
+            )
+            .map((h) => h.id),
+      );
 
       pdf.highlights.removeWhere(
         (h) =>
@@ -2264,6 +2324,12 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       _markPdfDirty(pdfId);
       _markUnsavedChanges();
       triggerDebouncedSync(silent: true);
+      if (currentSessionCode != null && activePdf?.fileHash != null) {
+        _syncService.clearAnnotationsForHash(
+          currentSessionCode!,
+          activePdf!.fileHash!,
+        ).then((_) => clearDeletionIntent(pdfId));
+      }
       return;
     }
   }
@@ -2292,6 +2358,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       );
       if (pdf.id.isEmpty) continue;
 
+      _intentionallyDeletedIds.addAll(pdf.comments.map((c) => c.id));
+
       pdf.comments.clear();
 
       _actionHistory.removeWhere((a) => a.pdfId == pdfId);
@@ -2299,6 +2367,14 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
       _notify();
       _markPdfDirty(pdfId);
+      _markUnsavedChanges();
+      triggerDebouncedSync(silent: true);
+      if (currentSessionCode != null && activePdf?.fileHash != null) {
+        _syncService.clearAnnotationsForHash(
+          currentSessionCode!,
+          activePdf!.fileHash!,
+        ).then((_) => clearDeletionIntent(pdfId));
+      }
       return;
     }
   }
