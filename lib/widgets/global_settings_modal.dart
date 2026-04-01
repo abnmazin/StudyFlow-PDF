@@ -362,9 +362,14 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
     // Attempt to guess a good name from the first selected file
     String initialName = SyncNamingUtils.bundleFallback;
     for (var cls in app.classes) {
-      final firstMatch = cls.pdfs.where((p) => _selectedHashes.contains(p.fileHash)).firstOrNull;
+      final firstMatch = cls.pdfs
+          .where((p) => _selectedHashes.contains(p.fileHash))
+          .firstOrNull;
       if (firstMatch != null) {
-        initialName = SyncNamingUtils.generateSmartName(firstMatch.name, isBundle: true);
+        initialName = SyncNamingUtils.generateSmartName(
+          firstMatch.name,
+          isBundle: true,
+        );
         break;
       }
     }
@@ -378,7 +383,10 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('أدخل اسماً للحزمة ليظهر للطلاب:', style: TextStyle(fontSize: 13)),
+            const Text(
+              'أدخل اسماً للحزمة ليظهر للطلاب:',
+              style: TextStyle(fontSize: 13),
+            ),
             const SizedBox(height: 12),
             TextField(
               controller: nameCtrl,
@@ -391,7 +399,10 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('إلغاء'),
+          ),
           FilledButton(
             onPressed: () {
               final val = nameCtrl.text.trim();
@@ -405,7 +416,10 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
     );
   }
 
-  Future<void> _generateMasterBundle(AppProvider app, String displayName) async {
+  Future<void> _generateMasterBundle(
+    AppProvider app,
+    String displayName,
+  ) async {
     setState(() {
       _isGenerating = true;
       _generatedMasterCode = null;
@@ -424,7 +438,8 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
               user.hardwareId,
               user.username,
               user.uid,
-              displayName: pdf.name, // Lessons inside bundle use their PDF name as display name
+              displayName: pdf
+                  .name, // Lessons inside bundle use their PDF name as display name
             );
             if (code != null) {
               bundle.add({
@@ -608,6 +623,24 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                         ),
                       ],
 
+                      if (app.currentUser?.role == 'lecturer') ...[
+                        const SizedBox(height: 24),
+                        _buildSectionHeader(
+                          'الانضمام إلى حزمة',
+                          LucideIcons.link2,
+                          textMuted,
+                        ),
+                        const SizedBox(height: 12),
+                        _buildCompactJoinCard(
+                          context,
+                          app,
+                          surfaceAlt,
+                          panelBorder,
+                          textPrimary,
+                          textMuted,
+                        ),
+                      ],
+
                       if (app.currentUser?.role == 'developer') ...[
                         const SizedBox(height: 24),
                         _buildSectionHeader(
@@ -719,7 +752,8 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
 
                 if (filteredFiles.isNotEmpty) {
                   activeBundles.add(data);
-                  filteredFilesMap[data['id'] ?? data['masterCode']] = filteredFiles;
+                  filteredFilesMap[data['id'] ?? data['masterCode']] =
+                      filteredFiles;
                 }
               }
 
@@ -776,7 +810,11 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                         if (data['displayName'] != null)
                           Text(
                             'الكود: ${data['masterCode']}',
-                            style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1),
+                            style: TextStyle(
+                              color: muted,
+                              fontSize: 10,
+                              letterSpacing: 1,
+                            ),
                           ),
                         Row(
                           children: [
@@ -792,7 +830,10 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                             if (locallyPresentCount < files.length) ...[
                               const SizedBox(width: 8),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                  vertical: 1,
+                                ),
                                 decoration: BoxDecoration(
                                   color: Colors.orange.withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(4),
@@ -829,7 +870,11 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                           tooltip: isLocked ? 'فتح الحزمة' : 'قفل الحزمة',
                         ),
                         IconButton(
-                          icon: const Icon(LucideIcons.userX, size: 16, color: Colors.amber),
+                          icon: const Icon(
+                            LucideIcons.userX,
+                            size: 16,
+                            color: Colors.amber,
+                          ),
                           onPressed: () => _manageBannedUsers(
                             context,
                             app,
@@ -840,28 +885,45 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                           tooltip: 'إدارة المحظورين',
                         ),
                         IconButton(
-                          icon: const Icon(LucideIcons.trash2, size: 16, color: Colors.redAccent),
-                          onPressed: () => _confirmDelete('master_sessions', docId, 'الحزمة'),
+                          icon: const Icon(
+                            LucideIcons.trash2,
+                            size: 16,
+                            color: Colors.redAccent,
+                          ),
+                          onPressed: () => _confirmDelete(
+                            'master_sessions',
+                            docId,
+                            'الحزمة',
+                          ),
                           tooltip: 'حذف نهائي',
                         ),
                       ],
                     ),
                     children: files.map((f) {
-                      final bool locallyExists = f is Map && localHashes.contains(f['hash']);
+                      final bool locallyExists =
+                          f is Map && localHashes.contains(f['hash']);
                       return ListTile(
                         dense: true,
                         title: Text(
                           f['name'] ?? 'Unnamed',
                           style: TextStyle(
-                            color: locallyExists ? text : muted.withOpacity(0.5),
+                            color: locallyExists
+                                ? text
+                                : muted.withOpacity(0.5),
                             fontSize: 11,
-                            decoration: locallyExists ? null : TextDecoration.lineThrough,
+                            decoration: locallyExists
+                                ? null
+                                : TextDecoration.lineThrough,
                           ),
                         ),
                         leading: Icon(
-                          locallyExists ? LucideIcons.fileText : LucideIcons.fileX,
+                          locallyExists
+                              ? LucideIcons.fileText
+                              : LucideIcons.fileX,
                           size: 14,
-                          color: locallyExists ? null : Colors.red.withOpacity(0.5),
+                          color: locallyExists
+                              ? null
+                              : Colors.red.withOpacity(0.5),
                         ),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -871,11 +933,17 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                                 padding: const EdgeInsets.only(right: 8.0),
                                 child: Text(
                                   '(محذوف من Dashboard)',
-                                  style: TextStyle(color: Colors.red.withOpacity(0.6), fontSize: 9),
+                                  style: TextStyle(
+                                    color: Colors.red.withOpacity(0.6),
+                                    fontSize: 9,
+                                  ),
                                 ),
                               ),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.black.withOpacity(0.05),
                                 borderRadius: BorderRadius.circular(4),
@@ -892,9 +960,16 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                             ),
                             if (f['sessionCode'] != null)
                               IconButton(
-                                icon: const Icon(LucideIcons.copy, size: 14, color: Colors.grey),
+                                icon: const Icon(
+                                  LucideIcons.copy,
+                                  size: 14,
+                                  color: Colors.grey,
+                                ),
                                 padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                                constraints: const BoxConstraints(
+                                  minWidth: 24,
+                                  minHeight: 24,
+                                ),
                                 iconSize: 14,
                                 onPressed: () {
                                   Clipboard.setData(

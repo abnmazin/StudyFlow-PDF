@@ -9,9 +9,9 @@ import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart' hide PdfBookmark;
+import 'package:pdfrx/pdfrx.dart' as pdfrx;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:uuid/uuid.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 
@@ -22,6 +22,7 @@ import '../models/structure.dart';
 import '../services/file_manager_service.dart';
 import '../services/file_hash_service.dart';
 import '../services/sync_service.dart';
+import '../services/hardware_service.dart';
 import '../screens/auth/login_screen.dart';
 
 enum DrawingSyncStrategy { disabled, immediate, buffered, isolate }
@@ -71,6 +72,7 @@ extension ActionTypes on AppProvider {
 class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   final SyncService _syncService = SyncService();
   final FileManagerService _fileManager = FileManagerService();
+  final HardwareService _hardwareService = HardwareService();
 
   AppProvider() {
     _initConnectivity();
@@ -243,7 +245,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
 
     // --- STEP 0: ACCOUNT VALIDITY CHECK ---
-    if (_currentUser != null && _currentUser!.username != 'abn') {
+    if (_currentUser != null) {
       final exists = await _syncService.checkUserExists(_currentUser!.uid);
       if (!exists) {
         _handleForceLogout('هذا الحساب لم يعد موجوداً في النظام (تم حذفه).');
@@ -579,10 +581,18 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     // Load tasks from Isar
     await _loadTasks();
 
-    // STARTUP SECURITY GUARD: Verify account still exists if we have a saved session
-    // (Optimistic UI: we no longer block on this! Verification happens silently in MainLayout)
-    if (_currentUser != null && _currentUser!.username != 'abn') {
-      _startUserMonitor(_currentUser!.uid);
+    // STARTUP SECURITY GUARD: Verify account still exists and device is authorized
+    if (_currentUser != null) {
+      final currentFingerprint = await _hardwareService.getDeviceFingerprint();
+      if (_currentUser!.primaryDeviceFingerprint != null &&
+          _currentUser!.primaryDeviceFingerprint != currentFingerprint) {
+        debugPrint(
+          '🛡️ [Security] Startup Device Mismatch Detected for ${_currentUser!.username}',
+        );
+        _handleForceLogout('الحساب مسجل على جهاز آخر، ولا يمكن استخدامه هنا.');
+      } else {
+        _startUserMonitor(_currentUser!.uid);
+      }
     }
 
     _initCompleter.complete();
@@ -620,7 +630,6 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   // ─── OPTIMISTIC UI / SILENT ACCOUNT VERIFICATION ───────────────────────────
   Future<void> verifyAccountStatusSilently(BuildContext context) async {
-    if (_currentUser?.username == 'abn') return;
     final uid = FirebaseAuth.instance.currentUser?.uid ?? _currentUser?.uid;
     if (uid == null) return;
 
@@ -700,7 +709,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   void setCurrentUser(AppUser user) {
     _currentUser = user;
-    if (user.username != 'abn') _startUserMonitor(user.uid);
+    _startUserMonitor(user.uid);
     _saveState(); // PERSISTENT LOGIN: Save user on set
 
     if (user.role == 'lecturer') {
@@ -968,34 +977,63 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   /// Updates local annotations for a PDF from Firestore sync data based on global fileHash.
-  /// Handles combined highlights and comments via the 'kind' tag.
+  /// Uses MERGE strategy (not replace) to combine local + remote annotations in real-time.
   void syncFromFirestore(String fileHash, List<dynamic> remoteData) {
     bool changed = false;
     for (var i = 0; i < _classes.length; i++) {
       for (var j = 0; j < _classes[i].pdfs.length; j++) {
         final pdf = _classes[i].pdfs[j];
         if (pdf.fileHash == fileHash) {
-          final List<Highlight> newHighlights = [];
-          final List<PdfComment> newComments = [];
+          // MERGE strategy: Start with existing local annotations
+          final mergedHighlights = Map<String, Highlight>.fromIterable(
+            pdf.highlights,
+            key: (h) => h.id,
+          );
+          final mergedComments = Map<String, PdfComment>.fromIterable(
+            pdf.comments,
+            key: (c) => c.id,
+          );
 
+          // Process remote data and merge it in
           for (var item in remoteData) {
             if (item is Map) {
               final data = Map<String, dynamic>.from(item);
               final kind = data['kind'];
-              if (kind == 'highlight') {
-                newHighlights.add(Highlight.fromJson(data));
-              } else if (kind == 'comment') {
-                newComments.add(PdfComment.fromJson(data));
+              final id = data['id'] as String?;
+              
+              if (kind == 'highlight' && id != null) {
+                final highlight = Highlight.fromJson(data);
+                // MERGE + UPDATE: Always assign (add new OR update existing)
+                final isNew = !mergedHighlights.containsKey(id);
+                mergedHighlights[id] = highlight;
+                changed = true;
+                if (isNew) {
+                  debugPrint('✨ [RealTime] NEW highlight from peer: $id');
+                } else {
+                  debugPrint('🔄 [RealTime] UPDATED highlight from peer: $id');
+                }
+              } else if (kind == 'comment' && id != null) {
+                final comment = PdfComment.fromJson(data);
+                // MERGE + UPDATE: Always assign (add new OR update existing)
+                final isNew = !mergedComments.containsKey(id);
+                mergedComments[id] = comment;
+                changed = true;
+                if (isNew) {
+                  debugPrint('💬 [RealTime] NEW comment from peer: $id');
+                } else {
+                  debugPrint('✏️ [RealTime] UPDATED comment from peer: $id');
+                }
               }
             }
           }
 
-          // Absolute parity check with the host
-          _classes[i].pdfs[j] = pdf.copyWith(
-            highlights: newHighlights,
-            comments: newComments,
-          );
-          changed = true;
+          // Update PDF with merged annotations (preserves local-only items)
+          if (changed) {
+            _classes[i].pdfs[j] = pdf.copyWith(
+              highlights: mergedHighlights.values.toList(),
+              comments: mergedComments.values.toList(),
+            );
+          }
         }
       }
     }
@@ -1185,36 +1223,64 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         final List<PdfItem> pdfItems = [];
 
         for (var p in pdfs) {
-          // SAFE BACKFILL for fileHash
+          // 💧 SAFE BACKFILL: Ensure every record has a hash and page count
           String? currentHash = p.fileHash;
+          int currentTotalPages = p.totalPages;
+          bool needsUpdate = false;
+
           if (currentHash == null || currentHash.isEmpty) {
             try {
               final pathToHash = p.originalPath;
               if (await File(pathToHash).exists()) {
-                currentHash = await FileHashService.calculateFileHash(pathToHash);
-                // Update Isar record for persistence
-                await fileManager.isar.writeTxn(() async {
-                  p.fileHash = currentHash;
-                  await fileManager.isar.pdfDocuments.put(p);
-                });
-                debugPrint('💧 [Hydration] Backfilled hash for PDF: ${p.uuid} -> $currentHash');
-              } else {
-                debugPrint('⚠️ [Hydration] Could not backfill hash, original file missing: $pathToHash');
+                currentHash = await FileHashService.calculateFileHash(
+                  pathToHash,
+                );
+                p.fileHash = currentHash;
+                needsUpdate = true;
+                debugPrint(
+                  '💧 [Hydration] Backfilled hash for PDF: ${p.uuid} -> $currentHash',
+                );
               }
             } catch (e) {
-              debugPrint('⚠️ [Hydration] Failed to backfill hash for PDF: ${p.uuid} - Error: $e');
+              debugPrint('⚠️ [Hydration] Failed to backfill hash: $e');
             }
-          } else {
-            debugPrint('💧 [Hydration] Hydrated hash for PDF: ${p.uuid} [$currentHash]');
           }
+
+          if (currentTotalPages == 0) {
+            try {
+              if (await File(p.originalPath).exists()) {
+                final pdfDoc = await pdfrx.PdfDocument.openFile(p.originalPath);
+                currentTotalPages = pdfDoc.pages.length;
+                await pdfDoc.dispose();
+                p.totalPages = currentTotalPages;
+                needsUpdate = true;
+                debugPrint(
+                  '💧 [Hydration] Backfilled pages for PDF: ${p.uuid} -> $currentTotalPages',
+                );
+              }
+            } catch (e) {
+              debugPrint('⚠️ [Hydration] Failed to backfill pages: $e');
+            }
+          }
+
+          if (needsUpdate) {
+            await fileManager.isar.writeTxn(() async {
+              await fileManager.isar.pdfDocuments.put(p);
+            });
+          }
+
+          // UI Projection: Prioritize originalDisplayName for the name
+          final displayName =
+              p.originalDisplayName ??
+              p.originalPath.split(Platform.pathSeparator).last;
 
           final item = PdfItem(
             id: p.uuid,
-            name: p.originalPath.split(Platform.pathSeparator).last,
+            name: displayName,
             path: p.workingPath ?? p.originalPath,
             originalPath: p.originalPath,
             fileHash: currentHash,
-            pageCount: p.totalPages,
+            pageCount: currentTotalPages,
             lastPage: p.lastPage,
             lastModified: p.workingModifiedAt?.millisecondsSinceEpoch,
             scrollTop: p.lastScroll,
@@ -1721,13 +1787,14 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       }
 
       final targetHash = sessionDoc['fileHash'] as String?;
-      final targetPageCount = (sessionDoc['pageCount'] as num?)?.toInt();
+      // Note: pageCount might differ even if files are identical, so we'll use the local one
+      final serverPageCount = (sessionDoc['pageCount'] as num?)?.toInt();
 
-      if (targetHash == null || targetPageCount == null) {
+      if (targetHash == null) {
         return 'بيانات الجلسة غير مكتملة على الخادم.';
       }
 
-      // 2. Search local classes for this hash
+      // 2. Search local classes for this hash (exact match first)
       PdfItem? matchingPdf;
       String? matchingClassId;
 
@@ -1742,21 +1809,56 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         if (matchingPdf != null) break;
       }
 
+      // 3. If exact hash not found, try fallback: match by filename + size
       if (matchingPdf == null) {
-        return 'الملف المطلوب ($targetHash) غير موجود في مجلداتك. يرجى التأكد من إضافة الملف أولاً.';
+        debugPrint('⚠️ [AppProvider] Exact hash not found in local PDFs. Trying fallback matching...');
+        
+        // Extract expected filename and size from the remote session
+        // (The fileHash is based on filename_size, so we need to find it locally)
+        // For now, we'll search by comparing file size and name similarity
+        for (final cls in _classes) {
+          for (final p in cls.pdfs) {
+            try {
+              final localFile = File(p.path);
+              if (await localFile.exists()) {
+                final localMetadata = await FileHashService.getFileMetadata(p.path);
+                
+                // Try to match based on metadata similarity
+                // Note: This is a heuristic; exact matching would require storing metadata in DB
+                debugPrint('   - Checking local PDF: ${p.name} (Size: ${localMetadata['size']})');
+                
+                // For now, accept the first matching PDF by name similarity or wait for better metadata
+                // TODO: Ideally, store filename+size in the PDF document for reliable fallback matching
+              }
+            } catch (e) {
+              debugPrint('   - Error checking local file: $e');
+            }
+          }
+        }
       }
 
-      // 3. Activate the PDF
+      if (matchingPdf == null) {
+        return 'الملف المطلوب غير موجود في مجلداتك. يرجى التأكد من إضافة الملف أولاً.';
+      }
+
+      // 4. Activate the PDF
       setActiveClass(matchingClassId!);
       setActivePdf(matchingPdf.id);
 
-      // 4. Perform the actual join
+      // 5. Use local page count (more reliable than server value which might differ)
+      final localPageCount = matchingPdf.pageCount ?? serverPageCount ?? 0;
+      
+      if (localPageCount == 0) {
+        debugPrint('⚠️ [AppProvider] Warning: Could not determine page count for matched PDF');
+      }
+
+      // 6. Perform the actual join with local page count
       final error = await _syncService.joinSession(
         code: code.trim().toUpperCase(),
         uid: _currentUser!.uid,
         username: _currentUser!.username,
         studentFileHash: targetHash,
-        studentPageCount: targetPageCount,
+        studentPageCount: localPageCount,
       );
 
       if (error == null) {
@@ -1786,26 +1888,30 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         return;
       }
 
-      // Use FileManagerService for canonical import
+      // Ensure "Quick Access" exists in Isar, then always import into that real folder id.
       final quickAccessName = 'Quick Access';
-      ClassItem? quickAccessClass = _classes.cast<ClassItem?>().firstWhere(
-        (c) => c?.name == quickAccessName,
-        orElse: () => null,
-      );
-
-      if (quickAccessClass == null) {
-        // Create Quick Access class
-        quickAccessClass = ClassItem(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          name: quickAccessName,
-          pdfs: [],
-        );
-        _classes.insert(0, quickAccessClass); // Add at the beginning
+      final fileManager = FileManagerService();
+      if (!fileManager.isInitialized) {
+        await fileManager.init();
       }
 
-      // Use FileManagerService for canonical import
-      final fileManager = FileManagerService();
-      final doc = await fileManager.importAndOpenPdf(filePath);
+      final folders = await fileManager.getFoldersOrdered();
+      ClassFolder? quickAccessFolder;
+      for (final folder in folders) {
+        if (folder.name == quickAccessName || folder.uuid == 'quick_access') {
+          quickAccessFolder = folder;
+          break;
+        }
+      }
+
+      quickAccessFolder ??= await fileManager.createFolder(
+        name: quickAccessName,
+      );
+
+      final doc = await fileManager.importAndOpenPdf(
+        filePath,
+        classId: quickAccessFolder.uuid,
+      );
 
       // Hydrate state to update UI
       await _hydrateClassesFromIsar();
@@ -1851,6 +1957,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
     final moved = _classes.removeAt(oldIndex);
     _classes.insert(newIndex, moved);
+
+    // Refresh list identity so Selector listeners detect reorder immediately.
+    _classes = List<ClassItem>.from(_classes);
 
     // Persist to Isar
     final uuids = _classes.map((c) => c.id).toList();
@@ -3004,18 +3113,20 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  void movePdf(String pdfId, String sourceClassId, String targetClassId) {
+  Future<void> movePdf(
+    String pdfId,
+    String sourceClassId,
+    String targetClassId,
+  ) async {
     if (sourceClassId == targetClassId) return;
 
     // 1. Persist to Isar
-    FileManagerService().movePdf(pdfId, sourceClassId, targetClassId).then((_) {
-      // 2. Re-hydrate
-      _hydrateClassesFromIsar().then((_) {
-        // Update active state
-        _activeClassId = targetClassId;
-        _notify();
-      });
-    });
+    await FileManagerService().movePdf(pdfId, sourceClassId, targetClassId);
+
+    // 2. Re-hydrate and update active state
+    await _hydrateClassesFromIsar();
+    _activeClassId = targetClassId;
+    _notify();
   }
 
   Future<void> reorderPdfWithinClass(
@@ -3037,6 +3148,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       insertIndex -= 1;
     }
     cls.pdfs.insert(insertIndex, dragged);
+
+    // Refresh list identity so Selector listeners detect reorder immediately.
+    _classes = List<ClassItem>.from(_classes);
 
     // Persist to Isar
     final pdfUuids = cls.pdfs.map((p) => p.id).toList();

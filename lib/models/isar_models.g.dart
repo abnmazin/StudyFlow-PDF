@@ -1751,83 +1751,93 @@ const PdfDocumentSchema = CollectionSchema(
       name: r'createdAt',
       type: IsarType.dateTime,
     ),
-    r'fileSize': PropertySchema(
+    r'fileHash': PropertySchema(
       id: 4,
+      name: r'fileHash',
+      type: IsarType.string,
+    ),
+    r'fileSize': PropertySchema(
+      id: 5,
       name: r'fileSize',
       type: IsarType.long,
     ),
     r'hasUnsavedChanges': PropertySchema(
-      id: 5,
+      id: 6,
       name: r'hasUnsavedChanges',
       type: IsarType.bool,
     ),
     r'isEditing': PropertySchema(
-      id: 6,
+      id: 7,
       name: r'isEditing',
       type: IsarType.bool,
     ),
     r'isPinned': PropertySchema(
-      id: 7,
+      id: 8,
       name: r'isPinned',
       type: IsarType.bool,
     ),
     r'lastOpenedAt': PropertySchema(
-      id: 8,
+      id: 9,
       name: r'lastOpenedAt',
       type: IsarType.dateTime,
     ),
     r'lastPage': PropertySchema(
-      id: 9,
+      id: 10,
       name: r'lastPage',
       type: IsarType.long,
     ),
     r'lastScroll': PropertySchema(
-      id: 10,
+      id: 11,
       name: r'lastScroll',
       type: IsarType.double,
     ),
     r'lastZoom': PropertySchema(
-      id: 11,
+      id: 12,
       name: r'lastZoom',
       type: IsarType.double,
     ),
+    r'originalDisplayName': PropertySchema(
+      id: 13,
+      name: r'originalDisplayName',
+      type: IsarType.string,
+    ),
     r'originalPath': PropertySchema(
-      id: 12,
+      id: 14,
       name: r'originalPath',
       type: IsarType.string,
     ),
     r'tags': PropertySchema(
-      id: 13,
+      id: 15,
       name: r'tags',
       type: IsarType.stringList,
     ),
     r'thumbnailPath': PropertySchema(
-      id: 14,
+      id: 16,
       name: r'thumbnailPath',
       type: IsarType.string,
     ),
     r'totalPages': PropertySchema(
-      id: 15,
+      id: 17,
       name: r'totalPages',
       type: IsarType.long,
     ),
     r'uuid': PropertySchema(
-      id: 16,
+      id: 18,
       name: r'uuid',
       type: IsarType.string,
     ),
     r'workingCreatedAt': PropertySchema(
-      id: 17,
+      id: 19,
       name: r'workingCreatedAt',
       type: IsarType.dateTime,
     ),
     r'workingModifiedAt': PropertySchema(
-      id: 18,
+      id: 20,
       name: r'workingModifiedAt',
       type: IsarType.dateTime,
     ),
     r'workingPath': PropertySchema(
-      id: 19,
+      id: 21,
       name: r'workingPath',
       type: IsarType.string,
     )
@@ -1859,6 +1869,32 @@ const PdfDocumentSchema = CollectionSchema(
       properties: [
         IndexPropertySchema(
           name: r'originalPath',
+          type: IndexType.hash,
+          caseSensitive: true,
+        )
+      ],
+    ),
+    r'originalDisplayName': IndexSchema(
+      id: -5159331825767815212,
+      name: r'originalDisplayName',
+      unique: false,
+      replace: false,
+      properties: [
+        IndexPropertySchema(
+          name: r'originalDisplayName',
+          type: IndexType.hash,
+          caseSensitive: true,
+        )
+      ],
+    ),
+    r'fileHash': IndexSchema(
+      id: -5944002318434853925,
+      name: r'fileHash',
+      unique: false,
+      replace: false,
+      properties: [
+        IndexPropertySchema(
+          name: r'fileHash',
           type: IndexType.hash,
           caseSensitive: true,
         )
@@ -1898,6 +1934,18 @@ int _pdfDocumentEstimateSize(
       bytesCount += 3 + value.length * 3;
     }
   }
+  {
+    final value = object.fileHash;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
+  {
+    final value = object.originalDisplayName;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
   bytesCount += 3 + object.originalPath.length * 3;
   bytesCount += 3 + object.tags.length * 3;
   {
@@ -1932,22 +1980,24 @@ void _pdfDocumentSerialize(
   writer.writeString(offsets[1], object.classId);
   writer.writeLong(offsets[2], object.commentCount);
   writer.writeDateTime(offsets[3], object.createdAt);
-  writer.writeLong(offsets[4], object.fileSize);
-  writer.writeBool(offsets[5], object.hasUnsavedChanges);
-  writer.writeBool(offsets[6], object.isEditing);
-  writer.writeBool(offsets[7], object.isPinned);
-  writer.writeDateTime(offsets[8], object.lastOpenedAt);
-  writer.writeLong(offsets[9], object.lastPage);
-  writer.writeDouble(offsets[10], object.lastScroll);
-  writer.writeDouble(offsets[11], object.lastZoom);
-  writer.writeString(offsets[12], object.originalPath);
-  writer.writeStringList(offsets[13], object.tags);
-  writer.writeString(offsets[14], object.thumbnailPath);
-  writer.writeLong(offsets[15], object.totalPages);
-  writer.writeString(offsets[16], object.uuid);
-  writer.writeDateTime(offsets[17], object.workingCreatedAt);
-  writer.writeDateTime(offsets[18], object.workingModifiedAt);
-  writer.writeString(offsets[19], object.workingPath);
+  writer.writeString(offsets[4], object.fileHash);
+  writer.writeLong(offsets[5], object.fileSize);
+  writer.writeBool(offsets[6], object.hasUnsavedChanges);
+  writer.writeBool(offsets[7], object.isEditing);
+  writer.writeBool(offsets[8], object.isPinned);
+  writer.writeDateTime(offsets[9], object.lastOpenedAt);
+  writer.writeLong(offsets[10], object.lastPage);
+  writer.writeDouble(offsets[11], object.lastScroll);
+  writer.writeDouble(offsets[12], object.lastZoom);
+  writer.writeString(offsets[13], object.originalDisplayName);
+  writer.writeString(offsets[14], object.originalPath);
+  writer.writeStringList(offsets[15], object.tags);
+  writer.writeString(offsets[16], object.thumbnailPath);
+  writer.writeLong(offsets[17], object.totalPages);
+  writer.writeString(offsets[18], object.uuid);
+  writer.writeDateTime(offsets[19], object.workingCreatedAt);
+  writer.writeDateTime(offsets[20], object.workingModifiedAt);
+  writer.writeString(offsets[21], object.workingPath);
 }
 
 PdfDocument _pdfDocumentDeserialize(
@@ -1961,23 +2011,25 @@ PdfDocument _pdfDocumentDeserialize(
   object.classId = reader.readStringOrNull(offsets[1]);
   object.commentCount = reader.readLong(offsets[2]);
   object.createdAt = reader.readDateTime(offsets[3]);
-  object.fileSize = reader.readLong(offsets[4]);
-  object.hasUnsavedChanges = reader.readBool(offsets[5]);
+  object.fileHash = reader.readStringOrNull(offsets[4]);
+  object.fileSize = reader.readLong(offsets[5]);
+  object.hasUnsavedChanges = reader.readBool(offsets[6]);
   object.id = id;
-  object.isEditing = reader.readBool(offsets[6]);
-  object.isPinned = reader.readBool(offsets[7]);
-  object.lastOpenedAt = reader.readDateTimeOrNull(offsets[8]);
-  object.lastPage = reader.readLong(offsets[9]);
-  object.lastScroll = reader.readDouble(offsets[10]);
-  object.lastZoom = reader.readDouble(offsets[11]);
-  object.originalPath = reader.readString(offsets[12]);
-  object.tags = reader.readStringList(offsets[13]) ?? [];
-  object.thumbnailPath = reader.readStringOrNull(offsets[14]);
-  object.totalPages = reader.readLong(offsets[15]);
-  object.uuid = reader.readString(offsets[16]);
-  object.workingCreatedAt = reader.readDateTimeOrNull(offsets[17]);
-  object.workingModifiedAt = reader.readDateTimeOrNull(offsets[18]);
-  object.workingPath = reader.readStringOrNull(offsets[19]);
+  object.isEditing = reader.readBool(offsets[7]);
+  object.isPinned = reader.readBool(offsets[8]);
+  object.lastOpenedAt = reader.readDateTimeOrNull(offsets[9]);
+  object.lastPage = reader.readLong(offsets[10]);
+  object.lastScroll = reader.readDouble(offsets[11]);
+  object.lastZoom = reader.readDouble(offsets[12]);
+  object.originalDisplayName = reader.readStringOrNull(offsets[13]);
+  object.originalPath = reader.readString(offsets[14]);
+  object.tags = reader.readStringList(offsets[15]) ?? [];
+  object.thumbnailPath = reader.readStringOrNull(offsets[16]);
+  object.totalPages = reader.readLong(offsets[17]);
+  object.uuid = reader.readString(offsets[18]);
+  object.workingCreatedAt = reader.readDateTimeOrNull(offsets[19]);
+  object.workingModifiedAt = reader.readDateTimeOrNull(offsets[20]);
+  object.workingPath = reader.readStringOrNull(offsets[21]);
   return object;
 }
 
@@ -1997,36 +2049,40 @@ P _pdfDocumentDeserializeProp<P>(
     case 3:
       return (reader.readDateTime(offset)) as P;
     case 4:
-      return (reader.readLong(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 5:
-      return (reader.readBool(offset)) as P;
+      return (reader.readLong(offset)) as P;
     case 6:
       return (reader.readBool(offset)) as P;
     case 7:
       return (reader.readBool(offset)) as P;
     case 8:
-      return (reader.readDateTimeOrNull(offset)) as P;
+      return (reader.readBool(offset)) as P;
     case 9:
-      return (reader.readLong(offset)) as P;
+      return (reader.readDateTimeOrNull(offset)) as P;
     case 10:
-      return (reader.readDouble(offset)) as P;
+      return (reader.readLong(offset)) as P;
     case 11:
       return (reader.readDouble(offset)) as P;
     case 12:
-      return (reader.readString(offset)) as P;
+      return (reader.readDouble(offset)) as P;
     case 13:
-      return (reader.readStringList(offset) ?? []) as P;
-    case 14:
       return (reader.readStringOrNull(offset)) as P;
-    case 15:
-      return (reader.readLong(offset)) as P;
-    case 16:
+    case 14:
       return (reader.readString(offset)) as P;
+    case 15:
+      return (reader.readStringList(offset) ?? []) as P;
+    case 16:
+      return (reader.readStringOrNull(offset)) as P;
     case 17:
-      return (reader.readDateTimeOrNull(offset)) as P;
+      return (reader.readLong(offset)) as P;
     case 18:
-      return (reader.readDateTimeOrNull(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 19:
+      return (reader.readDateTimeOrNull(offset)) as P;
+    case 20:
+      return (reader.readDateTimeOrNull(offset)) as P;
+    case 21:
       return (reader.readStringOrNull(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -2262,6 +2318,139 @@ extension PdfDocumentQueryWhere
               indexName: r'originalPath',
               lower: [],
               upper: [originalPath],
+              includeUpper: false,
+            ));
+      }
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterWhereClause>
+      originalDisplayNameIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'originalDisplayName',
+        value: [null],
+      ));
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterWhereClause>
+      originalDisplayNameIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'originalDisplayName',
+        lower: [null],
+        includeLower: false,
+        upper: [],
+      ));
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterWhereClause>
+      originalDisplayNameEqualTo(String? originalDisplayName) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'originalDisplayName',
+        value: [originalDisplayName],
+      ));
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterWhereClause>
+      originalDisplayNameNotEqualTo(String? originalDisplayName) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'originalDisplayName',
+              lower: [],
+              upper: [originalDisplayName],
+              includeUpper: false,
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'originalDisplayName',
+              lower: [originalDisplayName],
+              includeLower: false,
+              upper: [],
+            ));
+      } else {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'originalDisplayName',
+              lower: [originalDisplayName],
+              includeLower: false,
+              upper: [],
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'originalDisplayName',
+              lower: [],
+              upper: [originalDisplayName],
+              includeUpper: false,
+            ));
+      }
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterWhereClause> fileHashIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'fileHash',
+        value: [null],
+      ));
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterWhereClause>
+      fileHashIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'fileHash',
+        lower: [null],
+        includeLower: false,
+        upper: [],
+      ));
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterWhereClause> fileHashEqualTo(
+      String? fileHash) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'fileHash',
+        value: [fileHash],
+      ));
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterWhereClause> fileHashNotEqualTo(
+      String? fileHash) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'fileHash',
+              lower: [],
+              upper: [fileHash],
+              includeUpper: false,
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'fileHash',
+              lower: [fileHash],
+              includeLower: false,
+              upper: [],
+            ));
+      } else {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'fileHash',
+              lower: [fileHash],
+              includeLower: false,
+              upper: [],
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'fileHash',
+              lower: [],
+              upper: [fileHash],
               includeUpper: false,
             ));
       }
@@ -2652,6 +2841,159 @@ extension PdfDocumentQueryFilter
         includeLower: includeLower,
         upper: upper,
         includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterFilterCondition>
+      fileHashIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'fileHash',
+      ));
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterFilterCondition>
+      fileHashIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'fileHash',
+      ));
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterFilterCondition> fileHashEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'fileHash',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterFilterCondition>
+      fileHashGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'fileHash',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterFilterCondition>
+      fileHashLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'fileHash',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterFilterCondition> fileHashBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'fileHash',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterFilterCondition>
+      fileHashStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'fileHash',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterFilterCondition>
+      fileHashEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'fileHash',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterFilterCondition>
+      fileHashContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'fileHash',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterFilterCondition> fileHashMatches(
+      String pattern,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'fileHash',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterFilterCondition>
+      fileHashIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'fileHash',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterFilterCondition>
+      fileHashIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'fileHash',
+        value: '',
       ));
     });
   }
@@ -3049,6 +3391,160 @@ extension PdfDocumentQueryFilter
         upper: upper,
         includeUpper: includeUpper,
         epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterFilterCondition>
+      originalDisplayNameIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'originalDisplayName',
+      ));
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterFilterCondition>
+      originalDisplayNameIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'originalDisplayName',
+      ));
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterFilterCondition>
+      originalDisplayNameEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'originalDisplayName',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterFilterCondition>
+      originalDisplayNameGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'originalDisplayName',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterFilterCondition>
+      originalDisplayNameLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'originalDisplayName',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterFilterCondition>
+      originalDisplayNameBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'originalDisplayName',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterFilterCondition>
+      originalDisplayNameStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'originalDisplayName',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterFilterCondition>
+      originalDisplayNameEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'originalDisplayName',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterFilterCondition>
+      originalDisplayNameContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'originalDisplayName',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterFilterCondition>
+      originalDisplayNameMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'originalDisplayName',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterFilterCondition>
+      originalDisplayNameIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'originalDisplayName',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterFilterCondition>
+      originalDisplayNameIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'originalDisplayName',
+        value: '',
       ));
     });
   }
@@ -4115,6 +4611,18 @@ extension PdfDocumentQuerySortBy
     });
   }
 
+  QueryBuilder<PdfDocument, PdfDocument, QAfterSortBy> sortByFileHash() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'fileHash', Sort.asc);
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterSortBy> sortByFileHashDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'fileHash', Sort.desc);
+    });
+  }
+
   QueryBuilder<PdfDocument, PdfDocument, QAfterSortBy> sortByFileSize() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'fileSize', Sort.asc);
@@ -4211,6 +4719,20 @@ extension PdfDocumentQuerySortBy
   QueryBuilder<PdfDocument, PdfDocument, QAfterSortBy> sortByLastZoomDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'lastZoom', Sort.desc);
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterSortBy>
+      sortByOriginalDisplayName() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'originalDisplayName', Sort.asc);
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterSortBy>
+      sortByOriginalDisplayNameDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'originalDisplayName', Sort.desc);
     });
   }
 
@@ -4357,6 +4879,18 @@ extension PdfDocumentQuerySortThenBy
     });
   }
 
+  QueryBuilder<PdfDocument, PdfDocument, QAfterSortBy> thenByFileHash() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'fileHash', Sort.asc);
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterSortBy> thenByFileHashDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'fileHash', Sort.desc);
+    });
+  }
+
   QueryBuilder<PdfDocument, PdfDocument, QAfterSortBy> thenByFileSize() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'fileSize', Sort.asc);
@@ -4465,6 +4999,20 @@ extension PdfDocumentQuerySortThenBy
   QueryBuilder<PdfDocument, PdfDocument, QAfterSortBy> thenByLastZoomDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'lastZoom', Sort.desc);
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterSortBy>
+      thenByOriginalDisplayName() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'originalDisplayName', Sort.asc);
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QAfterSortBy>
+      thenByOriginalDisplayNameDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'originalDisplayName', Sort.desc);
     });
   }
 
@@ -4587,6 +5135,13 @@ extension PdfDocumentQueryWhereDistinct
     });
   }
 
+  QueryBuilder<PdfDocument, PdfDocument, QDistinct> distinctByFileHash(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'fileHash', caseSensitive: caseSensitive);
+    });
+  }
+
   QueryBuilder<PdfDocument, PdfDocument, QDistinct> distinctByFileSize() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'fileSize');
@@ -4633,6 +5188,14 @@ extension PdfDocumentQueryWhereDistinct
   QueryBuilder<PdfDocument, PdfDocument, QDistinct> distinctByLastZoom() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'lastZoom');
+    });
+  }
+
+  QueryBuilder<PdfDocument, PdfDocument, QDistinct>
+      distinctByOriginalDisplayName({bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'originalDisplayName',
+          caseSensitive: caseSensitive);
     });
   }
 
@@ -4724,6 +5287,12 @@ extension PdfDocumentQueryProperty
     });
   }
 
+  QueryBuilder<PdfDocument, String?, QQueryOperations> fileHashProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'fileHash');
+    });
+  }
+
   QueryBuilder<PdfDocument, int, QQueryOperations> fileSizeProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'fileSize');
@@ -4771,6 +5340,13 @@ extension PdfDocumentQueryProperty
   QueryBuilder<PdfDocument, double, QQueryOperations> lastZoomProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'lastZoom');
+    });
+  }
+
+  QueryBuilder<PdfDocument, String?, QQueryOperations>
+      originalDisplayNameProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'originalDisplayName');
     });
   }
 

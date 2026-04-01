@@ -241,15 +241,17 @@ class SyncService {
   /// Checks if a user document exists in the 'users' collection.
   Future<bool> checkUserExists(String uid) async {
     try {
-      final snap = await _db.collection('users').doc(uid).get(
-        const GetOptions(source: Source.serverAndCache),
-      );
+      final snap = await _db
+          .collection('users')
+          .doc(uid)
+          .get(const GetOptions(source: Source.serverAndCache));
       return snap.exists;
     } catch (_) {
       try {
-        final cached = await _db.collection('users').doc(uid).get(
-          const GetOptions(source: Source.cache),
-        );
+        final cached = await _db
+            .collection('users')
+            .doc(uid)
+            .get(const GetOptions(source: Source.cache));
         return cached.exists;
       } catch (_) {
         return true;
@@ -731,9 +733,8 @@ class SyncService {
     final merged = [...retained, ...newHJson, ...newCJson];
 
     // ── Write Guard: لا تكتب لو ما في تغيير فعلي ────────────────────────
-    final hasChanges = newHJson.isNotEmpty ||
-        newCJson.isNotEmpty ||
-        deletedIds.isNotEmpty;
+    final hasChanges =
+        newHJson.isNotEmpty || newCJson.isNotEmpty || deletedIds.isNotEmpty;
 
     if (hasChanges) {
       final Map<String, dynamic> updatePayload = {'data': merged};
@@ -750,7 +751,9 @@ class SyncService {
             .set(updatePayload, SetOptions(merge: true)),
         operationName: 'syncExistingAnnotations (Push)',
       );
-      debugPrint('DEBUG: Write executed — ${newHJson.length + newCJson.length} uploaded, ${deletedIds.length} deleted.');
+      debugPrint(
+        'DEBUG: Write executed — ${newHJson.length + newCJson.length} uploaded, ${deletedIds.length} deleted.',
+      );
     } else {
       debugPrint('DEBUG: Write skipped — no changes detected.');
     }
@@ -939,9 +942,31 @@ class SyncService {
   Stream<List<Map<String, dynamic>>> watchAnnouncements(
     String currentUserRole,
   ) {
+    final normalizedRole = currentUserRole == 'member'
+        ? 'student'
+        : currentUserRole;
+
+    List<String> targets;
+    if (normalizedRole == 'developer') {
+      // Developers see everything, including the student+developer channel.
+      targets = [
+        'all',
+        'student',
+        'lecturer',
+        'developer',
+        'student_developer',
+      ];
+    } else if (normalizedRole == 'lecturer') {
+      // Lecturers only receive global and lecturer-targeted announcements.
+      targets = ['all', 'lecturer'];
+    } else {
+      // Students (including legacy `member`) receive student-only and student+developer.
+      targets = ['all', 'student', 'student_developer'];
+    }
+
     return _db
         .collection('announcements')
-        .where('targetAudience', whereIn: ['all', currentUserRole])
+        .where('targetAudience', whereIn: targets)
         .orderBy('createdAt', descending: true)
         .limit(10)
         .snapshots()
@@ -957,7 +982,8 @@ class SyncService {
     required String body,
     required String type, // 'warning', 'info', 'update'
     required String authorName,
-    String targetAudience = 'all', // 'all', 'student', 'lecturer'
+    String targetAudience =
+        'all', // 'all', 'student', 'lecturer', 'developer', 'student_developer'
   }) async {
     await _withTimeout(
       _db.collection('announcements').add({

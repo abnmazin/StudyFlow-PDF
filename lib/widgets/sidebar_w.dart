@@ -84,13 +84,16 @@ class _SidebarState extends State<Sidebar> {
 
   @override
   Widget build(BuildContext context) {
-    return Selector<AppProvider, ({
-      bool isDarkMode, 
-      List<ClassItem> classes, 
-      String? activeClassId, 
-      String? activePdfId, 
-      bool isCollapsed
-    })>(
+    return Selector<
+      AppProvider,
+      ({
+        bool isDarkMode,
+        List<ClassItem> classes,
+        String? activeClassId,
+        String? activePdfId,
+        bool isCollapsed,
+      })
+    >(
       selector: (_, app) => (
         isDarkMode: app.isDarkMode,
         classes: app.classes,
@@ -106,342 +109,368 @@ class _SidebarState extends State<Sidebar> {
 
         final isMobile = MediaQuery.of(context).size.width < 768;
         final scheme = Theme.of(context).colorScheme;
-    final sidebarBg = isDarkMode ? const Color(0xFF0F172A) : scheme.surface;
-    final separatorColor = isDarkMode
-        ? Colors.white.withOpacity(0.1)
-        : Colors.black.withOpacity(0.05);
-    final textPrimary = isDarkMode
-        ? const Color(0xFFF1F5F9)
-        : scheme.onSurface;
-    final textMuted = isDarkMode
-        ? const Color(0xFF94A3B8)
-        : scheme.onSurfaceVariant;
+        final sidebarBg = isDarkMode ? const Color(0xFF0F172A) : scheme.surface;
+        final separatorColor = isDarkMode
+            ? Colors.white.withOpacity(0.1)
+            : Colors.black.withOpacity(0.05);
+        final textPrimary = isDarkMode
+            ? const Color(0xFFF1F5F9)
+            : scheme.onSurface;
+        final textMuted = isDarkMode
+            ? const Color(0xFF94A3B8)
+            : scheme.onSurfaceVariant;
 
-    return Container(
-      width: 288, // w-72
-      decoration: BoxDecoration(
-        color: sidebarBg,
-        border: Border(right: BorderSide(color: separatorColor, width: 1)),
-      ),
-      child: Column(
-        children: [
-          // Header
-          Container(
-            height: 64,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            decoration: BoxDecoration(
-              border: Border(
-                bottom: BorderSide(color: separatorColor, width: 1),
-              ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    const Icon(LucideIcons.book, color: Color(0xFF60A5FA), size: 24),
-                    SizedBox(width: 8),
-                    Text(
-                      'StudyFlow pdf',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: textPrimary,
-                      ),
-                    ),
-                  ],
-                ),
-                Row(
-                  children: [
-                    if (!isMobile)
-                      IconButton(
-                        onPressed: () => app.toggleSidebar(),
-                        icon: Icon(
-                          isCollapsed ? LucideIcons.chevronRight : LucideIcons.chevronLeft, 
-                          color: textMuted
-                        ),
-                        tooltip: isCollapsed ? 'فتح القائمة' : 'طي القائمة',
-                      ),
-                    if (isMobile)
-                      IconButton(
-                        onPressed: () => app.toggleMobile(),
-                        icon: Icon(LucideIcons.x, color: textMuted),
-                      ),
-                  ],
-                ),
-              ],
-            ),
+        return Container(
+          width: 288, // w-72
+          decoration: BoxDecoration(
+            color: sidebarBg,
+            border: Border(right: BorderSide(color: separatorColor, width: 1)),
           ),
-
-          // Content
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                // --- Study Overview Dashboard ---
-                Container(
-                  margin: const EdgeInsets.only(bottom: 24),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Color(0xFF1E293B),
-                        Color(0xFF0F172A),
-                      ], // slate-800 to slate-900
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: const Color(0xFF334155),
-                    ), // slate-700
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'نظرة عامة',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF94A3B8), // slate-400
-                          letterSpacing: 1.5,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          _buildStatItem(
-                            LucideIcons.fileText,
-                            app.totalPdfs.toString(),
-                            'ملفات',
-                            const Color(0xFF60A5FA),
-                          ),
-                          Container(
-                            width: 1,
-                            height: 30,
-                            color: const Color(0xFF334155),
-                          ),
-                          _buildStatItem(
-                            LucideIcons.highlighter,
-                            app.totalHighlights.toString(),
-                            'هايلايت',
-                            const Color(0xFFFBBF24),
-                          ),
-                          Container(
-                            width: 1,
-                            height: 30,
-                            color: const Color(0xFF334155),
-                          ),
-                          _buildStatItem(
-                            LucideIcons.messageSquare,
-                            app.totalComments.toString(),
-                            'ملاحظات',
-                            const Color(0xFFA78BFA),
-                          ),
-                        ],
-                      ),
-                    ],
+          child: Column(
+            children: [
+              // Header
+              Container(
+                height: 64,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(color: separatorColor, width: 1),
                   ),
                 ),
-
-                // "Your Classes" Header
-                Row(
+                child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      'أقسامك',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF94A3B8), // slate-400
-                        letterSpacing: 1.0,
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => setState(() => _isAdding = true),
-                      icon: const Icon(
-                        LucideIcons.plus,
-                        size: 16,
-                        color: Color(0xFF94A3B8),
-                      ),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-
-                // Add Class Input
-                if (_isAdding)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 16.0),
-                    child: Row(
+                    Row(
                       children: [
-                        Expanded(
-                          child: Builder(
-                            builder: (ctx) {
-                              final scheme = Theme.of(ctx).colorScheme;
-                              final inputBg = isDarkMode
-                                  ? const Color(0xFF1E293B)
-                                  : scheme.surfaceContainerHigh;
-                              final inputText = isDarkMode
-                                  ? Colors.white
-                                  : scheme.onSurface;
-                              return TextField(
-                                controller: _classController,
-                                autofocus: true,
-                                style: TextStyle(
-                                  color: inputText,
-                                  fontSize: 14,
-                                ),
-                                decoration: InputDecoration(
-                                  hintText: 'اسم القسم...',
-                                 hintStyle: TextStyle(
-                                   color: isDarkMode
-                                       ? Colors.white.withOpacity(0.5)
-                                       : scheme.onSurfaceVariant.withOpacity(
-                                           0.6,
-                                         ),
-                                 ),
-                                  filled: true,
-                                  fillColor: inputBg,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(4),
-                                    borderSide: BorderSide.none,
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 8,
-                                  ),
-                                  isDense: true,
-                                ),
-                                onSubmitted: (_) => _handleAddClass(context),
-                              );
-                            },
+                        const Icon(
+                          LucideIcons.book,
+                          color: Color(0xFF60A5FA),
+                          size: 24,
+                        ),
+                        SizedBox(width: 8),
+                        Text(
+                          'StudyFlow pdf',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: textPrimary,
                           ),
-                        ),
-                        IconButton(
-                          icon: const Icon(
-                            LucideIcons.check,
-                            color: Color(0xFF4ADE80),
-                            size: 18,
-                          ), // green-400
-                          onPressed: () => _handleAddClass(context),
-                          constraints: const BoxConstraints(),
-                          padding: const EdgeInsets.all(4),
-                        ),
-                        IconButton(
-                          icon: const Icon(
-                            LucideIcons.x,
-                            color: Color(0xFFF87171),
-                            size: 18,
-                          ), // red-400
-                          onPressed: () => setState(() => _isAdding = false),
-                          constraints: const BoxConstraints(),
-                          padding: const EdgeInsets.all(4),
                         ),
                       ],
                     ),
-                  ),
-
-                // Class List (custom drag/drop for folders)
-                Column(
-                  children: [
-                    for (final entry in classes.asMap().entries)
-                      _buildClassItem(context, entry.value, app, entry.key),
+                    Row(
+                      children: [
+                        if (!isMobile)
+                          IconButton(
+                            onPressed: () => app.toggleSidebar(),
+                            icon: Icon(
+                              isCollapsed
+                                  ? LucideIcons.chevronRight
+                                  : LucideIcons.chevronLeft,
+                              color: textMuted,
+                            ),
+                            tooltip: isCollapsed ? 'فتح القائمة' : 'طي القائمة',
+                          ),
+                        if (isMobile)
+                          IconButton(
+                            onPressed: () => app.toggleMobile(),
+                            icon: Icon(LucideIcons.x, color: textMuted),
+                          ),
+                      ],
+                    ),
                   ],
                 ),
-              ],
-            ),
-          ),
+              ),
 
-          // Footer
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              border: Border(top: BorderSide(color: separatorColor, width: 1)),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: InkWell(
-                    onTap: () => app.toggleDevInfo(!app.showDevInfo),
-                    borderRadius: BorderRadius.circular(8),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
+              // Content
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    // --- Study Overview Dashboard ---
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 24),
+                      padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: isDarkMode ? const Color(0xFF1E293B) : scheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: separatorColor),
+                        gradient: const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Color(0xFF1E293B),
+                            Color(0xFF0F172A),
+                          ], // slate-800 to slate-900
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: const Color(0xFF334155),
+                        ), // slate-700
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.2),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
                       ),
-                      child: Center(
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(LucideIcons.info, size: 16, color: isDarkMode ? const Color(0xFF60A5FA) : scheme.primary),
-                            const SizedBox(width: 8),
-                            Text(
-                              'الحقوق',
-                              style: TextStyle(
-                                color: textPrimary,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'نظرة عامة',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF94A3B8), // slate-400
+                              letterSpacing: 1.5,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              _buildStatItem(
+                                LucideIcons.fileText,
+                                app.totalPdfs.toString(),
+                                'ملفات',
+                                const Color(0xFF60A5FA),
                               ),
+                              Container(
+                                width: 1,
+                                height: 30,
+                                color: const Color(0xFF334155),
+                              ),
+                              _buildStatItem(
+                                LucideIcons.highlighter,
+                                app.totalHighlights.toString(),
+                                'هايلايت',
+                                const Color(0xFFFBBF24),
+                              ),
+                              Container(
+                                width: 1,
+                                height: 30,
+                                color: const Color(0xFF334155),
+                              ),
+                              _buildStatItem(
+                                LucideIcons.messageSquare,
+                                app.totalComments.toString(),
+                                'ملاحظات',
+                                const Color(0xFFA78BFA),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // "Your Classes" Header
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'أقسامك',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF94A3B8), // slate-400
+                            letterSpacing: 1.0,
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => setState(() => _isAdding = true),
+                          icon: const Icon(
+                            LucideIcons.plus,
+                            size: 16,
+                            color: Color(0xFF94A3B8),
+                          ),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Add Class Input
+                    if (_isAdding)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 16.0),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Builder(
+                                builder: (ctx) {
+                                  final scheme = Theme.of(ctx).colorScheme;
+                                  final inputBg = isDarkMode
+                                      ? const Color(0xFF1E293B)
+                                      : scheme.surfaceContainerHigh;
+                                  final inputText = isDarkMode
+                                      ? Colors.white
+                                      : scheme.onSurface;
+                                  return TextField(
+                                    controller: _classController,
+                                    autofocus: true,
+                                    style: TextStyle(
+                                      color: inputText,
+                                      fontSize: 14,
+                                    ),
+                                    decoration: InputDecoration(
+                                      hintText: 'اسم القسم...',
+                                      hintStyle: TextStyle(
+                                        color: isDarkMode
+                                            ? Colors.white.withOpacity(0.5)
+                                            : scheme.onSurfaceVariant
+                                                  .withOpacity(0.6),
+                                      ),
+                                      filled: true,
+                                      fillColor: inputBg,
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(4),
+                                        borderSide: BorderSide.none,
+                                      ),
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 8,
+                                          ),
+                                      isDense: true,
+                                    ),
+                                    onSubmitted: (_) =>
+                                        _handleAddClass(context),
+                                  );
+                                },
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(
+                                LucideIcons.check,
+                                color: Color(0xFF4ADE80),
+                                size: 18,
+                              ), // green-400
+                              onPressed: () => _handleAddClass(context),
+                              constraints: const BoxConstraints(),
+                              padding: const EdgeInsets.all(4),
+                            ),
+                            IconButton(
+                              icon: const Icon(
+                                LucideIcons.x,
+                                color: Color(0xFFF87171),
+                                size: 18,
+                              ), // red-400
+                              onPressed: () =>
+                                  setState(() => _isAdding = false),
+                              constraints: const BoxConstraints(),
+                              padding: const EdgeInsets.all(4),
                             ),
                           ],
                         ),
                       ),
+
+                    // Class List (custom drag/drop for folders)
+                    Column(
+                      children: [
+                        for (final entry in classes.asMap().entries)
+                          _buildClassItem(context, entry.value, app, entry.key),
+                      ],
                     ),
+                  ],
+                ),
+              ),
+
+              // Footer
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  border: Border(
+                    top: BorderSide(color: separatorColor, width: 1),
                   ),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: InkWell(
-                    onTap: () => app.toggleSettings(true),
-                    borderRadius: BorderRadius.circular(8),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      decoration: BoxDecoration(
-                        color: isDarkMode ? const Color(0xFF1E293B) : scheme.surfaceContainerHighest,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        onTap: () => app.toggleDevInfo(!app.showDevInfo),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: separatorColor),
-                      ),
-                      child: Center(
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(LucideIcons.settings, size: 16, color: isDarkMode ? const Color(0xFF60A5FA) : scheme.primary),
-                            const SizedBox(width: 8),
-                            Text(
-                              'الإعدادات',
-                              style: TextStyle(
-                                color: textPrimary,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                              ),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            color: isDarkMode
+                                ? const Color(0xFF1E293B)
+                                : scheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: separatorColor),
+                          ),
+                          child: Center(
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  LucideIcons.info,
+                                  size: 16,
+                                  color: isDarkMode
+                                      ? const Color(0xFF60A5FA)
+                                      : scheme.primary,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'الحقوق',
+                                  style: TextStyle(
+                                    color: textPrimary,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: InkWell(
+                        onTap: () => app.toggleSettings(true),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            color: isDarkMode
+                                ? const Color(0xFF1E293B)
+                                : scheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: separatorColor),
+                          ),
+                          child: Center(
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  LucideIcons.settings,
+                                  size: 16,
+                                  color: isDarkMode
+                                      ? const Color(0xFF60A5FA)
+                                      : scheme.primary,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'الإعدادات',
+                                  style: TextStyle(
+                                    color: textPrimary,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
-    );
-     },
+        );
+      },
     );
   }
 
@@ -482,19 +511,21 @@ class _SidebarState extends State<Sidebar> {
 
             return false;
           },
-          onAccept: (data) {
+          onAccept: (data) async {
             final dragType = data['dragType'];
 
             if (dragType == 'pdf' &&
                 data['pdfId'] != null &&
                 data['sourceClassId'] != null) {
-              app.movePdf(data['pdfId']!, data['sourceClassId']!, cls.id);
+              await app.movePdf(data['pdfId']!, data['sourceClassId']!, cls.id);
               return;
             }
 
             if (dragType == 'class' && data['classId'] != null) {
               final sourceClassId = data['classId']!;
-              final oldIndex = app.classes.indexWhere((c) => c.id == sourceClassId);
+              final oldIndex = app.classes.indexWhere(
+                (c) => c.id == sourceClassId,
+              );
               if (oldIndex == -1 || oldIndex == classIndex) return;
               app.reorderClasses(oldIndex, classIndex);
             }
@@ -680,7 +711,7 @@ class _SidebarState extends State<Sidebar> {
               LucideIcons.fileText,
               size: 14,
               color: isActive
-              ? const Color(0xFFBFDBFE)
+                  ? const Color(0xFFBFDBFE)
                   : const Color(0xFF94A3B8),
             ),
             const SizedBox(width: 8),
@@ -721,7 +752,7 @@ class _SidebarState extends State<Sidebar> {
           data['dragType'] == 'pdf' &&
           data['pdfId'] != null &&
           data['pdfId'] != pdf.id,
-      onAccept: (data) {
+      onAccept: (data) async {
         final draggedPdfId = data['pdfId'];
         final sourceClassId = data['sourceClassId'];
         if (draggedPdfId == null || sourceClassId == null) return;
@@ -731,8 +762,8 @@ class _SidebarState extends State<Sidebar> {
           return;
         }
 
-        app.movePdf(draggedPdfId, sourceClassId, classId);
-        app.reorderPdfWithinClass(classId, draggedPdfId, pdf.id);
+        await app.movePdf(draggedPdfId, sourceClassId, classId);
+        await app.reorderPdfWithinClass(classId, draggedPdfId, pdf.id);
       },
       builder: (context, candidateData, rejectedData) {
         final isHovering = candidateData.isNotEmpty;
@@ -749,11 +780,7 @@ class _SidebarState extends State<Sidebar> {
         );
 
         return Draggable<Map<String, String>>(
-          data: {
-            'dragType': 'pdf',
-            'pdfId': pdf.id,
-            'sourceClassId': classId,
-          },
+          data: {'dragType': 'pdf', 'pdfId': pdf.id, 'sourceClassId': classId},
           feedback: Material(
             color: Colors.transparent,
             child: Container(

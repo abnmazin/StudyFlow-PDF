@@ -54,7 +54,8 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   int _rightPanelTabIndex = 0; // 0: Tools, 1: AI, 2: Translate
   String? _currentListeningCode;
   String?
-  _currentListeningFileHash; // NEW: Track which PDF hash we are listening for
+  _currentListeningFileHash; // Track which PDF hash we are listening for
+  late AppProvider _app;
 
   // _tool is now managed by AppProvider.currentTool
   ToolType get _tool => context.read<AppProvider>().currentTool;
@@ -207,11 +208,21 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     super.initState();
     _pdfController = PdfViewerController();
     _pdfController.addListener(_onControllerChanged);
+
+    // Phase 11: Real-time Session Status Listener
+    _app = context.read<AppProvider>();
+    _app.addListener(_onAppStatusChanged);
+  }
+
+  void _onAppStatusChanged() {
+    if (!mounted) return;
+    _setupSessionListener();
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    // Initial setup handled by initState + post-frame or immediate call
     _setupSessionListener();
   }
 
@@ -259,7 +270,8 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
           final data = snap.data()!;
 
           // 1. Kick Check
-          final kicked = (data['kicked_usernames'] as List?)?.cast<String>() ?? [];
+          final kicked =
+              (data['kicked_usernames'] as List?)?.cast<String>() ?? [];
           if (kicked.contains(user.username)) {
             _sessionSub?.cancel();
             _sessionSub = null;
@@ -318,11 +330,12 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
 
   @override
   void dispose() {
+    _app.removeListener(_onAppStatusChanged);
     _pdfController.removeListener(_onControllerChanged);
     _scrollDebounce?.cancel();
     _scrollMaintenanceDebounce?.cancel();
     _autoFitDebounce?.cancel();
-    _searchFocusNode.dispose(); // Dispose node
+    _searchFocusNode.dispose();
     _textSearcher?.dispose();
     _sessionSub?.cancel();
     _annotationsSub?.cancel();

@@ -238,7 +238,7 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
     
     setState(() {
       _generating = true;
-      _syncStatus = 'جاري إعداد الجلسة...';
+      // _syncStatus = 'جاري إعداد الجلسة...';  // Removed loading message
       _error = null;
     });
 
@@ -263,7 +263,7 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
       final hasNotes = activePdf.highlights.isNotEmpty || activePdf.comments.isNotEmpty;
       
       if (hasNotes) {
-        setState(() => _syncStatus = 'جاري رفع الملاحظات الحالية...');
+        // setState(() => _syncStatus = 'جاري رفع الملاحظات الحالية...');  // Removed loading message
         
         final alreadyExists = await widget.syncService.hasAnnotations(code, activePdf.fileHash ?? '');
         if (!alreadyExists) {
@@ -406,14 +406,15 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
 
     setState(() => _syncingNow = true);
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('جاري مطابقة البيانات مع السيرفر...'),
-          duration: Duration(seconds: 60),
-        ),
-      );
-    }
+    // Removed loading message - user requested it removed (too annoying)
+    // if (mounted) {
+    //   ScaffoldMessenger.of(context).showSnackBar(
+    //     const SnackBar(
+    //       content: Text('جاري مطابقة البيانات مع السيرفر...'),
+    //       duration: Duration(seconds: 60),
+    //     ),
+    //   );
+    // }
 
     try {
       await widget.app.performBidirectionalSync();

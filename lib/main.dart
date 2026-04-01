@@ -316,7 +316,15 @@ class _MainLayoutState extends State<MainLayout> {
     await app.initialized;
 
     for (final file in files) {
-      final path = file.path;
+      var path = file.path;
+      if (path.startsWith('file://')) {
+        try {
+          path = Uri.parse(path).toFilePath();
+        } catch (_) {
+          // Keep original path if URI parsing fails.
+        }
+      }
+
       if (path.toLowerCase().endsWith('.pdf')) {
         await app.loadPdfFromPath(path);
         if (!mounted) return;
@@ -417,7 +425,6 @@ class _MainLayoutState extends State<MainLayout> {
     final isSettingsOpen = context.select<AppProvider, bool>(
       (p) => p.isSettingsOpen,
     );
-    final isOffline = context.select<AppProvider, bool>((p) => p.isOffline);
 
     final isMobile = MediaQuery.of(context).size.width < 768;
 
@@ -483,7 +490,7 @@ class _MainLayoutState extends State<MainLayout> {
                         ),
                       ),
                       child: const Text(
-                        'Drop PDF to open',
+                        'قم بسحب ملف PDF لفتحه',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -522,32 +529,6 @@ class _MainLayoutState extends State<MainLayout> {
               ),
           ],
         ),
-      ),
-      // --- Phase 2: Offline Status Banner ---
-      bottomNavigationBar: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        height: isOffline ? 36 : 0,
-        color: const Color(0xFFF59E0B), // Amber-500
-        child: isOffline
-            ? const Center(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.cloud_off, size: 16, color: Colors.white),
-                    SizedBox(width: 8),
-                    Text(
-                      'وضع الأوفلاين - التغييرات محفوظة محلياً ولن تتمزامنة',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        fontFamily: 'Segoe UI',
-                      ),
-                    ),
-                  ],
-                ),
-              )
-            : const SizedBox.shrink(),
       ),
     );
   }

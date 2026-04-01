@@ -1,13 +1,8 @@
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, TargetPlatform;
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
 
-/// Secure Firebase options loaded from environment variables.
-///
-/// Required keys in .env:
-/// FIREBASE_API_KEY
-/// FIREBASE_PROJECT_ID
-/// FIREBASE_APP_ID_WINDOWS
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
@@ -30,7 +25,10 @@ class DefaultFirebaseOptions {
     apiKey: _require('FIREBASE_API_KEY'),
     appId: _require('FIREBASE_APP_ID_WINDOWS'),
     projectId: _require('FIREBASE_PROJECT_ID'),
-    messagingSenderId: _optional('FIREBASE_MESSAGING_SENDER_ID', '000000000000'),
+    messagingSenderId: _optional(
+      'FIREBASE_MESSAGING_SENDER_ID',
+      '000000000000',
+    ),
   );
 
   static String _require(String key) {

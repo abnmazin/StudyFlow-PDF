@@ -22,6 +22,7 @@ Widget _buildDashboard(BuildContext context) {
       isDarkMode: data.isDarkMode,
       app: context.read<AppProvider>(),
       isAdmin: data.user?.role == 'developer' || data.user?.role == 'lecturer',
+      isDeveloper: data.user?.role == 'developer',
     ),
   );
 }
@@ -30,11 +31,13 @@ class _DashboardWrapper extends StatefulWidget {
   final bool isDarkMode;
   final AppProvider app;
   final bool isAdmin;
+  final bool isDeveloper;
 
   const _DashboardWrapper({
     required this.isDarkMode,
     required this.app,
     required this.isAdmin,
+    required this.isDeveloper,
   });
 
   @override
@@ -68,7 +71,7 @@ class _DashboardWrapperState extends State<_DashboardWrapper> {
   Widget build(BuildContext context) {
     final isDarkMode = widget.isDarkMode;
     final app = widget.app;
-    final isAdmin = widget.isAdmin;
+    final isDeveloper = widget.isDeveloper;
 
     final rootBg = isDarkMode
         ? const Color(0xFF020617)
@@ -132,17 +135,26 @@ class _DashboardWrapperState extends State<_DashboardWrapper> {
                         const SizedBox(height: 48),
 
                         _buildSectionHeader(
-                          isAdmin
+                          isDeveloper
                               ? 'لوحة تحكم المطور - نشر الإعلانات'
-                              : 'الكتب الأخيرة',
+                              : (app.currentUser?.role == 'lecturer'
+                                    ? 'نشر إشعار للطلاب'
+                                    : ((app.currentUser?.role == 'student' ||
+                                              app.currentUser?.role == 'member')
+                                          ? 'نشر إشعار للطلاب والمبرمج'
+                                          : 'الكتب الأخيرة')),
                           isDarkMode,
                         ),
                         const SizedBox(height: 20),
 
-                        if (isAdmin)
+                        if (isDeveloper ||
+                            app.currentUser?.role == 'lecturer' ||
+                            app.currentUser?.role == 'student' ||
+                            app.currentUser?.role == 'member')
                           _buildAdminAnnouncementSender(
                             isDarkMode,
-                            app.currentUser?.username ?? 'Admin',
+                            app.currentUser?.username ?? 'User',
+                            app.currentUser?.role ?? 'student',
                           )
                         else
                           _buildRecentVerticalList(
@@ -260,9 +272,11 @@ Widget _buildMainContentArea(
 class _AdminAnnouncementSender extends StatefulWidget {
   final bool isDarkMode;
   final String authorName;
+  final String userRole;
   const _AdminAnnouncementSender({
     required this.isDarkMode,
     required this.authorName,
+    required this.userRole,
   });
 
   @override
@@ -276,6 +290,19 @@ class _AdminAnnouncementSenderState extends State<_AdminAnnouncementSender> {
   String _selectedType = 'info';
   String _selectedAudience = 'all';
   bool _isSending = false;
+
+  bool get _isDeveloper => widget.userRole == 'developer';
+  bool get _isLecturer => widget.userRole == 'lecturer';
+
+  @override
+  void initState() {
+    super.initState();
+    if (_isLecturer) {
+      _selectedAudience = 'student';
+    } else if (!_isDeveloper) {
+      _selectedAudience = 'student_developer';
+    }
+  }
 
   @override
   void dispose() {
@@ -295,7 +322,9 @@ class _AdminAnnouncementSenderState extends State<_AdminAnnouncementSender> {
         body: body,
         type: _selectedType,
         authorName: widget.authorName,
-        targetAudience: _selectedAudience,
+        targetAudience: _isDeveloper
+            ? _selectedAudience
+            : (_isLecturer ? 'student' : 'student_developer'),
       );
       _titleCtrl.clear();
       _bodyCtrl.clear();
@@ -386,29 +415,75 @@ class _AdminAnnouncementSenderState extends State<_AdminAnnouncementSender> {
             ],
           ),
           const SizedBox(height: 16),
-          // Audience Selector
-          Wrap(
-            spacing: 12,
-            children: [
-              ChoiceChip(
-                label: const Text('الكل 🌍'),
-                selected: _selectedAudience == 'all',
-                onSelected: (_) => setState(() => _selectedAudience = 'all'),
+          if (_isDeveloper)
+            Wrap(
+              spacing: 12,
+              children: [
+                ChoiceChip(
+                  label: const Text('الكل 🌍'),
+                  selected: _selectedAudience == 'all',
+                  onSelected: (_) => setState(() => _selectedAudience = 'all'),
+                ),
+                ChoiceChip(
+                  label: const Text('الطلاب 👨‍🎓'),
+                  selected: _selectedAudience == 'student',
+                  onSelected: (_) =>
+                      setState(() => _selectedAudience = 'student'),
+                ),
+                ChoiceChip(
+                  label: const Text('الأساتذة 👨‍🏫'),
+                  selected: _selectedAudience == 'lecturer',
+                  onSelected: (_) =>
+                      setState(() => _selectedAudience = 'lecturer'),
+                ),
+                ChoiceChip(
+                  label: const Text('المطور 🛠️'),
+                  selected: _selectedAudience == 'developer',
+                  onSelected: (_) =>
+                      setState(() => _selectedAudience = 'developer'),
+                ),
+              ],
+            )
+          else if (_isLecturer)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isDarkMode
+                    ? const Color(0xFF0F172A).withValues(alpha: 0.6)
+                    : const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: isDarkMode
+                      ? const Color(0xFF334155)
+                      : const Color(0xFFE2E8F0),
+                ),
               ),
-              ChoiceChip(
-                label: const Text('الطلاب 👨‍🎓'),
-                selected: _selectedAudience == 'student',
-                onSelected: (_) =>
-                    setState(() => _selectedAudience = 'student'),
+              child: const Text(
+                'خيارات المحاضر: سيتم إرسال هذا الإشعار للطلاب فقط',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
               ),
-              ChoiceChip(
-                label: const Text('الأساتذة 👨‍🏫'),
-                selected: _selectedAudience == 'lecturer',
-                onSelected: (_) =>
-                    setState(() => _selectedAudience = 'lecturer'),
+            )
+          else
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isDarkMode
+                    ? const Color(0xFF0F172A).withValues(alpha: 0.6)
+                    : const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: isDarkMode
+                      ? const Color(0xFF334155)
+                      : const Color(0xFFE2E8F0),
+                ),
               ),
-            ],
-          ),
+              child: const Text(
+                'سيتم إرسال هذا الإشعار لقناة: الطلاب + المبرمج',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+            ),
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
@@ -426,9 +501,13 @@ class _AdminAnnouncementSenderState extends State<_AdminAnnouncementSender> {
                     )
                   : const Icon(LucideIcons.send, size: 18),
               label: Text(
-                _selectedAudience == 'all'
+                _isDeveloper && _selectedAudience == 'all'
                     ? 'نشر الإشعار للجميع'
-                    : 'نشر الإشعار للفئة المحددة',
+                    : (_isLecturer
+                          ? 'إرسال إشعار للطلاب فقط'
+                          : (_isDeveloper
+                                ? 'نشر الإشعار للفئة المحددة'
+                                : 'إرسال إشعار (طلاب + مبرمج)')),
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
@@ -450,10 +529,15 @@ class _AdminAnnouncementSenderState extends State<_AdminAnnouncementSender> {
   }
 }
 
-Widget _buildAdminAnnouncementSender(bool isDarkMode, String authorName) {
+Widget _buildAdminAnnouncementSender(
+  bool isDarkMode,
+  String authorName,
+  String userRole,
+) {
   return _AdminAnnouncementSender(
     isDarkMode: isDarkMode,
     authorName: authorName,
+    userRole: userRole,
   );
 }
 
@@ -648,8 +732,9 @@ Widget _buildAnnouncementsSection(bool isDarkMode) {
               width: double.infinity,
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color:
-                    isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+                color: isDarkMode
+                    ? const Color(0xFF1E293B)
+                    : const Color(0xFFF8FAFC),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
                   color: isDarkMode
@@ -690,6 +775,7 @@ Widget _buildAnnouncementsSection(bool isDarkMode) {
                     : LucideIcons.info;
 
                 final docId = ann['id']?.toString() ?? ann.hashCode.toString();
+                final authorName = (ann['authorName'] as String? ?? '').trim();
 
                 return Dismissible(
                   key: Key(docId),
@@ -745,7 +831,9 @@ Widget _buildAnnouncementsSection(bool isDarkMode) {
                     margin: const EdgeInsets.only(bottom: 12),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: isDarkMode ? const Color(0xFF1E293B) : Colors.white,
+                      color: isDarkMode
+                          ? const Color(0xFF1E293B)
+                          : Colors.white,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
                         color: isDarkMode
@@ -786,7 +874,8 @@ Widget _buildAnnouncementsSection(bool isDarkMode) {
                                       ),
                                     ),
                                   ),
-                                  if ((ann['targetAudience'] as String? ?? 'all') !=
+                                  if ((ann['targetAudience'] as String? ??
+                                          'all') !=
                                       'all') ...[
                                     const SizedBox(width: 8),
                                     Container(
@@ -795,33 +884,62 @@ Widget _buildAnnouncementsSection(bool isDarkMode) {
                                         vertical: 2,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: ann['targetAudience'] == 'student'
+                                        color:
+                                            ann['targetAudience'] == 'student'
                                             ? Colors.blue.withValues(alpha: 0.1)
-                                            : ann['targetAudience'] == 'lecturer'
-                                            ? Colors.purple.withValues(alpha: 0.1)
+                                            : ann['targetAudience'] ==
+                                                  'lecturer'
+                                            ? Colors.purple.withValues(
+                                                alpha: 0.1,
+                                              )
+                                            : ann['targetAudience'] ==
+                                                  'student_developer'
+                                            ? Colors.teal.withValues(alpha: 0.1)
                                             : Colors.red.withValues(alpha: 0.1),
                                         borderRadius: BorderRadius.circular(4),
                                         border: Border.all(
-                                          color: ann['targetAudience'] == 'student'
-                                              ? Colors.blue.withValues(alpha: 0.3)
-                                              : ann['targetAudience'] == 'lecturer'
-                                              ? Colors.purple.withValues(alpha: 0.3)
-                                              : Colors.red.withValues(alpha: 0.3),
+                                          color:
+                                              ann['targetAudience'] == 'student'
+                                              ? Colors.blue.withValues(
+                                                  alpha: 0.3,
+                                                )
+                                              : ann['targetAudience'] ==
+                                                    'lecturer'
+                                              ? Colors.purple.withValues(
+                                                  alpha: 0.3,
+                                                )
+                                              : ann['targetAudience'] ==
+                                                    'student_developer'
+                                              ? Colors.teal.withValues(
+                                                  alpha: 0.3,
+                                                )
+                                              : Colors.red.withValues(
+                                                  alpha: 0.3,
+                                                ),
                                         ),
                                       ),
                                       child: Text(
                                         ann['targetAudience'] == 'student'
                                             ? 'للطلاب'
-                                            : ann['targetAudience'] == 'lecturer'
+                                            : ann['targetAudience'] ==
+                                                  'lecturer'
                                             ? 'للأساتذة'
+                                            : ann['targetAudience'] ==
+                                                  'student_developer'
+                                            ? 'للطلاب+المبرمج'
                                             : 'للإدارة',
                                         style: TextStyle(
                                           fontSize: 8,
                                           fontWeight: FontWeight.bold,
-                                          color: ann['targetAudience'] == 'student'
+                                          color:
+                                              ann['targetAudience'] == 'student'
                                               ? Colors.blue
-                                              : ann['targetAudience'] == 'lecturer'
+                                              : ann['targetAudience'] ==
+                                                    'lecturer'
                                               ? Colors.purple
+                                              : ann['targetAudience'] ==
+                                                    'student_developer'
+                                              ? Colors.teal
                                               : Colors.red,
                                         ),
                                       ),
@@ -840,6 +958,20 @@ Widget _buildAnnouncementsSection(bool isDarkMode) {
                                   ),
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
+                                ),
+                              if (authorName.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text(
+                                    'المرسل: $authorName',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: isDarkMode
+                                          ? const Color(0xFFCBD5E1)
+                                          : const Color(0xFF334155),
+                                    ),
+                                  ),
                                 ),
                             ],
                           ),

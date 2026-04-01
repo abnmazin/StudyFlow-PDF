@@ -1,6 +1,8 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../models/app_user.dart';
 import '../../providers/app_state.dart';
@@ -19,7 +21,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final HardwareService _hardwareService = HardwareService();
   final AuthService _authService = AuthService();
   final TextEditingController _usernameController = TextEditingController();
-  String _deviceId = 'Loading...';
+  String _deviceId = 'جاري التحميل...';
   bool _isLoading = false;
   String? _errorMessage;
   AppUser? _currentUser;
@@ -31,18 +33,26 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _loadDeviceId() async {
-    final id = await _hardwareService.getDeviceUUID();
-    if (!mounted) return;
-    setState(() {
-      _deviceId = id;
-    });
+    try {
+      final id = await _hardwareService.getDeviceFingerprint();
+      if (!mounted) return;
+      setState(() {
+        _deviceId = id;
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _deviceId = 'خطأ في توليد المعرف';
+        });
+      }
+    }
   }
 
   Future<void> _goToSystem() async {
     final username = _usernameController.text.trim();
     if (username.isEmpty) {
       setState(() {
-        _errorMessage = 'Username is required';
+        _errorMessage = 'الرجاء إدخال اسم المستخدم';
       });
       return;
     }
@@ -52,26 +62,15 @@ class _LoginScreenState extends State<LoginScreen> {
       _errorMessage = null;
     });
 
-    // JOKER ACCOUNT BYPASS (abn)
-    if (username == 'abn') {
-      final joker = AppUser(
-        uid: 'joker_abn',
-        username: 'abn',
-        role: 'developer',
-        hardwareId: _deviceId,
-      );
-      context.read<AppProvider>().setCurrentUser(joker);
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const MainLayout()),
-      );
-      return;
-    }
-
     try {
-      final user = await _authService.loginAndBind(username);
+      // MANDATORY SECURE LOGIN: No bypasses allowed
+      final user = await _authService.secureLogin(username);
       _currentUser = user;
-      debugPrint('Username: ${user.username}');
-      debugPrint('Device UUID: ${user.hardwareId}');
+
+      debugPrint('🛡️ [Security] Login Success: ${user.username}');
+      debugPrint(
+        '🛡️ [Security] Bound Fingerprint: ${user.primaryDeviceFingerprint}',
+      );
 
       if (!mounted) return;
       SchedulerBinding.instance.addPostFrameCallback((_) {
@@ -82,6 +81,7 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       });
     } catch (e) {
+      debugPrint('🛡️ [Security] Login Failed: $e');
       if (!mounted) return;
       SchedulerBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -110,137 +110,322 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final isDark = context.watch<AppProvider>().isDarkMode;
 
-    final bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
-    final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    final borderColor = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE2E8F0);
+    // ألوان التصميم المتوهج (Glowing Modern Theme)
+    final bg = isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9);
+    final cardColor = isDark
+        ? const Color(0xFF1E293B).withOpacity(0.9)
+        : Colors.white.withOpacity(0.9);
+    final border = isDark
+        ? const Color(0xFF38BDF8).withOpacity(0.3)
+        : Colors.blue.withOpacity(0.2);
+    final shadow = isDark
+        ? const Color(0xFF38BDF8).withOpacity(0.15)
+        : Colors.blue.withOpacity(0.1);
     final textPrimary = isDark ? Colors.white : const Color(0xFF0F172A);
-    final textSecondary = isDark ? const Color(0xFFBDBDBD) : const Color(0xFF64748B);
-    final inputBg = isDark ? const Color(0xFF151515) : const Color(0xFFF1F5F9);
-    final inputBorderColor = isDark ? const Color(0xFF333333) : const Color(0xFFCBD5E1);
+    final textMuted = isDark
+        ? const Color(0xFF94A3B8)
+        : const Color(0xFF64748B);
 
     return Scaffold(
-      backgroundColor: bgColor,
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 460),
-          child: Card(
-            elevation: isDark ? 6 : 2,
-            color: cardColor,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(18),
-              side: BorderSide(color: borderColor),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'Welcome',
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.headlineMedium?.copyWith(
-                      color: textPrimary,
-                      fontWeight: FontWeight.w700,
-                    ),
+      backgroundColor: bg,
+      body: Stack(
+        children: [
+          // ─── الخلفية الجمالية المتوهجة ─────────────────────────────────────────
+          Positioned(
+            top: -100,
+            right: -50,
+            child: Container(
+              width: 300,
+              height: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF38BDF8).withOpacity(0.1),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF38BDF8).withOpacity(0.2),
+                    blurRadius: 100,
                   ),
-                  const SizedBox(height: 18),
-                  TextField(
-                    controller: _usernameController,
-                    style: TextStyle(color: textPrimary),
-                    decoration: InputDecoration(
-                      labelText: 'Username',
-                      labelStyle: TextStyle(color: textSecondary),
-                      filled: true,
-                      fillColor: inputBg,
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: inputBorderColor),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Colors.blueAccent),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: inputBg,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: inputBorderColor),
-                    ),
-                    child: Text(
-                      'Device ID: $_deviceId',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: textSecondary,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 22),
-                  if (_errorMessage != null || context.watch<AppProvider>().forcedLogoutReason != null) ...[
-                    Text(
-                      _errorMessage ?? context.watch<AppProvider>().forcedLogoutReason!,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.redAccent,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-                  SizedBox(
-                    height: 48,
-                    child: ElevatedButton(
-                      onPressed: _isLoading ? null : _goToSystem,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blueAccent,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: _isLoading
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  Colors.white,
-                                ),
-                              ),
-                            )
-                          : const Text(
-                              'دخول إلى النظام',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                    ),
-                  ),
-                  if (_currentUser != null) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      'Role: ${_currentUser!.role}',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: textSecondary,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
           ),
-        ),
+          Positioned(
+            bottom: -100,
+            left: -50,
+            child: Container(
+              width: 300,
+              height: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF1D4ED8).withOpacity(0.1),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF1D4ED8).withOpacity(0.2),
+                    blurRadius: 100,
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // ─── بطاقة تسجيل الدخول المركزية ───────────────────────────────────────
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(24),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                  child: Container(
+                    padding: const EdgeInsets.all(32),
+                    decoration: BoxDecoration(
+                      color: cardColor,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: border, width: 1.5),
+                      boxShadow: [
+                        BoxShadow(
+                          color: shadow,
+                          blurRadius: 30,
+                          offset: const Offset(0, 15),
+                        ),
+                      ],
+                    ),
+                    child: Directionality(
+                      textDirection: TextDirection.rtl, // تعريب الاتجاه بالكامل
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // الأيقونة المتوهجة
+                          Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF38BDF8), Color(0xFF1D4ED8)],
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(
+                                    0xFF38BDF8,
+                                  ).withOpacity(0.4),
+                                  blurRadius: 20,
+                                  spreadRadius: 2,
+                                ),
+                              ],
+                            ),
+                            child: CircleAvatar(
+                              radius: 36,
+                              backgroundColor: isDark
+                                  ? const Color(0xFF0F172A)
+                                  : Colors.white,
+                              child: const Icon(
+                                LucideIcons.shieldCheck,
+                                size: 36,
+                                color: Colors.blue,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+
+                          Text(
+                            'تسجيل الدخول',
+                            style: TextStyle(
+                              color: textPrimary,
+                              fontSize: 26,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'أهلاً بك، يرجى إدخال بياناتك للمتابعة',
+                            style: TextStyle(color: textMuted, fontSize: 13),
+                          ),
+                          const SizedBox(height: 32),
+
+                          // ─── حقل اسم المستخدم ──────────────────────────────────
+                          TextField(
+                            controller: _usernameController,
+                            style: TextStyle(
+                              color: textPrimary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            decoration: InputDecoration(
+                              labelText: 'اسم المستخدم',
+                              labelStyle: TextStyle(
+                                color: textMuted,
+                                fontSize: 14,
+                              ),
+                              prefixIcon: Icon(
+                                LucideIcons.user,
+                                color: textMuted,
+                                size: 20,
+                              ),
+                              filled: true,
+                              fillColor: isDark
+                                  ? Colors.black26
+                                  : Colors.grey.shade100,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                borderSide: BorderSide.none,
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                borderSide: const BorderSide(
+                                  color: Color(0xFF38BDF8),
+                                  width: 1.5,
+                                ),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 18,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          // ─── حقل الآيدي المخفي ظاهرياً (موجود برمجياً) ──────────
+                          Visibility(
+                            visible: false, // مخفي عن المستخدم
+                            maintainState: true, // الحفاظ على حالته
+                            child: Text('Device ID: $_deviceId'),
+                          ),
+
+                          // ─── صندوق التنبيه الأمني ──────────────────────────────
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: Colors.orange.withOpacity(0.3),
+                              ),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Icon(
+                                  LucideIcons.alertTriangle,
+                                  color: Colors.orange,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    'تنبيه أمني: سيتم حظر جهازك الحالي وأي جهاز جديد بشكل نهائي في حال محاولة تسجيل الدخول من جهاز آخر بنفس الحساب.',
+                                    style: TextStyle(
+                                      color: isDark
+                                          ? Colors.orange[300]
+                                          : Colors.orange[800],
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      height: 1.5,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+
+                          // ─── رسائل الخطأ ───────────────────────────────────────
+                          if (_errorMessage != null ||
+                              context.watch<AppProvider>().forcedLogoutReason !=
+                                  null) ...[
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              margin: const EdgeInsets.only(bottom: 16),
+                              decoration: BoxDecoration(
+                                color: Colors.red.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                _errorMessage ??
+                                    context
+                                        .watch<AppProvider>()
+                                        .forcedLogoutReason!,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Colors.redAccent,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+
+                          // ─── زر تسجيل الدخول المتوهج ───────────────────────────
+                          Container(
+                            width: double.infinity,
+                            height: 54,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(16),
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF38BDF8), Color(0xFF1D4ED8)],
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(
+                                    0xFF38BDF8,
+                                  ).withOpacity(0.3),
+                                  blurRadius: 15,
+                                  offset: const Offset(0, 5),
+                                ),
+                              ],
+                            ),
+                            child: ElevatedButton(
+                              onPressed: _isLoading ? null : _goToSystem,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                shadowColor: Colors.transparent,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                              child: _isLoading
+                                  ? const SizedBox(
+                                      width: 24,
+                                      height: 24,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2.5,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                              Colors.white,
+                                            ),
+                                      ),
+                                    )
+                                  : const Text(
+                                      'دخول',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                        letterSpacing: 1,
+                                      ),
+                                    ),
+                            ),
+                          ),
+
+                          if (_currentUser != null) ...[
+                            const SizedBox(height: 16),
+                            Text(
+                              'الصلاحية: ${_currentUser!.role}',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: textMuted, fontSize: 11),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

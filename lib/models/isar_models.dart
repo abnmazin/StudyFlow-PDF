@@ -61,6 +61,9 @@ class PdfDocument {
   String originalPath = '';
 
   @Index()
+  String? originalDisplayName;
+
+  @Index()
   String? fileHash;
 
   String? workingPath;
@@ -94,6 +97,7 @@ class PdfDocument {
   static PdfDocument create({
     String? uuid,
     required String originalPath,
+    String? originalDisplayName,
     String? workingPath,
     DateTime? workingCreatedAt,
     DateTime? workingModifiedAt,
@@ -117,6 +121,7 @@ class PdfDocument {
     return PdfDocument()
       ..uuid = uuid ?? const Uuid().v4()
       ..originalPath = originalPath
+      ..originalDisplayName = originalDisplayName
       ..fileHash = fileHash
       ..workingPath = workingPath
       ..workingCreatedAt = workingCreatedAt

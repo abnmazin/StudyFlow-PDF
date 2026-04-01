@@ -7,8 +7,7 @@ import 'package:isar/isar.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
-
-import 'package:uuid/uuid.dart';
+import 'package:pdfrx/pdfrx.dart' as pdfrx;
 
 import '../models/annotations.dart';
 import '../models/isar_models.dart';
@@ -113,15 +112,41 @@ class FileManagerService extends ChangeNotifier {
   }) async {
     if (!_isInitialized) await init();
 
+    // Canonical calculation for metadata (used for both existence check and new records)
+    final originalName = p.basename(sourcePath);
+    String? fileHash;
+    try {
+      fileHash = await FileHashService.calculateFileHash(sourcePath);
+    } catch (e) {
+      debugPrint('⚠️ [FileManagerService] Failed to calculate hash for $sourcePath: $e');
+    }
+
+    int totalPages = 0;
+    try {
+      final pdfDoc = await pdfrx.PdfDocument.openFile(sourcePath);
+      totalPages = pdfDoc.pages.length;
+      await pdfDoc.dispose();
+    } catch (e) {
+      debugPrint('⚠️ [FileManagerService] Failed to get page count for $sourcePath: $e');
+    }
+
+    // Check if a PDF with this HASH already exists in the requested class
+    // (If classId is null, we check globally or in 'quick_access' depending on implementation)
     final existing = await _isar.pdfDocuments
         .filter()
-        .originalPathEqualTo(sourcePath)
+        .fileHashEqualTo(fileHash)
+        .and()
+        .classIdEqualTo(classId)
         .findFirst();
 
     if (existing != null) {
+      debugPrint('ℹ️ [FileManagerService] Found existing PDF with hash $fileHash in class $classId');
       await _ensureWorkingCopy(existing);
       await _isar.writeTxn(() async {
         existing.lastOpenedAt = DateTime.now();
+        // Update metadata if it was missing
+        existing.originalDisplayName ??= originalName;
+        existing.totalPages = (existing.totalPages == 0) ? totalPages : existing.totalPages;
         await _isar.pdfDocuments.put(existing);
       });
       return existing;
@@ -140,17 +165,11 @@ class FileManagerService extends ChangeNotifier {
     await _copyFile(sourcePath, sessionDest);
 
     final fileSize = await File(sourcePath).length();
-    
-    String? fileHash;
-    try {
-      fileHash = await FileHashService.calculateFileHash(sourcePath);
-    } catch (e) {
-      debugPrint('⚠️ [FileManagerService] Failed to calculate hash for $sourcePath: $e');
-    }
 
     final newDoc = PdfDocument.create(
       uuid: uuid,
       originalPath: originalDest,
+      originalDisplayName: originalName,
       workingPath: sessionDest,
       workingCreatedAt: DateTime.now(),
       workingModifiedAt: DateTime.now(),
@@ -158,7 +177,13 @@ class FileManagerService extends ChangeNotifier {
       fileSize: fileSize,
       classId: classId,
       fileHash: fileHash,
+      totalPages: totalPages,
     );
+
+    debugPrint('📁 [FileManagerService] Importing new PDF: $originalName');
+    debugPrint('   - Hash: $fileHash');
+    debugPrint('   - Pages: $totalPages');
+    debugPrint('   - UUID: $uuid');
 
     await _isar.writeTxn(() async {
       await _isar.pdfDocuments.put(newDoc);

@@ -1,6 +1,38 @@
 import 'dart:io';
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 
 class HardwareService {
+  /// Generates a strong, multi-layer device fingerprint.
+  /// Combines: device name, OS type, OS version, and machine UUID.
+  Future<String> getDeviceFingerprint() async {
+    try {
+      final deviceName = Platform.localHostname;
+      final osType = Platform.operatingSystem;
+      final osVersion = Platform.operatingSystemVersion;
+      final machineUuid = await getDeviceUUID();
+
+      final rawIdentity = "$deviceName|$osType|$osVersion|$machineUuid";
+      final normalized = rawIdentity.toLowerCase().trim();
+      
+      final bytes = utf8.encode(normalized);
+      final digest = sha256.convert(bytes);
+      final fingerprint = digest.toString();
+
+      debugPrint('🛡️ [Security] Device Fingerprint Generated Successfully');
+      // debugPrint('DEBUG: raw=$normalized');
+      // debugPrint('DEBUG: fingerprint=$fingerprint');
+
+      return fingerprint;
+    } catch (e) {
+      debugPrint('❌ [Security] Failed to generate device fingerprint: $e');
+      // Fallback to a less secure but stable ID if possible, 
+      // but the strict policy requires this to succeed.
+      rethrow;
+    }
+  }
+
   Future<String> getDeviceUUID() async {
     final fromWmic = await _fromWmic();
     if (fromWmic != null) return fromWmic;
