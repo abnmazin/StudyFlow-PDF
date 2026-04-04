@@ -153,6 +153,8 @@ class SyncService {
         'isLocked': false,
         'joinLocked': false,
         'kicked_usernames': <String>[],
+        'notesPurgeFor': '',
+        'notesPurgeRequestId': '',
         'participants':
             <
               Map<String, dynamic>
@@ -208,6 +210,8 @@ class SyncService {
         'ownerName': data['ownerName'] ?? 'محاضر', // Username
         'displayName': data['displayName'], // Lesson name
         'kicked_usernames': List<String>.from(data['kicked_usernames'] ?? []),
+        'notesPurgeFor': data['notesPurgeFor'] ?? '',
+        'notesPurgeRequestId': data['notesPurgeRequestId'] ?? '',
         'isLocked': data['isLocked'] ?? false,
         'joinLocked': data['joinLocked'] ?? false,
         'participants': List<dynamic>.from(data['participants'] ?? []),
@@ -429,6 +433,9 @@ class SyncService {
     // 1. Add to banned list
     await _db.collection('sync_sessions').doc(code).update({
       'kicked_usernames': FieldValue.arrayUnion([username]),
+      // Ensure traditional kick never carries a stale notes-purge instruction.
+      'notesPurgeFor': '',
+      'notesPurgeRequestId': '',
     });
 
     // 2. Surgically remove from participants list
@@ -456,10 +463,53 @@ class SyncService {
     }
   }
 
+  /// Kicks a user and instructs their client to keep only their own notes.
+  Future<void> purgeNotesAndKickParticipant(
+    String code,
+    String username,
+  ) async {
+    assert(username.isNotEmpty, 'Username cannot be empty');
+    if (username.isEmpty) return;
+
+    await _withTimeout(
+      _db.collection('sync_sessions').doc(code).update({
+        'kicked_usernames': FieldValue.arrayUnion([username]),
+        'notesPurgeFor': username,
+        'notesPurgeRequestId': DateTime.now().millisecondsSinceEpoch.toString(),
+      }),
+      operationName: 'purgeNotesAndKickParticipant',
+    );
+
+    final snap = await _withTimeout(
+      _db.collection('sync_sessions').doc(code).get(),
+      operationName: 'purgeNotesAndKickParticipant (Snap)',
+    );
+    if (snap.exists) {
+      final raw = snap.data()?['participants'];
+      if (raw is List) {
+        final updated = raw.where((p) {
+          if (p is Map) {
+            final pName = (p['username'] ?? '')?.toString();
+            return pName != username;
+          }
+          return true;
+        }).toList();
+        await _withTimeout(
+          _db.collection('sync_sessions').doc(code).update({
+            'participants': updated,
+          }),
+          operationName: 'purgeNotesAndKickParticipant (Update)',
+        );
+      }
+    }
+  }
+
   /// Removes a Username from the kicked_usernames array, allowing them to rejoin.
   Future<void> unkickParticipant(String code, String username) async {
     await _db.collection('sync_sessions').doc(code).update({
       'kicked_usernames': FieldValue.arrayRemove([username]),
+      'notesPurgeFor': '',
+      'notesPurgeRequestId': '',
     });
     // Mark as unkicked in the participants list (if they rejoin, they'll be added back anyway)
     final snap = await _db.collection('sync_sessions').doc(code).get();
@@ -834,6 +884,39 @@ class SyncService {
       });
     }
     return null; // success
+  }
+
+  /// Removes a participant from the session participants list when they leave voluntarily.
+  Future<void> leaveSession({
+    required String code,
+    required String uid,
+    required String username,
+  }) async {
+    final ref = _db.collection('sync_sessions').doc(code);
+    final snap = await _withTimeout(
+      ref.get(),
+      operationName: 'leaveSession (Fetch)',
+    );
+    if (!snap.exists) return;
+
+    final raw = snap.data()?['participants'];
+    if (raw is! List) return;
+
+    final updated = raw.where((p) {
+      if (p is Map) {
+        final pUid = (p['uid'] ?? p['id'] ?? '').toString();
+        final pUsername = (p['username'] ?? '').toString();
+        final uidMatch = uid.isNotEmpty && pUid == uid;
+        final usernameMatch = username.isNotEmpty && pUsername == username;
+        return !(uidMatch || usernameMatch);
+      }
+      return true;
+    }).toList();
+
+    await _withTimeout(
+      ref.update({'participants': updated}),
+      operationName: 'leaveSession (Update)',
+    );
   }
 
   // ─────────────────────────────────────────────

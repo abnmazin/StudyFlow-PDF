@@ -141,7 +141,6 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   String? _forcedLogoutReason;
   bool _isGlobalLogout = false;
   bool _isKicked = false;
-  bool _isLocked = false;
 
   // UI State
   bool _isMobileOpen = false;
@@ -196,7 +195,6 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   bool _needsSave = false;
   bool _isSyncing = false;
   bool get isSyncing => _isSyncing;
-  bool _hasUnsavedChanges = false;
   bool _notifyScheduled = false;
   bool _isJoiningSession = false;
   bool get isJoiningSession => _isJoiningSession;
@@ -212,34 +210,12 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   final Map<String, Timer?> _syncTimers = {};
   final Map<String, bool> _pendingSyncs = {};
   final Map<String, Set<String>> _locallyDeletedIds = {}; // Key: fileHash
+  final Map<String, Set<String>> _lockedLocalOnlyHighlightIds = {};
   final Set<String> _intentionallyDeletedIds = {};
 
   Future<void> triggerSync() async {
     if (_isSyncing) return;
-    final code = currentSessionCode;
-    final pdf = activePdf;
-    final fileHash = pdf?.fileHash;
-    if (code == null || fileHash == null || pdf == null) return;
-
-    _isSyncing = true;
-    notifyListeners();
-
-    try {
-      await _syncService.uploadDelta(
-        code,
-        fileHash,
-        pdf.highlights,
-        pdf.comments,
-      );
-
-      final serverData = await _syncService.getServerAnnotations(code, fileHash);
-      syncFromFirestore(fileHash, serverData.items);
-    } catch (e) {
-      debugPrint('Sync error: $e');
-    } finally {
-      _isSyncing = false;
-      notifyListeners();
-    }
+    await performBidirectionalSync(silent: true);
   }
 
   /// Fetch → Purge orphans → Download missing → Upload new.
@@ -304,6 +280,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       debugPrint(
         'DEBUG: performBidirectionalSync started (session: $sessionCode, hash: ${activePdf.fileHash}, silent: $silent).',
       );
+
+      _purgeLockedLocalOnlyHighlightsForPdf(activePdf);
 
       final result = await _syncService.syncExistingAnnotations(
         code: sessionCode,
@@ -396,7 +374,6 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       debugPrint(
         'DEBUG: performBidirectionalSync done. Deleted: ${result.deletedCount}, Downloaded: ${result.downloadedCount}, Uploaded: ${result.uploadedCount}.',
       );
-      _hasUnsavedChanges = false;
 
       if (result.uploadedCount >= 0) {
         // Successfully synced
@@ -424,7 +401,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void _markUnsavedChanges() {
-    _hasUnsavedChanges = true;
+    // Marked as unsaved for tracking purposes
   }
 
   void setCurrentTool(ToolType tool) {
@@ -503,6 +480,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       final index = pdf.highlights.indexWhere((h) => h.id == oldHighlight.id);
       if (index != -1) {
         pdf.highlights[index] = newHighlight;
+        if (isLockedDrawingForCurrentUser) {
+          _markLockedLocalOnlyHighlight(pdf.fileHash, newHighlight.id);
+        }
         // سجل التعديل في سجل العمليات
         recordUpdate(
           pdfId: pdfId,
@@ -640,10 +620,43 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   bool get sessionLocked => _sessionLocked;
+  bool get isLockedDrawingForCurrentUser {
+    final role = _currentUser?.role;
+    return sessionLocked && (role == 'student' || role == 'member');
+  }
+
   bool get sessionJoinLocked => _sessionJoinLocked;
   String? get forcedLogoutReason => _forcedLogoutReason;
   bool get isGlobalLogout => _isGlobalLogout;
   bool get isKicked => _isKicked;
+
+  void _markLockedLocalOnlyHighlight(String? fileHash, String highlightId) {
+    if (fileHash == null) return;
+    _lockedLocalOnlyHighlightIds.putIfAbsent(fileHash, () => <String>{}).add(highlightId);
+  }
+
+  void _clearLockedLocalOnlyHighlight(String? fileHash, String highlightId) {
+    if (fileHash == null) return;
+    final ids = _lockedLocalOnlyHighlightIds[fileHash];
+    if (ids == null) return;
+    ids.remove(highlightId);
+    if (ids.isEmpty) {
+      _lockedLocalOnlyHighlightIds.remove(fileHash);
+    }
+  }
+
+  void _purgeLockedLocalOnlyHighlightsForPdf(PdfItem pdf) {
+    final fileHash = pdf.fileHash;
+    if (fileHash == null) return;
+    final ids = _lockedLocalOnlyHighlightIds[fileHash];
+    if (ids == null || ids.isEmpty) return;
+
+    pdf.highlights.removeWhere((h) => ids.contains(h.id));
+    _actionHistory.removeWhere((a) => a.pdfId == pdf.id && ids.contains(a.itemId));
+    _redoHistory.removeWhere((a) => a.pdfId == pdf.id && ids.contains(a.itemId));
+    _locallyDeletedIds[fileHash]?.removeAll(ids);
+    _lockedLocalOnlyHighlightIds.remove(fileHash);
+  }
 
   // ─── OPTIMISTIC UI / SILENT ACCOUNT VERIFICATION ───────────────────────────
   Future<void> verifyAccountStatusSilently(BuildContext context) async {
@@ -891,8 +904,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
           // 2. Lock Check (isDrawingEnabled logic)
           final locked = state['isLocked'] as bool;
-          if (locked != _isLocked) {
-            _isLocked = locked;
+          if (locked != _sessionLocked) {
+            _sessionLocked = locked;
             if (locked) {
               // Locked: Wipe unsynced and switch to hand
               clearUnsyncedAnnotationsForActivePdf();
@@ -932,7 +945,6 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     _isKicked = true;
     _forcedLogoutReason = reason;
     _isGlobalLogout = reason.contains('النظام');
-    _isLocked = false;
 
     // Cleanup active session
     final pdf = activePdf;
@@ -943,19 +955,6 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     _sessionJoinLocked = false;
     _stopKickListener();
     _stopUserMonitor(); // Also stop monitoring the deleted account
-
-    // WIPE SCREEN
-    if (pdf != null) {
-      for (var i = 0; i < _classes.length; i++) {
-        final pdfIdx = _classes[i].pdfs.indexWhere((p) => p.id == pdf.id);
-        if (pdfIdx != -1) {
-          _classes[i].pdfs[pdfIdx] = _classes[i].pdfs[pdfIdx].copyWith(
-            highlights: [],
-            comments: [],
-          );
-        }
-      }
-    }
 
     // Account check specific: If account deleted, wipe user
     if (reason.contains('النظام')) {
@@ -990,6 +989,11 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         break;
       }
     }
+
+    if (pdf.fileHash != null) {
+      _lockedLocalOnlyHighlightIds.remove(pdf.fileHash);
+    }
+
     _notify();
   }
 
@@ -1001,6 +1005,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       for (var j = 0; j < _classes[i].pdfs.length; j++) {
         final pdf = _classes[i].pdfs[j];
         if (pdf.fileHash == fileHash) {
+          final serverIds = <String>{};
           // MERGE strategy: Start with existing local annotations
           final mergedHighlights = Map<String, Highlight>.fromIterable(
             pdf.highlights,
@@ -1017,6 +1022,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
               final data = Map<String, dynamic>.from(item);
               final kind = data['kind'];
               final id = data['id'] as String?;
+              if (id != null) {
+                serverIds.add(id);
+              }
               if (id != null && _intentionallyDeletedIds.contains(id)) {
                 continue;
               }
@@ -1047,12 +1055,25 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
             }
           }
 
-          // Update PDF with merged annotations (preserves local-only items)
+          final targetPdf = pdf.copyWith(
+            highlights: mergedHighlights.values.toList(),
+            comments: mergedComments.values.toList(),
+          );
+
+          // Orphan cleanup: ONLY if server has data (don't wipe on empty sync)
+          if (serverIds.isNotEmpty) {
+            final beforeH = targetPdf.highlights.length;
+            targetPdf.highlights.removeWhere((h) => !serverIds.contains(h.id));
+            if (targetPdf.highlights.length != beforeH) changed = true;
+
+            final beforeC = targetPdf.comments.length;
+            targetPdf.comments.removeWhere((c) => !serverIds.contains(c.id));
+            if (targetPdf.comments.length != beforeC) changed = true;
+          }
+
+          // Update PDF with merged annotations
           if (changed) {
-            _classes[i].pdfs[j] = pdf.copyWith(
-              highlights: mergedHighlights.values.toList(),
-              comments: mergedComments.values.toList(),
-            );
+            _classes[i].pdfs[j] = targetPdf;
           }
         }
       }
@@ -1096,6 +1117,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   static const String _prefsKeyAnnotations = 'studyflowpdf_annotations_blob';
   static const String _prefsKeyAnnotationsMigrated =
       'annotations_blob_migrated_v1';
+  static const String _prefsKeyLibraryMigrated =
+      'studyflowpdf_library_migrated_v2';
 
   Future<void> _loadState() async {
     try {
@@ -1206,6 +1229,11 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> _migrateLegacyLibraryIfNeeded() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool(_prefsKeyLibraryMigrated) == true) {
+        debugPrint('ℹ️ Legacy library migration already completed. Skipping.');
+        return;
+      }
+
       final classesJson = prefs.getString(_prefsKeyClasses);
 
       if (classesJson != null && classesJson.isNotEmpty) {
@@ -1214,9 +1242,14 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         final fileManager = FileManagerService();
         await fileManager.migrateFromLegacyPrefs(legacyData);
 
+        await prefs.setBool(_prefsKeyLibraryMigrated, true);
+        await prefs.remove('pdfreader_classes');
+
         // Clear legacy key to prevent double migration
         await prefs.remove(_prefsKeyClasses);
-        debugPrint('🗑️ Cleared legacy classes_data from SharedPreferences.');
+        debugPrint(
+          '🗑️ Cleared legacy classes payload and marked library migration complete.',
+        );
       }
     } catch (e) {
       debugPrint('❌ Error during legacy migration: $e');
@@ -1310,10 +1343,20 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
             scrollTop: p.lastScroll,
           );
 
-          // PHASE 3A: Load annotations from Isar for THIS document
-          final iHighlights = await fileManager.loadHighlightsForPdf(p.uuid);
-          final iComments = await fileManager.loadCommentsForPdf(p.uuid);
-          final iBookmarks = await fileManager.loadBookmarksForPdf(p.uuid);
+          // PHASE 3A: Load annotations from Isar for THIS document.
+          // Keep hydration resilient: one broken PDF must not hide sidebar folders.
+          List<IsarHighlight> iHighlights = const [];
+          List<IsarComment> iComments = const [];
+          List<IsarBookmark> iBookmarks = const [];
+          try {
+            iHighlights = await fileManager.loadHighlightsForPdf(p.uuid);
+            iComments = await fileManager.loadCommentsForPdf(p.uuid);
+            iBookmarks = await fileManager.loadBookmarksForPdf(p.uuid);
+          } catch (e) {
+            debugPrint(
+              '⚠️ [Hydration] Annotation load failed for PDF ${p.uuid}: $e',
+            );
+          }
 
           item.highlights.addAll(
             iHighlights.map(
@@ -1354,6 +1397,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
                 position: Offset(ic.position?.dx ?? 0, ic.position?.dy ?? 0),
                 content: ic.content,
                 date: ic.date,
+                createdBy: ic.createdBy.isEmpty ? null : ic.createdBy,
                 color: Color(ic.color),
                 fontSize: ic.fontSize,
                 isBold: ic.isBold,
@@ -1619,6 +1663,13 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         _saveState();
       }
     }
+  }
+
+  Future<void> saveStateNow({String? pdfId}) async {
+    if (pdfId != null && pdfId.isNotEmpty) {
+      _markPdfDirty(pdfId);
+    }
+    await _saveState();
   }
 
   // Actions
@@ -2031,6 +2082,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
           isSynced: false,
         );
         cls.pdfs[pdfIndex].highlights.add(newH);
+        if (isLockedDrawingForCurrentUser) {
+          _markLockedLocalOnlyHighlight(cls.pdfs[pdfIndex].fileHash, newH.id);
+        }
         // سجل الإضافة في سجل العمليات
         _actionHistory.add(
           ActionRecord(
@@ -2092,6 +2146,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       if (pdf.id.isEmpty) continue;
 
       pdf.highlights.remove(highlight);
+      _clearLockedLocalOnlyHighlight(pdf.fileHash, highlight.id);
 
       // Track deletion for Sync Reconciliation (Anti-Resurrection)
       if (pdf.fileHash != null) {
@@ -2134,9 +2189,16 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       );
       if (pdf.id.isEmpty) continue;
 
+      final normalizedUsername = _currentUser?.username?.trim();
+      final effectiveAuthor =
+          (normalizedUsername != null && normalizedUsername.isNotEmpty)
+          ? normalizedUsername
+          : comment.createdBy;
+
       final newC = comment.copyWith(
         updatedAt: DateTime.now().millisecondsSinceEpoch,
         isSynced: false,
+        createdBy: effectiveAuthor,
       );
       pdf.comments.add(newC);
       // سجل الإضافة في سجل العمليات
@@ -2157,6 +2219,43 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       triggerSync();
       return;
     }
+  }
+
+  void purgeForeignCommentsLocally(String username) {
+    final normalized = username.trim().toLowerCase();
+    if (normalized.isEmpty) return;
+
+    var changed = false;
+    for (final cls in _classes) {
+      for (final pdf in cls.pdfs) {
+        final beforeC = pdf.comments.length;
+        pdf.comments.removeWhere((comment) {
+          final author = comment.createdBy?.trim().toLowerCase();
+          return author != null && author.isNotEmpty && author != normalized;
+        });
+        if (pdf.comments.length != beforeC) {
+          changed = true;
+          _markPdfDirty(pdf.id);
+        }
+
+        final beforeH = pdf.highlights.length;
+        pdf.highlights.removeWhere((highlight) {
+          final author = highlight.createdBy?.trim().toLowerCase();
+          return author != null && author.isNotEmpty && author != normalized;
+        });
+        if (pdf.highlights.length != beforeH) {
+          changed = true;
+          _markPdfDirty(pdf.id);
+        }
+      }
+    }
+
+    if (!changed) return;
+
+    _syncDebounce?.cancel();
+    _saveTimer?.cancel();
+    _saveTimer = Timer(const Duration(milliseconds: 250), _saveState);
+    _notify();
   }
 
   void removeComment(String pdfId, PdfComment comment) {
@@ -2220,6 +2319,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       _redoHistory.removeWhere((a) => a.pdfId == pdfId);
 
       _locallyDeletedIds[pdf.fileHash!]?.clear();
+      _lockedLocalOnlyHighlightIds.remove(pdf.fileHash);
       _notify();
       _markPdfDirty(pdfId);
 
@@ -2271,6 +2371,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       );
 
       pdf.highlights.removeWhere((h) => h.type == HighlightType.highlight);
+      _lockedLocalOnlyHighlightIds.remove(pdf.fileHash);
 
       _actionHistory.removeWhere((a) => a.pdfId == pdfId);
       _redoHistory.removeWhere((a) => a.pdfId == pdfId);
@@ -2316,6 +2417,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
             h.type == HighlightType.rectangle ||
             h.type == HighlightType.circle,
       );
+      _lockedLocalOnlyHighlightIds.remove(pdf.fileHash);
 
       _actionHistory.removeWhere((a) => a.pdfId == pdfId);
       _redoHistory.removeWhere((a) => a.pdfId == pdfId);
@@ -2481,6 +2583,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         final idx = pdf.highlights.indexWhere((h) => h.id == action.itemId);
         if (idx != -1) {
           final removed = pdf.highlights.removeAt(idx);
+          _clearLockedLocalOnlyHighlight(pdf.fileHash, action.itemId);
           if (pdf.fileHash != null) {
             _locallyDeletedIds
                 .putIfAbsent(pdf.fileHash!, () => <String>{})
@@ -2535,6 +2638,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
               isSynced: false,
             );
             pdf.highlights[idx] = restored;
+            _clearLockedLocalOnlyHighlight(pdf.fileHash, action.itemId);
             debugPrint('🔙 Undo: Restored highlight ${action.itemId}');
           }
         }
@@ -3196,13 +3300,31 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   ) async {
     if (sourceClassId == targetClassId) return;
 
-    // 1. Persist to Isar
-    await FileManagerService().movePdf(pdfId, sourceClassId, targetClassId);
+    // 1. Optimistic UI update so sidebar reflects move instantly.
+    final sourceIndex = _classes.indexWhere((c) => c.id == sourceClassId);
+    final targetIndex = _classes.indexWhere((c) => c.id == targetClassId);
+    if (sourceIndex != -1 && targetIndex != -1) {
+      final pdfIndex = _classes[sourceIndex].pdfs.indexWhere((p) => p.id == pdfId);
+      if (pdfIndex != -1) {
+        final movedPdf = _classes[sourceIndex].pdfs.removeAt(pdfIndex);
+        _classes[targetIndex].pdfs.add(movedPdf);
+        _classes = List<ClassItem>.from(_classes);
+      }
+    }
 
-    // 2. Re-hydrate and update active state
-    await _hydrateClassesFromIsar();
     _activeClassId = targetClassId;
+    _activePdfId = pdfId;
     _notify();
+
+    try {
+      // 2. Persist to Isar.
+      await FileManagerService().movePdf(pdfId, sourceClassId, targetClassId);
+
+      // 3. Re-hydrate to guarantee consistency/order from database.
+      await _hydrateClassesFromIsar();
+    } catch (e) {
+      debugPrint('❌ movePdf failed: $e');
+    }
   }
 
   Future<void> reorderPdfWithinClass(

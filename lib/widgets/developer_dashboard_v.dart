@@ -5,7 +5,6 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../screens/auth/login_screen.dart';
-import 'viewer_components/join_master_modal.dart';
 
 class GlobalSettingsModal extends StatefulWidget {
   const GlobalSettingsModal({super.key});
@@ -1111,7 +1110,6 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
     Color textPrimary,
     Color textMuted,
   ) {
-    final isDark = app.isDarkMode;
     const geminiModels = ['gemini-2.5-flash', 'gemini-2.0-flash'];
     const groqModels = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
     final selectedModel = app.aiProvider == 'groq'
@@ -1249,7 +1247,6 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
     final app = context.watch<AppProvider>();
     final isDark = app.isDarkMode;
     final textPrimary = isDark ? Colors.white : Colors.black87;
-    final textMuted = isDark ? const Color(0xFF94A3B8) : Colors.black54;
     final surfaceAlt = isDark ? const Color(0xFF1E293B) : Colors.white;
     final panelBorder = isDark ? const Color(0xFF334155) : Colors.grey.shade300;
 

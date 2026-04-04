@@ -9,6 +9,7 @@ class StudyFlowToolbar extends StatefulWidget {
   final ToolType activeTool;
   final ToolType? selectedAnnotationTool;
   final String? selectedShapeAuthor;
+  final String? selectedCommentAuthor;
   final bool isRightPanelOpen;
   final bool isShapesPaletteVisible;
   final bool isDarkMode;
@@ -29,6 +30,7 @@ class StudyFlowToolbar extends StatefulWidget {
     required this.activeTool,
     this.selectedAnnotationTool,
     this.selectedShapeAuthor,
+    this.selectedCommentAuthor,
     required this.isRightPanelOpen,
     required this.isShapesPaletteVisible,
     required this.isDarkMode,
@@ -427,6 +429,44 @@ Widget _buildEditableChip({
                         ),
                       ],
 
+                      if (widget.selectedCommentAuthor != null) ...[
+                        const SizedBox(width: 8),
+                        Container(width: 1, height: 28, color: separatorColor),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF3B82F6).withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: const Color(0xFF3B82F6).withOpacity(0.4),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                LucideIcons.user,
+                                size: 14,
+                                color: Color(0xFF3B82F6),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                widget.selectedCommentAuthor!,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF3B82F6),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+
                       // ─── Divider ──
                       const SizedBox(width: 8),
                       Container(width: 1, height: 28, color: separatorColor),
@@ -474,7 +514,7 @@ Widget _buildEditableChip({
                                   isSelectedShapeTool,
                               onTap: () {
                                 if (!isSelectedShapeTool) {
-                                  widget.onToolChanged(ToolType.arrow);
+                                  widget.onToolChanged(ToolType.rectangle);
                                 }
                                 if (!widget.isShapesPaletteVisible) {
                                   widget.onToggleShapesPalette();

@@ -10978,64 +10978,69 @@ const IsarCommentSchema = CollectionSchema(
       name: r'content',
       type: IsarType.string,
     ),
-    r'date': PropertySchema(
+    r'createdBy': PropertySchema(
       id: 4,
+      name: r'createdBy',
+      type: IsarType.string,
+    ),
+    r'date': PropertySchema(
+      id: 5,
       name: r'date',
       type: IsarType.dateTime,
     ),
     r'fontFamily': PropertySchema(
-      id: 5,
+      id: 6,
       name: r'fontFamily',
       type: IsarType.string,
     ),
     r'fontSize': PropertySchema(
-      id: 6,
+      id: 7,
       name: r'fontSize',
       type: IsarType.double,
     ),
     r'isBold': PropertySchema(
-      id: 7,
+      id: 8,
       name: r'isBold',
       type: IsarType.bool,
     ),
     r'isLatex': PropertySchema(
-      id: 8,
+      id: 9,
       name: r'isLatex',
       type: IsarType.bool,
     ),
     r'isSynced': PropertySchema(
-      id: 9,
+      id: 10,
       name: r'isSynced',
       type: IsarType.bool,
     ),
     r'page': PropertySchema(
-      id: 10,
+      id: 11,
       name: r'page',
       type: IsarType.long,
     ),
     r'pdfUuid': PropertySchema(
-      id: 11,
+      id: 12,
       name: r'pdfUuid',
       type: IsarType.string,
     ),
     r'position': PropertySchema(
-      id: 12,
+      id: 13,
       name: r'position',
       type: IsarType.object,
       target: r'IsarPoint',
     ),
     r'showBorder': PropertySchema(
-      id: 13,
+      id: 14,
       name: r'showBorder',
       type: IsarType.bool,
     ),
     r'updatedAt': PropertySchema(
-      id: 14,
+      id: 15,
       name: r'updatedAt',
       type: IsarType.long,
     ),
     r'uuid': PropertySchema(
-      id: 15,
+      id: 16,
       name: r'uuid',
       type: IsarType.string,
     )
@@ -11088,6 +11093,7 @@ int _isarCommentEstimateSize(
 ) {
   var bytesCount = offsets.last;
   bytesCount += 3 + object.content.length * 3;
+  bytesCount += 3 + object.createdBy.length * 3;
   bytesCount += 3 + object.fontFamily.length * 3;
   bytesCount += 3 + object.pdfUuid.length * 3;
   {
@@ -11112,23 +11118,24 @@ void _isarCommentSerialize(
   writer.writeLong(offsets[1], object.borderColor);
   writer.writeLong(offsets[2], object.color);
   writer.writeString(offsets[3], object.content);
-  writer.writeDateTime(offsets[4], object.date);
-  writer.writeString(offsets[5], object.fontFamily);
-  writer.writeDouble(offsets[6], object.fontSize);
-  writer.writeBool(offsets[7], object.isBold);
-  writer.writeBool(offsets[8], object.isLatex);
-  writer.writeBool(offsets[9], object.isSynced);
-  writer.writeLong(offsets[10], object.page);
-  writer.writeString(offsets[11], object.pdfUuid);
+  writer.writeString(offsets[4], object.createdBy);
+  writer.writeDateTime(offsets[5], object.date);
+  writer.writeString(offsets[6], object.fontFamily);
+  writer.writeDouble(offsets[7], object.fontSize);
+  writer.writeBool(offsets[8], object.isBold);
+  writer.writeBool(offsets[9], object.isLatex);
+  writer.writeBool(offsets[10], object.isSynced);
+  writer.writeLong(offsets[11], object.page);
+  writer.writeString(offsets[12], object.pdfUuid);
   writer.writeObject<IsarPoint>(
-    offsets[12],
+    offsets[13],
     allOffsets,
     IsarPointSchema.serialize,
     object.position,
   );
-  writer.writeBool(offsets[13], object.showBorder);
-  writer.writeLong(offsets[14], object.updatedAt);
-  writer.writeString(offsets[15], object.uuid);
+  writer.writeBool(offsets[14], object.showBorder);
+  writer.writeLong(offsets[15], object.updatedAt);
+  writer.writeString(offsets[16], object.uuid);
 }
 
 IsarComment _isarCommentDeserialize(
@@ -11142,23 +11149,24 @@ IsarComment _isarCommentDeserialize(
   object.borderColor = reader.readLong(offsets[1]);
   object.color = reader.readLong(offsets[2]);
   object.content = reader.readString(offsets[3]);
-  object.date = reader.readDateTime(offsets[4]);
-  object.fontFamily = reader.readString(offsets[5]);
-  object.fontSize = reader.readDouble(offsets[6]);
+  object.createdBy = reader.readString(offsets[4]);
+  object.date = reader.readDateTime(offsets[5]);
+  object.fontFamily = reader.readString(offsets[6]);
+  object.fontSize = reader.readDouble(offsets[7]);
   object.id = id;
-  object.isBold = reader.readBool(offsets[7]);
-  object.isLatex = reader.readBool(offsets[8]);
-  object.isSynced = reader.readBool(offsets[9]);
-  object.page = reader.readLong(offsets[10]);
-  object.pdfUuid = reader.readString(offsets[11]);
+  object.isBold = reader.readBool(offsets[8]);
+  object.isLatex = reader.readBool(offsets[9]);
+  object.isSynced = reader.readBool(offsets[10]);
+  object.page = reader.readLong(offsets[11]);
+  object.pdfUuid = reader.readString(offsets[12]);
   object.position = reader.readObjectOrNull<IsarPoint>(
-    offsets[12],
+    offsets[13],
     IsarPointSchema.deserialize,
     allOffsets,
   );
-  object.showBorder = reader.readBool(offsets[13]);
-  object.updatedAt = reader.readLong(offsets[14]);
-  object.uuid = reader.readString(offsets[15]);
+  object.showBorder = reader.readBool(offsets[14]);
+  object.updatedAt = reader.readLong(offsets[15]);
+  object.uuid = reader.readString(offsets[16]);
   return object;
 }
 
@@ -11178,32 +11186,34 @@ P _isarCommentDeserializeProp<P>(
     case 3:
       return (reader.readString(offset)) as P;
     case 4:
-      return (reader.readDateTime(offset)) as P;
-    case 5:
       return (reader.readString(offset)) as P;
+    case 5:
+      return (reader.readDateTime(offset)) as P;
     case 6:
-      return (reader.readDouble(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 7:
-      return (reader.readBool(offset)) as P;
+      return (reader.readDouble(offset)) as P;
     case 8:
       return (reader.readBool(offset)) as P;
     case 9:
       return (reader.readBool(offset)) as P;
     case 10:
-      return (reader.readLong(offset)) as P;
+      return (reader.readBool(offset)) as P;
     case 11:
-      return (reader.readString(offset)) as P;
+      return (reader.readLong(offset)) as P;
     case 12:
+      return (reader.readString(offset)) as P;
+    case 13:
       return (reader.readObjectOrNull<IsarPoint>(
         offset,
         IsarPointSchema.deserialize,
         allOffsets,
       )) as P;
-    case 13:
-      return (reader.readBool(offset)) as P;
     case 14:
-      return (reader.readLong(offset)) as P;
+      return (reader.readBool(offset)) as P;
     case 15:
+      return (reader.readLong(offset)) as P;
+    case 16:
       return (reader.readString(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -11741,6 +11751,142 @@ extension IsarCommentQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.greaterThan(
         property: r'content',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      createdByEqualTo(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'createdBy',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      createdByGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'createdBy',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      createdByLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'createdBy',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      createdByBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'createdBy',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      createdByStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'createdBy',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      createdByEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'createdBy',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      createdByContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'createdBy',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      createdByMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'createdBy',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      createdByIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'createdBy',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      createdByIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'createdBy',
         value: '',
       ));
     });
@@ -12548,6 +12694,18 @@ extension IsarCommentQuerySortBy
     });
   }
 
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByCreatedBy() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'createdBy', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByCreatedByDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'createdBy', Sort.desc);
+    });
+  }
+
   QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByDate() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'date', Sort.asc);
@@ -12731,6 +12889,18 @@ extension IsarCommentQuerySortThenBy
     });
   }
 
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByCreatedBy() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'createdBy', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByCreatedByDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'createdBy', Sort.desc);
+    });
+  }
+
   QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByDate() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'date', Sort.asc);
@@ -12903,6 +13073,13 @@ extension IsarCommentQueryWhereDistinct
     });
   }
 
+  QueryBuilder<IsarComment, IsarComment, QDistinct> distinctByCreatedBy(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'createdBy', caseSensitive: caseSensitive);
+    });
+  }
+
   QueryBuilder<IsarComment, IsarComment, QDistinct> distinctByDate() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'date');
@@ -13002,6 +13179,12 @@ extension IsarCommentQueryProperty
   QueryBuilder<IsarComment, String, QQueryOperations> contentProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'content');
+    });
+  }
+
+  QueryBuilder<IsarComment, String, QQueryOperations> createdByProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'createdBy');
     });
   }
 

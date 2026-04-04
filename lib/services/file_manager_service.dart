@@ -500,7 +500,37 @@ class FileManagerService extends ChangeNotifier {
     }
   }
 
-  // ── 6. Folders ─────────────────────────────────────────────────────────────
+  // ── 6. Annotation Helpers (Private & Resilient) ──────────────────────────
+
+  Future<List<IsarHighlight>> _getHighlights(String pdfUuid) async {
+    try {
+      return await _isar.isarHighlights.where().pdfUuidEqualTo(pdfUuid).findAll();
+    } catch (e) {
+      debugPrint('⚠️ [FileManagerService] Could not query highlights for $pdfUuid using index. Falling back to filter. Error: $e');
+      // Fallback for safety, though it should not be needed with the new index.
+      return await _isar.isarHighlights.filter().pdfUuidEqualTo(pdfUuid).findAll();
+    }
+  }
+
+  Future<List<IsarComment>> _getComments(String pdfUuid) async {
+    try {
+      return await _isar.isarComments.where().pdfUuidEqualTo(pdfUuid).findAll();
+    } catch (e) {
+      debugPrint('⚠️ [FileManagerService] Could not query comments for $pdfUuid using index. Falling back to filter. Error: $e');
+      return await _isar.isarComments.filter().pdfUuidEqualTo(pdfUuid).findAll();
+    }
+  }
+
+  Future<List<IsarBookmark>> _getBookmarks(String pdfUuid) async {
+    try {
+      return await _isar.isarBookmarks.where().pdfUuidEqualTo(pdfUuid).findAll();
+    } catch (e) {
+      debugPrint('⚠️ [FileManagerService] Could not query bookmarks for $pdfUuid using index. Falling back to filter. Error: $e');
+      return await _isar.isarBookmarks.filter().pdfUuidEqualTo(pdfUuid).findAll();
+    }
+  }
+
+  // ── 7. Folders ─────────────────────────────────────────────────────────────
 
   Future<ClassFolder> createFolder({
     required String name,
@@ -525,45 +555,6 @@ class FileManagerService extends ChangeNotifier {
   Future<List<ClassFolder>> getFoldersOrdered() async {
     if (!_isInitialized) await init();
     return _isar.classFolders.where().sortByOrderIndex().findAll();
-  }
-
-  // ── 7. Documents ───────────────────────────────────────────────────────────
-
-  Future<List<PdfDocument>> getDocumentsInFolder(String classId) async {
-    if (!_isInitialized) await init();
-    return _isar.pdfDocuments.filter().classIdEqualTo(classId).findAll();
-  }
-
-  Future<List<PdfDocument>> getAllDocuments() async {
-    if (!_isInitialized) await init();
-    return _isar.pdfDocuments.where().findAll();
-  }
-
-  Future<List<PdfDocument>> searchDocuments(String query) async {
-    if (!_isInitialized) await init();
-    final lq = query.toLowerCase();
-    final all = await _isar.pdfDocuments.where().findAll();
-    return all
-        .where(
-          (d) =>
-              d.originalPath.toLowerCase().contains(lq) ||
-              d.tags.any((t) => t.toLowerCase().contains(lq)),
-        )
-        .toList();
-  }
-
-  Future<List<PdfDocument>> getRecentDocuments({int limit = 6}) async {
-    if (!_isInitialized) await init();
-    return _isar.pdfDocuments
-        .where()
-        .sortByLastOpenedAtDesc()
-        .limit(limit)
-        .findAll();
-  }
-
-  Future<List<TrashItem>> getTrashItems() async {
-    if (!_isInitialized) await init();
-    return _isar.trashItems.where().sortByDeletedAtDesc().findAll();
   }
 
   // ── 8. Migration ──────────────────────────────────────────────────────────
@@ -663,7 +654,7 @@ class FileManagerService extends ChangeNotifier {
     await _isar.writeTxn(() async {
       final folder = await _isar.classFolders.filter().uuidEqualTo(folderUuid).findFirst();
       if (folder != null) {
-        folder.pdfIds = pdfUuids;
+        folder.pdfIds = List<String>.from(pdfUuids);
         await _isar.classFolders.put(folder);
       }
     });
@@ -683,7 +674,9 @@ class FileManagerService extends ChangeNotifier {
       // 2. Remove from Source
       final source = await _isar.classFolders.filter().uuidEqualTo(fromFolderUuid).findFirst();
       if (source != null) {
-        source.pdfIds.remove(pdfUuid);
+        final updatedSource = List<String>.from(source.pdfIds);
+        updatedSource.remove(pdfUuid);
+        source.pdfIds = updatedSource;
         if (source.lastActivePdfId == pdfUuid) source.lastActivePdfId = null;
         await _isar.classFolders.put(source);
       }
@@ -691,9 +684,11 @@ class FileManagerService extends ChangeNotifier {
       // 3. Add to Target
       final target = await _isar.classFolders.filter().uuidEqualTo(toFolderUuid).findFirst();
       if (target != null) {
-        if (!target.pdfIds.contains(pdfUuid)) {
-          target.pdfIds.add(pdfUuid);
+        final updatedTarget = List<String>.from(target.pdfIds);
+        if (!updatedTarget.contains(pdfUuid)) {
+          updatedTarget.add(pdfUuid);
         }
+        target.pdfIds = updatedTarget;
         await _isar.classFolders.put(target);
       }
     });
@@ -705,11 +700,15 @@ class FileManagerService extends ChangeNotifier {
     if (!_isInitialized) await init();
 
     // 1. Find all documents belonging to this folder
-    final docs = await _isar.pdfDocuments.filter().classIdEqualTo(uuid).findAll();
+    final docs = await getDocumentsInFolder(uuid);
 
     // 2. Delete each document (this handles annotations and files)
     for (var doc in docs) {
-      await deleteDocument(doc.uuid);
+      try {
+        await deleteDocument(doc.uuid);
+      } catch (e) {
+        debugPrint('⚠️ [FileManagerService] Failed to delete document ${doc.uuid} while deleting folder $uuid. Skipping. Error: $e');
+      }
     }
 
     // 3. Delete the folder itself
@@ -726,67 +725,71 @@ class FileManagerService extends ChangeNotifier {
   Future<void> deleteDocument(String uuid) async {
     if (!_isInitialized) await init();
 
-    // 1. Find the document metadata
-    final doc = await _isar.pdfDocuments.filter().uuidEqualTo(uuid).findFirst();
-    if (doc == null) return;
+    debugPrint('🗑️ [FileManagerService] deleteDocument شروع: $uuid');
 
-    final String? workingPath = doc.workingPath;
-    final String? classId = doc.classId;
+    try {
+      // 1. Find the document metadata
+      final doc = await _isar.pdfDocuments.filter().uuidEqualTo(uuid).findFirst();
+      if (doc == null) {
+        debugPrint('ℹ️ [FileManagerService] deleteDocument called for a non-existent document: $uuid');
+        return;
+      }
 
-    await _isar.writeTxn(() async {
-      // 2. Remove document ID from the parent folder's list (Atomic update)
-      if (classId != null) {
-        final folder = await _isar.classFolders.filter().uuidEqualTo(classId).findFirst();
-        if (folder != null) {
-          final updatedList = List<String>.from(folder.pdfIds);
-          if (updatedList.remove(uuid)) {
+      final String? workingPath = doc.workingPath;
+      final String? classId = doc.classId;
+
+      await _isar.writeTxn(() async {
+        // 2. Remove document ID from the parent folder's list
+        if (classId != null) {
+          final folder = await _isar.classFolders.filter().uuidEqualTo(classId).findFirst();
+          if (folder != null) {
+            final updatedList = List<String>.from(folder.pdfIds);
+            updatedList.remove(uuid);
             folder.pdfIds = updatedList;
             if (folder.lastActivePdfId == uuid) folder.lastActivePdfId = null;
             await _isar.classFolders.put(folder);
+            debugPrint('🗑️ [FileManagerService] Removed $uuid from folder $classId pdfIds');
+          }
+        }
+
+        // 3. Clean up all associated annotations from Isar using index-based queries
+        await _isar.isarHighlights.where().pdfUuidEqualTo(uuid).deleteAll();
+        debugPrint('🗑️ [FileManagerService] Deleted highlights for $uuid');
+
+        await _isar.isarComments.where().pdfUuidEqualTo(uuid).deleteAll();
+        debugPrint('🗑️ [FileManagerService] Deleted comments for $uuid');
+
+        await _isar.isarBookmarks.where().pdfUuidEqualTo(uuid).deleteAll();
+        debugPrint('🗑️ [FileManagerService] Deleted bookmarks for $uuid');
+
+        // 4. Delete the main document record
+        await _isar.pdfDocuments.where().uuidEqualTo(uuid).deleteFirst();
+        debugPrint('🗑️ [FileManagerService] Deleted PdfDocument row for $uuid');
+      });
+
+      // 5. Safe Deletion of physical files
+      final bool isManagedOriginal = doc.originalPath.startsWith(_originalsDir.path);
+
+      for (var path in [workingPath, isManagedOriginal ? doc.originalPath : null]) {
+        if (path != null) {
+          try {
+            final file = File(path);
+            if (await file.exists()) {
+              await file.delete();
+              debugPrint('🗑️ [FileManagerService] Deleted physical PDF (${path == workingPath ? "working" : "original"}): $path');
+            }
+          } catch (e) {
+            debugPrint('⚠️ [FileManagerService] Failed to delete physical file $path: $e');
           }
         }
       }
 
-      // 3. Clean up all associated annotations from Isar
-      // (Using filter-based logical delete to avoid orphans)
-      final highlightIds = await _isar.isarHighlights.filter().pdfUuidEqualTo(uuid).findAll();
-      if (highlightIds.isNotEmpty) {
-        await _isar.isarHighlights.deleteAll(highlightIds.map((e) => e.id).toList());
-      }
-
-      final commentIds = await _isar.isarComments.filter().pdfUuidEqualTo(uuid).findAll();
-      if (commentIds.isNotEmpty) {
-        await _isar.isarComments.deleteAll(commentIds.map((e) => e.id).toList());
-      }
-
-      final bookmarkIds = await _isar.isarBookmarks.filter().pdfUuidEqualTo(uuid).findAll();
-      if (bookmarkIds.isNotEmpty) {
-        await _isar.isarBookmarks.deleteAll(bookmarkIds.map((e) => e.id).toList());
-      }
-
-      // 4. Delete the main document record
-      await _isar.pdfDocuments.delete(doc.id);
-    });
-
-    // 5. Safe Deletion of physical files
-    // We only delete the original if it is an internally managed copy
-    final bool isManagedOriginal = doc.originalPath.startsWith(_originalsDir.path);
-
-    for (var path in [workingPath, isManagedOriginal ? doc.originalPath : null]) {
-      if (path != null) {
-        try {
-          final file = File(path);
-          if (await file.exists()) {
-            await file.delete();
-            debugPrint('🗑️ [FileManagerService] Deleted physical PDF (${path == workingPath ? "working" : "original"}): $path');
-          }
-        } catch (e) {
-          debugPrint('⚠️ [FileManagerService] Failed to delete physical file $path: $e');
-        }
-      }
+      debugPrint('✅ [FileManagerService] deleteDocument completed: $uuid');
+      _notify();
+    } catch (e) {
+      debugPrint('❌ [FileManagerService] deleteDocument failed for $uuid: $e');
+      rethrow;
     }
-
-    _notify();
   }
 
   // ── 10. Annotations (High Level - Model Based) ───────────────────────────
@@ -963,19 +966,22 @@ class FileManagerService extends ChangeNotifier {
 
   // ── Annotations (Low Level - Isar Based) ──────────────────────────────────
 
+  /// Loads [IsarHighlight] models from Isar for a specific PDF.
   Future<List<IsarHighlight>> loadHighlightsForPdf(String pdfUuid) async {
     if (!_isInitialized) await init();
-    return _isar.isarHighlights.filter().pdfUuidEqualTo(pdfUuid).findAll();
+    return await _getHighlights(pdfUuid);
   }
 
+  /// Loads [IsarComment] models from Isar for a specific PDF.
   Future<List<IsarComment>> loadCommentsForPdf(String pdfUuid) async {
     if (!_isInitialized) await init();
-    return _isar.isarComments.filter().pdfUuidEqualTo(pdfUuid).findAll();
+    return await _getComments(pdfUuid);
   }
 
+  /// Loads [IsarBookmark] models from Isar for a specific PDF.
   Future<List<IsarBookmark>> loadBookmarksForPdf(String pdfUuid) async {
     if (!_isInitialized) await init();
-    return _isar.isarBookmarks.filter().pdfUuidEqualTo(pdfUuid).findAll();
+    return await _getBookmarks(pdfUuid);
   }
 
   Future<void> saveHighlightsForPdf(String pdfUuid, List<IsarHighlight> highlights) async {
@@ -1174,6 +1180,7 @@ class FileManagerService extends ChangeNotifier {
     return IsarComment()
       ..uuid = c.id
       ..pdfUuid = pdfUuid
+      ..createdBy = c.createdBy ?? ''
       ..page = c.page
       ..content = c.content
       ..date = c.date
@@ -1227,6 +1234,7 @@ class FileManagerService extends ChangeNotifier {
   IsarComment _mapJsonToIsarComment(Map<String, dynamic> json) {
     return IsarComment()
       ..uuid = json['id'] ?? ''
+      ..createdBy = (json['createdBy'] as String?) ?? ''
       ..page = json['page'] ?? 1
       ..content = json['content'] ?? ''
       ..date = json['date'] != null ? DateTime.parse(json['date']) : DateTime.now()
@@ -1250,6 +1258,33 @@ class FileManagerService extends ChangeNotifier {
       ..uuid = json['id'] ?? ''
       ..page = json['page'] ?? 1
       ..name = json['name'] ?? '';
+  }
+
+  // ── 10. Document Retrieval Methods ────────────────────────────────────────
+
+  /// Get all documents from the database
+  Future<List<PdfDocument>> getAllDocuments() async {
+    if (!_isInitialized) await init();
+    return _isar.pdfDocuments.where().findAll();
+  }
+
+  /// Get recent documents, optionally limited
+  Future<List<PdfDocument>> getRecentDocuments({int limit = 10}) async {
+    if (!_isInitialized) await init();
+    return _isar.pdfDocuments
+        .where()
+        .sortByLastOpenedAtDesc()
+        .limit(limit)
+        .findAll();
+  }
+
+  /// Get all documents in a specific folder
+  Future<List<PdfDocument>> getDocumentsInFolder(String folderUuid) async {
+    if (!_isInitialized) await init();
+    return _isar.pdfDocuments
+        .filter()
+        .classIdEqualTo(folderUuid)
+        .findAll();
   }
 
   // ── 11. Study Tasks ────────────────────────────────────────────────────────

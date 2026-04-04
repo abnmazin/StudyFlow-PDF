@@ -5,11 +5,9 @@ extension _PDFViewerWidgetStateGestures on _PDFViewerWidgetState {
     // Guard: only drawing tools reach here (Listener in overlay enforces this)
     if (!_tool.isDrawingTool()) return;
 
-    // SESSION LOCK: If lecturer locked student drawing, block it for members
+    // SESSION LOCK: If lecturer locked drawing, block it for students.
     final app = context.read<AppProvider>();
-    if (app.currentSessionCode != null &&
-        app.currentUser?.role == 'member' &&
-        app.sessionLocked) {
+    if (app.currentSessionCode != null && app.isLockedDrawingForCurrentUser) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('الرسم مقفل حالياً من قبل المحاضر')),
       );
@@ -239,6 +237,7 @@ extension _PDFViewerWidgetStateGestures on _PDFViewerWidgetState {
       position: pt, // Assumed unscaled ID passed from caller
       content: '',
       date: DateTime.now(),
+      createdBy: context.read<AppProvider>().currentUser?.username,
       color: _textColor,
       fontSize: _fontSize,
       isBold: _isBold,
@@ -263,25 +262,17 @@ extension _PDFViewerWidgetStateGestures on _PDFViewerWidgetState {
   void _updateCurrentEditingText() {
     if (_editingCommentId == null) return;
     final app = context.read<AppProvider>();
-    final pdf = app.activePdf;
-    if (pdf == null) return;
-
-    try {
-      final comment = pdf.comments.firstWhere((c) => c.id == _editingCommentId);
-      final updatedComment = comment.copyWith(
-        color: _textColor,
-        fontSize: _fontSize,
-        isBold: _isBold,
-        isLatex: _isLatex,
-        fontFamily: _textFontFamily,
-        showBorder: _showBorder,
-        borderColor: _borderColor,
-        bgColor: _textBgColor,
-      );
-      app.updateComment(pdf.id, comment, updatedComment);
-    } catch (e) {
-      debugPrint('Error updating comment style: $e');
-    }
+    app.updateEditingStyle(
+      commentId: _editingCommentId!,
+      color: _textColor,
+      fontSize: _fontSize,
+      isBold: _isBold,
+      isLatex: _isLatex,
+      fontFamily: _textFontFamily,
+      showBorder: _showBorder,
+      borderColor: _borderColor,
+      bgColor: _textBgColor,
+    );
   }
 
   void _addTextHighlight(Color color) async {

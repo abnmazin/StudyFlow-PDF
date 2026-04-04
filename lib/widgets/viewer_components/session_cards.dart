@@ -74,19 +74,36 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
         final data = snap.data()!;
         final ownerName = (data['ownerName'] as String?) ?? '';
         final allParticipants = data['participants'] ?? [];
-        final raw = (allParticipants is List)
+        final kickedUsernames =
+            (data['kicked_usernames'] as List?)?.cast<String>() ?? [];
+        final rawActive = (allParticipants is List)
             ? allParticipants.where((p) {
                 final username =
                     (p is Map ? p['username'] : p)?.toString() ?? '';
-                return username != ownerName;
+                return username.isNotEmpty && username != ownerName;
               }).toList()
             : [];
+        final participantMap = <String, Map<String, dynamic>>{};
+        for (final item in rawActive) {
+          if (item is Map) {
+            final dataMap = Map<String, dynamic>.from(item);
+            final username = dataMap['username']?.toString() ?? '';
+            if (username.isNotEmpty) {
+              participantMap[username] = dataMap..['isKicked'] = false;
+            }
+          }
+        }
+        for (final username in kickedUsernames) {
+          if (username.isEmpty || username == ownerName) continue;
+          participantMap.putIfAbsent(username, () => {
+                'username': username,
+                'isKicked': true,
+              });
+          participantMap[username]!['isKicked'] = true;
+        }
         setState(() {
           _sessionOwnerName = ownerName;
-          _participants = raw
-              .whereType<Map>()
-              .map((p) => Map<String, dynamic>.from(p))
-              .toList();
+          _participants = participantMap.values.toList();
         });
         final locked = data['isLocked'] as bool? ?? false;
         widget.app.setSessionLocked(locked);
@@ -384,6 +401,33 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
     }
   }
 
+  Future<void> _purgeNotesAndKick(String username) async {
+    final code = widget.app.currentSessionCode;
+    if (code == null) return;
+    try {
+      await widget.syncService.purgeNotesAndKickParticipant(code, username);
+      if (mounted) {
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('تم حذف ملاحظاته وحظره من الدرس.')),
+            );
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('فشل حذف الملاحظات والحظر: $e')),
+            );
+          }
+        });
+      }
+    }
+  }
+
   Future<void> _unkick(String username) async {
     final code = widget.app.currentSessionCode;
     if (code == null) return;
@@ -449,6 +493,79 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
         SchedulerBinding.instance.addPostFrameCallback((_) {
           if (mounted) setState(() => _syncingNow = false);
         });
+      }
+    }
+  }
+
+  Future<void> _deleteSessionPermanently() async {
+    final code = widget.app.currentSessionCode;
+    if (code == null) return;
+
+    final firstConfirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('حذف تدميري للجلسة'),
+        content: const Text(
+          'سيتم حذف الجلسة وكل ملاحظاتها من السيرفر نهائيا. هذا الإجراء لا يمكن التراجع عنه.\n\nهل تريد المتابعة؟',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('متابعة الحذف'),
+          ),
+        ],
+      ),
+    );
+
+    if (firstConfirm != true || !mounted) return;
+
+    final secondConfirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('تأكيد نهائي'),
+        content: Text(
+          'اكتب موافق ذهنيا ثم اضغط "حذف نهائي". سيتم حذف جلسة $code من السيرفر بشكل دائم.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('تراجع'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFB91C1C)),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('حذف نهائي'),
+          ),
+        ],
+      ),
+    );
+
+    if (secondConfirm != true || !mounted) return;
+
+    try {
+      await widget.syncService.deleteSession(code);
+      _sub?.cancel();
+      widget.app.setSessionCode(null);
+      setState(() => _participants = []);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تم حذف الجلسة من السيرفر نهائيا.'),
+            backgroundColor: Color(0xFFB91C1C),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('فشل الحذف النهائي: $e')),
+        );
       }
     }
   }
@@ -772,16 +889,30 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
                           ),
                         )
                       else
-                        TextButton(
-                          onPressed: () => _kick(username),
-                          child: const Text(
-                            'طرد',
-                            style: TextStyle(
-                              color: Colors.red,
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              tooltip: 'حذف ملاحظاته وحظره',
+                              onPressed: () => _purgeNotesAndKick(username),
+                              icon: const Icon(
+                                LucideIcons.eraser,
+                                size: 16,
+                                color: Color(0xFFF59E0B),
+                              ),
                             ),
-                          ),
+                            TextButton(
+                              onPressed: () => _kick(username),
+                              child: const Text(
+                                'طرد',
+                                style: TextStyle(
+                                  color: Colors.red,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                     ],
                   ),
@@ -811,12 +942,7 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
           if (canManageSession)
             TextButton(
               onPressed: () async {
-              // 1. Permanently delete the session from the server (Phase 12.2)
-              final code = widget.app.currentSessionCode;
-              if (code != null) {
-                await widget.syncService.deleteSession(code);
-              }
-              // 2. Clear local HUD state
+              // End locally only: do not delete session/annotations from server.
               _sub?.cancel();
               widget.app.setSessionCode(null);
               setState(() => _participants = []);
@@ -826,8 +952,30 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
                 alignment: Alignment.centerLeft,
               ),
               child: Text(
-                'إنهاء الجلسة',
+                'إنهاء الجلسة (محلي)',
                 style: TextStyle(color: widget.textMuted, fontSize: 13),
+              ),
+            ),
+
+          if (canManageSession)
+            TextButton.icon(
+              onPressed: _deleteSessionPermanently,
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                alignment: Alignment.centerLeft,
+              ),
+              icon: const Icon(
+                LucideIcons.alertTriangle,
+                size: 14,
+                color: Color(0xFFDC2626),
+              ),
+              label: const Text(
+                'حذف الجلسة نهائيا من السيرفر (تدميري)',
+                style: TextStyle(
+                  color: Color(0xFFDC2626),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
         ],
@@ -866,6 +1014,7 @@ class _MemberSessionCardState extends State<MemberSessionCard> {
   final TextEditingController _codeCtrl = TextEditingController();
   bool _joining = false;
   String? _error;
+  String? _lastHandledPurgeRequestId;
 
   @override
   void dispose() {
@@ -943,6 +1092,35 @@ class _MemberSessionCardState extends State<MemberSessionCard> {
               final ownerName = snapshot.data?['ownerName'] ?? '...';
               final displayName = snapshot.data?['displayName'] as String?;
               final hasDisplayName = displayName != null && displayName.isNotEmpty;
+              final notesPurgeFor = (snapshot.data?['notesPurgeFor'] as String?)?.trim() ?? '';
+              final notesPurgeRequestId =
+                  (snapshot.data?['notesPurgeRequestId'] as String?)?.trim() ?? '';
+              final myUsername = (widget.app.currentUser?.username ?? '').trim();
+              final normalizedMyUsername = myUsername.toLowerCase();
+              final normalizedPurgeTarget = notesPurgeFor.toLowerCase();
+
+              if (myUsername.isNotEmpty &&
+                  normalizedPurgeTarget == normalizedMyUsername &&
+                  notesPurgeRequestId.isNotEmpty &&
+                  _lastHandledPurgeRequestId != notesPurgeRequestId) {
+                _lastHandledPurgeRequestId = notesPurgeRequestId;
+                SchedulerBinding.instance.addPostFrameCallback((_) {
+                  if (!mounted) return;
+                  final pdf = widget.app.activePdf;
+                  if (pdf == null) return;
+
+                  pdf.highlights.removeWhere((highlight) {
+                    final author = highlight.createdBy?.trim().toLowerCase();
+                    return author != normalizedMyUsername;
+                  });
+                  pdf.comments.removeWhere((comment) {
+                    final author = comment.createdBy?.trim().toLowerCase();
+                    return author != normalizedMyUsername;
+                  });
+
+                  widget.app.saveStateNow(pdfId: pdf.id);
+                });
+              }
 
               return Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1009,7 +1187,21 @@ class _MemberSessionCardState extends State<MemberSessionCard> {
           ),
           const SizedBox(height: 8),
           TextButton(
-            onPressed: () => app.setSessionCode(null),
+            onPressed: () async {
+              final uid = app.currentUser?.uid ?? '';
+              final username = app.currentUser?.username ?? '';
+              try {
+                await widget.syncService.leaveSession(
+                  code: activeCode,
+                  uid: uid,
+                  username: username,
+                );
+              } catch (_) {
+                // Keep UX stable even if network update fails.
+              } finally {
+                app.setSessionCode(null);
+              }
+            },
             style: TextButton.styleFrom(
               padding: EdgeInsets.zero,
               alignment: Alignment.centerLeft,

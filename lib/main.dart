@@ -9,7 +9,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:cross_file/cross_file.dart';
-
 import 'providers/app_state.dart';
 import 'services/file_manager_service.dart';
 import 'widgets/sidebar_w.dart';

@@ -295,6 +295,8 @@ class IsarComment {
   @Index()
   String pdfUuid = ''; // Links to PdfDocument.uuid
 
+  String createdBy = '';
+
   int page = 1;
   IsarPoint? position;
   String content = '';

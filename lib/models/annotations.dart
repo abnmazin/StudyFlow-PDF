@@ -120,6 +120,7 @@ class PdfComment {
   final String content;
   final DateTime date;
   final Color color;
+  final String? createdBy;
   final double fontSize;
   final bool isBold;
   final bool isLatex;
@@ -136,6 +137,7 @@ class PdfComment {
     required this.position,
     required this.content,
     required this.date,
+    this.createdBy,
     this.color = Colors.black,
     this.fontSize = 14.0,
     this.isBold = false,
@@ -155,6 +157,7 @@ class PdfComment {
     'dy': position.dy,
     'content': content,
     'date': date.toIso8601String(),
+    if (createdBy != null && createdBy!.isNotEmpty) 'createdBy': createdBy,
     'color': color.value,
     'fontSize': fontSize,
     'isBold': isBold,
@@ -185,6 +188,7 @@ class PdfComment {
       bgColor: Color(json['bgColor'] ?? 0xFFFEF3C7),
       isSynced: json['isSynced'] ?? false,
       updatedAt: json['updatedAt'] ?? DateTime.now().millisecondsSinceEpoch,
+      createdBy: json['createdBy'] as String?,
     );
   }
 
@@ -204,6 +208,7 @@ class PdfComment {
     Color? bgColor,
     bool? isSynced,
     int? updatedAt,
+    String? createdBy,
   }) {
     return PdfComment(
       id: id ?? this.id,
@@ -221,6 +226,7 @@ class PdfComment {
       bgColor: bgColor ?? this.bgColor,
       isSynced: isSynced ?? this.isSynced,
       updatedAt: updatedAt ?? this.updatedAt,
+      createdBy: createdBy ?? this.createdBy,
     );
   }
 }

@@ -153,7 +153,7 @@ class _DashboardWrapperState extends State<_DashboardWrapper> {
                             app.currentUser?.role == 'member')
                           _buildAdminAnnouncementSender(
                             isDarkMode,
-                            app.currentUser?.username ?? 'User',
+                            app.currentUser?.displayName ?? 'User',
                             app.currentUser?.role ?? 'student',
                           )
                         else
@@ -1532,8 +1532,4 @@ Widget _buildQuickStatChip(AppProvider app) {
       ],
     ),
   );
-}
-
-Widget _buildStatsVertical(AppProvider app, String time, bool isDarkMode) {
-  return const SizedBox.shrink(); // وظيفة معطلة حالياً لمنع الأخطاء
 }

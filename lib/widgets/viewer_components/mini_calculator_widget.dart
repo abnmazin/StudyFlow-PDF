@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:math_expressions/math_expressions.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:provider/provider.dart';
@@ -20,6 +21,97 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
   bool _isShiftMode = false;
   bool _showCommonFractions = true;
   String _errorType = '';
+  int _cursorIndex = 0;
+  final FocusNode _keyboardFocusNode = FocusNode(
+    debugLabel: 'mini_calculator_keyboard',
+  );
+
+  @override
+  void dispose() {
+    _keyboardFocusNode.dispose();
+    super.dispose();
+  }
+
+  void _clampCursor() {
+    if (_cursorIndex < 0) _cursorIndex = 0;
+    if (_cursorIndex > _expression.length) _cursorIndex = _expression.length;
+  }
+
+  String _expressionWithCaret() {
+    _clampCursor();
+    final raw = _expression;
+    final left = raw.substring(0, _cursorIndex);
+    final right = raw.substring(_cursorIndex);
+    return '$left|$right';
+  }
+
+  void _insertAtCursor(String value) {
+    _clampCursor();
+    _expression =
+        _expression.substring(0, _cursorIndex) +
+        value +
+        _expression.substring(_cursorIndex);
+    _cursorIndex += value.length;
+  }
+
+  void _deleteBeforeCursor() {
+    _clampCursor();
+    if (_cursorIndex <= 0 || _expression.isEmpty) return;
+    _expression =
+        _expression.substring(0, _cursorIndex - 1) +
+        _expression.substring(_cursorIndex);
+    _cursorIndex -= 1;
+  }
+
+  void _deleteAtCursor() {
+    _clampCursor();
+    if (_cursorIndex >= _expression.length || _expression.isEmpty) return;
+    _expression =
+        _expression.substring(0, _cursorIndex) +
+        _expression.substring(_cursorIndex + 1);
+  }
+
+  KeyEventResult _handleKeyboard(KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+
+    if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      setState(() {
+        _cursorIndex = (_cursorIndex - 1).clamp(0, _expression.length);
+      });
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+      setState(() {
+        _cursorIndex = (_cursorIndex + 1).clamp(0, _expression.length);
+      });
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.backspace) {
+      setState(() => _deleteBeforeCursor());
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.delete) {
+      setState(() => _deleteAtCursor());
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.enter ||
+        event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+      _calculateResult();
+      return KeyEventResult.handled;
+    }
+
+    final char = event.character;
+    if (char != null && RegExp(r'^[0-9x+\-*/().^]$').hasMatch(char)) {
+      setState(() => _insertAtCursor(char));
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
+  }
 
   String _trimNumber(double value) {
     if (value == value.roundToDouble()) {
@@ -355,14 +447,13 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
       if (buttonText == 'AC') {
         _expression = '';
         _history = '';
+        _cursorIndex = 0;
       } else if (buttonText == 'Frac' || buttonText == 'Frac✓') {
         _showCommonFractions = !_showCommonFractions;
       } else if (buttonText == 'SHIFT') {
         _isShiftMode = !_isShiftMode;
       } else if (buttonText == 'DEL') {
-        if (_expression.isNotEmpty) {
-          _expression = _expression.substring(0, _expression.length - 1);
-        }
+        _deleteBeforeCursor();
       } else if (buttonText == 'DEG\nRAD') {
         _isDegreeMode = !_isDegreeMode;
       } else if (buttonText == '=') {
@@ -375,20 +466,38 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
         'acos',
         'atan',
       ].contains(buttonText)) {
-        _expression += '$buttonText(';
+        _insertAtCursor('$buttonText(');
       } else if (buttonText == 'log') {
-        _expression = _expression.isEmpty ? 'log(10)' : 'log($_expression)';
+        if (_expression.isEmpty) {
+          _insertAtCursor('log(10)');
+        } else {
+          _insertAtCursor('log(');
+        }
       } else if (buttonText == 'd/dx') {
-        _expression = _expression.isEmpty ? 'd/dx(x^2)' : 'd/dx($_expression)';
+        if (_expression.isEmpty) {
+          _insertAtCursor('d/dx(x^2)');
+        } else {
+          _insertAtCursor('d/dx(');
+        }
       } else if (buttonText == '∫') {
-        _expression = _expression.isEmpty ? '∫(x^2)' : '∫($_expression)';
+        if (_expression.isEmpty) {
+          _insertAtCursor('∫(x^2)');
+        } else {
+          _insertAtCursor('∫(');
+        }
       } else if (buttonText == '√') {
-        _expression = _expression.isEmpty ? '√(9)' : '√($_expression)';
+        if (_expression.isEmpty) {
+          _insertAtCursor('√(9)');
+        } else {
+          _insertAtCursor('√(');
+        }
       } else if (buttonText == 'a/b') {
-        _expression += '/';
+        _insertAtCursor('/');
       } else {
-        _expression += buttonText;
+        _insertAtCursor(buttonText);
       }
+
+      _clampCursor();
     });
   }
 
@@ -405,6 +514,7 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
             _history = _expression;
             _expression = result;
             _errorType = '';
+            _cursorIndex = _expression.length;
           });
           return;
         }
@@ -424,6 +534,7 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
           _history = _expression;
           _expression = resultStr;
           _errorType = '';
+          _cursorIndex = _expression.length;
         });
         return;
       }
@@ -437,6 +548,7 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
             _history = _expression;
             _expression = result;
             _errorType = '';
+            _cursorIndex = _expression.length;
           });
           return;
         }
@@ -457,6 +569,7 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
           _history = _expression;
           _expression = resultStr;
           _errorType = '';
+          _cursorIndex = _expression.length;
         });
         return;
       }
@@ -500,6 +613,7 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
         _history = _expression;
         _expression = resultStr;
         _errorType = '';
+        _cursorIndex = _expression.length;
       });
     } catch (e) {
       setState(() {
@@ -585,10 +699,17 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
 
     return Directionality(
       textDirection: TextDirection.ltr,
-      child: Container(
-        color: isDark ? const Color(0xFF0B1120) : const Color(0xFFF8FAFC),
-        child: Column(
-          children: [
+      child: Focus(
+        autofocus: true,
+        focusNode: _keyboardFocusNode,
+        onKeyEvent: (_, event) => _handleKeyboard(event),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _keyboardFocusNode.requestFocus(),
+          child: Container(
+            color: isDark ? const Color(0xFF0B1120) : const Color(0xFFF8FAFC),
+            child: Column(
+              children: [
             Container(
               height: 140,
               width: double.infinity,
@@ -640,42 +761,83 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
                     )
                   else
                     Expanded(
-                      child: Align(
-                        alignment: Alignment.bottomLeft,
-                        child: ScrollConfiguration(
-                          behavior: ScrollConfiguration.of(context).copyWith(
-                            dragDevices: {
-                              PointerDeviceKind.touch,
-                              PointerDeviceKind.mouse,
-                              PointerDeviceKind.trackpad,
-                            },
-                          ),
-                          child: SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            reverse: false,
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.vertical,
-                              reverse: false,
-                              child: Padding(
-                                padding: const EdgeInsets.only(
-                                  left: 8.0,
-                                  bottom: 8.0,
-                                  top: 16.0,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Align(
+                              alignment: Alignment.bottomLeft,
+                              child: ScrollConfiguration(
+                                behavior: ScrollConfiguration.of(
+                                  context,
+                                ).copyWith(
+                                  dragDevices: {
+                                    PointerDeviceKind.touch,
+                                    PointerDeviceKind.mouse,
+                                    PointerDeviceKind.trackpad,
+                                  },
                                 ),
-                                child: Math.tex(
-                                  _getLatexExpression(_expression),
-                                  mathStyle: MathStyle.display,
-                                  textStyle: TextStyle(
-                                    fontSize: 36,
-                                    color: isDark
-                                        ? Colors.white
-                                        : Colors.black87,
+                                child: SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  reverse: false,
+                                  child: SingleChildScrollView(
+                                    scrollDirection: Axis.vertical,
+                                    reverse: false,
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(
+                                        left: 8.0,
+                                        bottom: 8.0,
+                                        top: 16.0,
+                                      ),
+                                      child: Math.tex(
+                                        _getLatexExpression(_expression),
+                                        mathStyle: MathStyle.display,
+                                        textStyle: TextStyle(
+                                          fontSize: 36,
+                                          color: isDark
+                                              ? Colors.white
+                                              : Colors.black87,
+                                        ),
+                                        onErrorFallback: (err) {
+                                          // During live typing, expressions can be temporarily incomplete
+                                          // (for example trailing '^'). Show raw text instead of a red error.
+                                          return Text(
+                                            _expression.isEmpty
+                                                ? '...'
+                                                : _expression,
+                                            textAlign: TextAlign.left,
+                                            style: TextStyle(
+                                              fontSize: 36,
+                                              color: isDark
+                                                  ? Colors.white
+                                                  : Colors.black87,
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
+                          Padding(
+                            padding: const EdgeInsets.only(left: 8.0),
+                            child: Text(
+                              _expressionWithCaret(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontFamily: 'Courier',
+                                color: isDark
+                                    ? const Color(0xFF93C5FD)
+                                    : const Color(0xFF1D4ED8),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                 ],
@@ -823,7 +985,9 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
                 ),
               ),
             ),
-          ],
+              ],
+            ),
+          ),
         ),
       ),
     );

@@ -119,9 +119,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   Timer? _scrollDebounce;
   Timer? _scrollMaintenanceDebounce;
   Timer? _autoFitDebounce;
-  int _lastTimestamp = 0;
   int _lastReportedPage = 0;
-  int _pagesSinceLastFlush = 0;
   int _lastMemoryTrimAt = 0;
   static const int _defaultTrimDelayMs = 500;
   static const int _defaultTrimMinIntervalMs = 6000;
@@ -266,28 +264,49 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
 
       _sessionSub = SyncService().watchSession(code).listen((snap) {
         SchedulerBinding.instance.addPostFrameCallback((_) {
-          if (!mounted || !snap.exists) return;
-          final data = snap.data()!;
+          if (!mounted) return;
 
-          // 1. Kick Check
-          final kicked =
-              (data['kicked_usernames'] as List?)?.cast<String>() ?? [];
-          if (kicked.contains(user.username)) {
+          // SCENARIO 3: SESSION DELETED / ENDED
+          if (!snap.exists) {
             _sessionSub?.cancel();
+            _annotationsSub?.cancel(); // CANCEL INSTANTLY SO SCREEN DOES NOT WIPE
             _sessionSub = null;
-            _annotationsSub?.cancel();
             _annotationsSub = null;
             _currentListeningCode = null;
             app.setSessionCode(null);
+            // Keep local annotations intact!
+            return;
+          }
+
+          final data = snap.data()!;
+          final kicked = (data['kicked_usernames'] as List?)?.cast<String>() ?? [];
+          final isPurge = data['notesPurgeFor'] == user.username; // Assuming this flag exists
+
+          // SCENARIO 1 & 2: KICKED (WITH OR WITHOUT PURGE)
+          if (kicked.contains(user.username)) {
+            _sessionSub?.cancel();
+            _annotationsSub?.cancel(); // CANCEL INSTANTLY
+            _sessionSub = null;
+            _annotationsSub = null;
+            _currentListeningCode = null;
+            app.setSessionCode(null);
+
+            // If Purge & Kick: Only keep my own drawings
+            if (isPurge) {
+              final pdf = app.activePdf;
+              if (pdf != null) {
+                pdf.highlights.removeWhere((h) => h.createdBy != null && h.createdBy != user.username);
+                pdf.comments.removeWhere((c) => c.createdBy != null && c.createdBy != user.username);
+                app.saveStateNow(); // Flush to disk immediately
+              }
+            }
 
             showDialog(
               context: context,
               barrierDismissible: false,
               builder: (context) => AlertDialog(
-                title: const Text('تم طردك'),
-                content: const Text(
-                  'لقد تم طردك من هذه الجلسة من قبل المحاضر.',
-                ),
+                title: const Text('تم إنهاء الجلسة'),
+                content: const Text('لقد تم إنهاء وصولك لهذه الجلسة.'),
                 actions: [
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
@@ -453,7 +472,6 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
         if (isStillScrolling) return;
 
         _maybeTrimWindowsMemory(minIntervalMs: _trimMinIntervalMs);
-        _pagesSinceLastFlush = 0;
       });
     });
   }
@@ -472,12 +490,51 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     return _selectedAnnotationTool(pdf) ?? _tool;
   }
 
-  String? _selectedShapeAuthor(PdfItem? pdf) {
+  String? _selectedShapeAuthor(PdfItem? pdf, AppProvider app) {
     if (_selectedHighlightId == null || pdf == null) return null;
     final selected = pdf.highlights
         .where((h) => h.id == _selectedHighlightId)
         .firstOrNull;
-    return selected?.createdBy;
+    final author = selected?.createdBy?.trim();
+    if (author != null && author.isNotEmpty) {
+      final username = app.currentUser?.username.trim();
+      final displayName = app.currentUser?.displayName.trim();
+      if (username != null &&
+          username.isNotEmpty &&
+          displayName != null &&
+          displayName.isNotEmpty &&
+          author == username) {
+        return displayName;
+      }
+      return author;
+    }
+
+    // Legacy fallback: old local highlights may not carry createdBy metadata.
+    final fallback = app.currentUser?.displayName.trim();
+    if (fallback != null && fallback.isNotEmpty) return fallback;
+    return null;
+  }
+
+  String? _selectedCommentAuthor(PdfItem? pdf, AppProvider app) {
+    final commentId = app.activeEditingCommentId;
+    if (commentId == null || pdf == null) return null;
+    final selected = pdf.comments
+        .where((comment) => comment.id == commentId)
+        .firstOrNull;
+    final author = selected?.createdBy?.trim();
+    if (author == null || author.isEmpty) return null;
+
+    final username = app.currentUser?.username.trim();
+    final displayName = app.currentUser?.displayName.trim();
+    if (username != null &&
+        username.isNotEmpty &&
+        displayName != null &&
+        displayName.isNotEmpty &&
+        author == username) {
+      return displayName;
+    }
+
+    return author;
   }
 
   bool _isTypingInTextField() {
@@ -525,7 +582,8 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     final app = context.read<AppProvider>();
 
     final selectedAnnotationTool = _selectedAnnotationTool(pdf);
-    final selectedShapeAuthor = _selectedShapeAuthor(pdf);
+    final selectedShapeAuthor = _selectedShapeAuthor(pdf, app);
+    final selectedCommentAuthor = _selectedCommentAuthor(pdf, app);
     final panelTool = _panelTool(pdf);
 
     // Strict Controller Cycle Management
@@ -671,6 +729,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                   activeTool: _tool,
                   selectedAnnotationTool: selectedAnnotationTool,
                   selectedShapeAuthor: selectedShapeAuthor,
+                  selectedCommentAuthor: selectedCommentAuthor,
                   isRightPanelOpen: _isRightPanelOpen,
                   isShapesPaletteVisible: _isShapesPaletteVisible,
                   isDarkMode: isDarkMode,
@@ -964,20 +1023,20 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                                 children: [
                                                   ...[
                                                     const Color(
-                                                      0xFFFEF08A,
-                                                    ), // Yellow
+                                                      0xFFFBEA7A,
+                                                    ), // Apple Books Yellow
                                                     const Color(
-                                                      0xFFBBF7D0,
-                                                    ), // Green
+                                                      0xFFA4D376,
+                                                    ), // Apple Books Green
                                                     const Color(
-                                                      0xFFBFDBFE,
-                                                    ), // Blue
+                                                      0xFF84C0F2,
+                                                    ), // Apple Books Blue
                                                     const Color(
-                                                      0xFFFBCFE8,
-                                                    ), // Pink
+                                                      0xFFF59EB9,
+                                                    ), // Apple Books Pink
                                                     const Color(
-                                                      0xFFDDD6FE,
-                                                    ), // Purple
+                                                      0xFFC9A6D8,
+                                                    ), // Apple Books Purple
                                                   ].map(
                                                     (c) => GestureDetector(
                                                       onTap: () =>
@@ -1184,6 +1243,49 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                           ),
                                         ),
                                       ),
+
+                                    // Text Formatting Toolbar (Shows when editing or adding text)
+                                    if (_tool == ToolType.text ||
+                                        _editingCommentId != null)
+                                      Positioned(
+                                        bottom: 32,
+                                        left: 0,
+                                        right: 0,
+                                        child: Center(
+                                          child: TextFormattingToolbar(
+                                            fontSize: _fontSize,
+                                            isLatex: _isLatex,
+                                            showBorder: _showBorder,
+                                            isDarkMode: isDarkMode,
+                                            onIncreaseFont: () {
+                                              setState(() {
+                                                _fontSize = (_fontSize + 1)
+                                                    .clamp(8.0, 72.0);
+                                              });
+                                              _updateCurrentEditingText();
+                                            },
+                                            onDecreaseFont: () {
+                                              setState(() {
+                                                _fontSize = (_fontSize - 1)
+                                                    .clamp(8.0, 72.0);
+                                              });
+                                              _updateCurrentEditingText();
+                                            },
+                                            onToggleLatex: (val) {
+                                              setState(() {
+                                                _isLatex = val;
+                                              });
+                                              _updateCurrentEditingText();
+                                            },
+                                            onToggleBorder: (val) {
+                                              setState(() {
+                                                _showBorder = val;
+                                              });
+                                              _updateCurrentEditingText();
+                                            },
+                                          ),
+                                        ),
+                                      ),
                                   ],
                                 ),
                               ),
@@ -1360,16 +1462,8 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
             }
           },
           onPageChanged: (page) {
-            final now = DateTime.now().millisecondsSinceEpoch;
-            final timeDiff = now - _lastTimestamp;
             final currentPage = page ?? _lastReportedPage;
-            final int pagesPassed = (currentPage - _lastReportedPage).abs();
 
-            if (pagesPassed > 0 && timeDiff > 0) {
-              _pagesSinceLastFlush += pagesPassed;
-            }
-
-            _lastTimestamp = now;
             _lastReportedPage = currentPage;
 
             if (_scrollDebounce?.isActive ?? false) {
@@ -1395,5 +1489,128 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
 
   Widget _buildNoFilePlaceholder() {
     return Builder(builder: (ctx) => _buildDashboard(ctx));
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Text Formatting Floating Toolbar
+// ─────────────────────────────────────────────────────────────────────────────
+class TextFormattingToolbar extends StatelessWidget {
+  final double fontSize;
+  final bool isLatex;
+  final bool showBorder;
+  final bool isDarkMode;
+  final VoidCallback onIncreaseFont;
+  final VoidCallback onDecreaseFont;
+  final ValueChanged<bool> onToggleLatex;
+  final ValueChanged<bool> onToggleBorder;
+
+  const TextFormattingToolbar({
+    super.key,
+    required this.fontSize,
+    required this.isLatex,
+    required this.showBorder,
+    required this.isDarkMode,
+    required this.onIncreaseFont,
+    required this.onDecreaseFont,
+    required this.onToggleLatex,
+    required this.onToggleBorder,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bgColor = isDarkMode ? const Color(0xFF1E293B) : Colors.white;
+    final borderColor = isDarkMode
+        ? const Color(0xFF334155)
+        : const Color(0xFFE2E8F0);
+    final iconColor = isDarkMode
+        ? const Color(0xFF94A3B8)
+        : const Color(0xFF64748B);
+    final activeColor = const Color(0xFF3B82F6);
+
+    return TapRegion(
+      groupId: 'text_editing_region',
+      child: Material(
+        elevation: 6,
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: bgColor,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: borderColor),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+              IconButton(
+                icon: Icon(LucideIcons.minus, size: 20, color: iconColor),
+                onPressed: onDecreaseFont,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                padding: EdgeInsets.zero,
+                tooltip: 'تصغير الخط',
+              ),
+              SizedBox(
+                width: 32,
+                child: Text(
+                  fontSize.toInt().toString(),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: isDarkMode ? Colors.white : Colors.black87,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: Icon(LucideIcons.plus, size: 20, color: iconColor),
+                onPressed: onIncreaseFont,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                padding: EdgeInsets.zero,
+                tooltip: 'تكبير الخط',
+              ),
+              Container(
+                width: 1,
+                height: 24,
+                color: borderColor,
+                margin: const EdgeInsets.symmetric(horizontal: 8),
+              ),
+              IconButton(
+                icon: Icon(
+                  Icons.functions,
+                  size: 22,
+                  color: isLatex ? activeColor : iconColor,
+                ),
+                onPressed: () => onToggleLatex(!isLatex),
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                padding: EdgeInsets.zero,
+                tooltip: 'معادلة رياضية (LaTeX)',
+              ),
+              Container(
+                width: 1,
+                height: 24,
+                color: borderColor,
+                margin: const EdgeInsets.symmetric(horizontal: 8),
+              ),
+              IconButton(
+                icon: Icon(
+                  showBorder ? Icons.border_outer : Icons.border_clear,
+                  size: 22,
+                  color: showBorder ? activeColor : iconColor,
+                ),
+                onPressed: () => onToggleBorder(!showBorder),
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                padding: EdgeInsets.zero,
+                tooltip: 'إظهار/إخفاء الإطار',
+              ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

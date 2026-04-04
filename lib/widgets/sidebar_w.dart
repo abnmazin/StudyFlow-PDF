@@ -566,6 +566,8 @@ class _SidebarState extends State<Sidebar> {
                       height: 24,
                       width: 24,
                       child: IconButton(
+                                                padding: EdgeInsets.zero,
+
                         icon: Icon(
                           LucideIcons.upload,
                           size: 14,
@@ -642,6 +644,8 @@ class _SidebarState extends State<Sidebar> {
                       height: 24,
                       width: 24,
                       child: IconButton(
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
                         icon: const Icon(
                           LucideIcons.trash2,
                           size: 16,

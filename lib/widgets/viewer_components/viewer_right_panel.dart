@@ -1915,7 +1915,6 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
 
     try {
       final doc = controller.document;
-      if (doc == null) return "المستند غير جاهز.";
 
       final pageNumber = controller.pageNumber ?? 1;
       if (pageNumber < 1 || pageNumber > doc.pages.length) {
