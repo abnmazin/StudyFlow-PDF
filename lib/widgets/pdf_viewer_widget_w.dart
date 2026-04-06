@@ -49,6 +49,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   bool _isPrintingMode = false;
 
   bool _isRightPanelOpen = false;
+  bool _isPointerOverAiChat = false;
   bool _isShapesPaletteVisible = false;
   bool _isSettingsMode = false;
   int _rightPanelTabIndex = 0; // 0: Tools, 1: AI, 2: Translate
@@ -421,6 +422,9 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
 
   void _activateTool(ToolType nextTool) {
     final app = context.read<AppProvider>();
+    if (nextTool != ToolType.cursor && _isPointerOverAiChat) {
+      _isPointerOverAiChat = false;
+    }
     setState(() {
       _isSettingsMode = false;
 
@@ -434,6 +438,13 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
 
     // Delegate to Provider for global tool state & sync triggering
     app.setCurrentTool(nextTool);
+  }
+
+  void _setAiChatPointerHover(bool isHovering) {
+    if (_isPointerOverAiChat == isHovering) return;
+    setState(() {
+      _isPointerOverAiChat = isHovering;
+    });
   }
 
   void _maybeTrimWindowsMemory({bool force = false, int minIntervalMs = 1800}) {
@@ -746,7 +757,12 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                     _activateTool(t);
                   },
                   onToggleRightPanel: () {
-                    setState(() => _isRightPanelOpen = !_isRightPanelOpen);
+                    setState(() {
+                      _isRightPanelOpen = !_isRightPanelOpen;
+                      if (!_isRightPanelOpen) {
+                        _isPointerOverAiChat = false;
+                      }
+                    });
                     _forcePdfRelayout();
                   },
                   onToggleSettings: () {
@@ -1294,84 +1310,85 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                       // 3. Right Panel (Side-by-Side)
                       if (_isRightPanelOpen)
                         StudyFlowRightPanel(
-                          isSettingsMode: _isSettingsMode,
-                          activeTool: panelTool,
-                          activeColor: _colorForTool(panelTool),
-                          strokeWidth: _toolStrokeWidths[panelTool] ?? 2.0,
-                          fontSize: _fontSize,
-                          fontFamily: _textFontFamily,
-                          fontOptions: const [
-                            'Segoe UI',
-                            'Times New Roman',
-                            'Tahoma',
-                            'Arial',
-                            'Noto Naskh Arabic',
-                            'Noto Sans Arabic',
-                            'Amiri',
-                          ],
-                          isBold: _isBold,
-                          activeTabIndex: _rightPanelTabIndex,
-                          isDarkMode: isDarkMode,
-                          activePdf: pdf,
-                          pdfController: _pdfController,
-                          selectedHighlightId: _selectedHighlightId,
-                          onToolChanged: (t) => _activateTool(t),
-                          onColorChanged: _onColorChanged,
-                          onStrokeWidthChanged: _onStrokeWidthChanged,
-                          onFontSizeChanged: (v) {
-                            setState(() => _fontSize = v);
-                            if (_tool == ToolType.text)
-                              _updateCurrentEditingText();
-                          },
-                          onFontFamilyChanged: (family) {
-                            setState(() => _textFontFamily = family);
-                            if (_tool == ToolType.text)
-                              _updateCurrentEditingText();
-                          },
-                          onBoldChanged: (v) {
-                            setState(() => _isBold = v);
-                            if (_tool == ToolType.text)
-                              _updateCurrentEditingText();
-                          },
-                          isLatex: _isLatex,
-                          onLatexChanged: (v) {
-                            setState(() => _isLatex = v);
-                            if (_tool == ToolType.text)
-                              _updateCurrentEditingText();
-                          },
-                          showBorder: _showBorder,
-                          borderColor: _borderColor,
-                          bgColor: panelTool == ToolType.text
-                              ? _textBgColor
-                              : _shapeFillColor,
-                          onShowBorderChanged: (v) {
-                            setState(() => _showBorder = v);
-                            if (_tool == ToolType.text)
-                              _updateCurrentEditingText();
-                          },
-                          onBorderColorChanged: (c) {
-                            setState(() => _borderColor = c);
-                            if (_tool == ToolType.text)
-                              _updateCurrentEditingText();
-                          },
-                          onBgColorChanged: (c) {
-                            setState(() {
-                              if (_tool == ToolType.text) {
-                                _textBgColor = c;
+                            isSettingsMode: _isSettingsMode,
+                            activeTool: panelTool,
+                            activeColor: _colorForTool(panelTool),
+                            strokeWidth: _toolStrokeWidths[panelTool] ?? 2.0,
+                            fontSize: _fontSize,
+                            fontFamily: _textFontFamily,
+                            fontOptions: const [
+                              'Segoe UI',
+                              'Times New Roman',
+                              'Tahoma',
+                              'Arial',
+                              'Noto Naskh Arabic',
+                              'Noto Sans Arabic',
+                              'Amiri',
+                            ],
+                            isBold: _isBold,
+                            activeTabIndex: _rightPanelTabIndex,
+                            isDarkMode: isDarkMode,
+                            activePdf: pdf,
+                            pdfController: _pdfController,
+                            selectedHighlightId: _selectedHighlightId,
+                            onToolChanged: (t) => _activateTool(t),
+                            onColorChanged: _onColorChanged,
+                            onStrokeWidthChanged: _onStrokeWidthChanged,
+                            onFontSizeChanged: (v) {
+                              setState(() => _fontSize = v);
+                              if (_tool == ToolType.text)
                                 _updateCurrentEditingText();
-                              } else if (_tool == ToolType.rectangle ||
-                                  _tool == ToolType.circle) {
-                                _shapeFillColor = c;
-                              }
-                            });
-                          },
-                          onTabChanged: (i) =>
-                              setState(() => _rightPanelTabIndex = i),
-                          onAddPage: (pdf) => _addPage(pdf),
-                          onDeletePage: (pdf) => _deleteCurrentPage(pdf),
-                          onPrint: (pdf) => _showPrintDialog(pdf),
-                          onToggleDarkMode: () => app.toggleDarkMode(),
-                        ),
+                            },
+                            onFontFamilyChanged: (family) {
+                              setState(() => _textFontFamily = family);
+                              if (_tool == ToolType.text)
+                                _updateCurrentEditingText();
+                            },
+                            onBoldChanged: (v) {
+                              setState(() => _isBold = v);
+                              if (_tool == ToolType.text)
+                                _updateCurrentEditingText();
+                            },
+                            isLatex: _isLatex,
+                            onLatexChanged: (v) {
+                              setState(() => _isLatex = v);
+                              if (_tool == ToolType.text)
+                                _updateCurrentEditingText();
+                            },
+                            showBorder: _showBorder,
+                            borderColor: _borderColor,
+                            bgColor: panelTool == ToolType.text
+                                ? _textBgColor
+                                : _shapeFillColor,
+                            onShowBorderChanged: (v) {
+                              setState(() => _showBorder = v);
+                              if (_tool == ToolType.text)
+                                _updateCurrentEditingText();
+                            },
+                            onBorderColorChanged: (c) {
+                              setState(() => _borderColor = c);
+                              if (_tool == ToolType.text)
+                                _updateCurrentEditingText();
+                            },
+                            onBgColorChanged: (c) {
+                              setState(() {
+                                if (_tool == ToolType.text) {
+                                  _textBgColor = c;
+                                  _updateCurrentEditingText();
+                                } else if (_tool == ToolType.rectangle ||
+                                    _tool == ToolType.circle) {
+                                  _shapeFillColor = c;
+                                }
+                              });
+                            },
+                            onTabChanged: (i) =>
+                                setState(() => _rightPanelTabIndex = i),
+                            onAiChatHoverChanged: _setAiChatPointerHover,
+                            onAddPage: (pdf) => _addPage(pdf),
+                            onDeletePage: (pdf) => _deleteCurrentPage(pdf),
+                            onPrint: (pdf) => _showPrintDialog(pdf),
+                            onToggleDarkMode: () => app.toggleDarkMode(),
+                          ),
                     ],
                   ),
                 ),
@@ -1389,6 +1406,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
       // Auto-switch to Hand tool when the user scrolls while a drawing tool
       // is active, so pdfrx handles navigation naturally.
       onPointerSignal: (pointerSignal) {
+        if (_isPointerOverAiChat) return;
         if (pointerSignal is PointerScrollEvent && _tool != ToolType.cursor) {
           _activateTool(ToolType.cursor);
         }
@@ -1396,11 +1414,13 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
       // Windows/macOS touchpads emit pan/zoom pointer events for two-finger
       // scrolling. Handle them the same way as mouse wheel scrolling.
       onPointerPanZoomStart: (_) {
+        if (_isPointerOverAiChat) return;
         if (_tool != ToolType.cursor) {
           _activateTool(ToolType.cursor);
         }
       },
       onPointerPanZoomUpdate: (_) {
+        if (_isPointerOverAiChat) return;
         if (_tool != ToolType.cursor) {
           _activateTool(ToolType.cursor);
         }
@@ -1415,7 +1435,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
           maxImageBytesCachedOnMemory: 100 * 1024 * 1024,
           maxScale: 4.0,
           minScale: 0.5,
-          scrollByMouseWheel: 0.8,
+          scrollByMouseWheel: _isPointerOverAiChat ? 0.0 : 0.8,
           pageOverlaysBuilder: (context, pageRect, page) {
             return [
               RepaintBoundary(

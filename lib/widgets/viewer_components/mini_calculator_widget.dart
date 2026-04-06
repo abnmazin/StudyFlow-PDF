@@ -17,6 +17,10 @@ class MiniCalculatorWidget extends StatefulWidget {
 class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
   String _expression = '';
   String _history = '';
+  final List<String> _undoStack = [];
+  double _yValue = 0.0;
+  bool _isEditingY = false;
+  String _yInput = '0';
   bool _isDegreeMode = true;
   bool _isShiftMode = false;
   bool _showCommonFractions = true;
@@ -25,6 +29,13 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
   final FocusNode _keyboardFocusNode = FocusNode(
     debugLabel: 'mini_calculator_keyboard',
   );
+
+  void _pushUndo() {
+    if (_expression.isNotEmpty) {
+      _undoStack.add(_expression);
+      if (_undoStack.length > 20) _undoStack.removeAt(0);
+    }
+  }
 
   @override
   void dispose() {
@@ -125,7 +136,7 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
 
   ({int numerator, int denominator}) _approximateFraction(
     double value, {
-    int maxDenominator = 99,
+    int maxDenominator = 16,
   }) {
     int bestNumerator = value.round();
     int bestDenominator = 1;
@@ -150,9 +161,18 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
     }
     final gcd = a == 0 ? 1 : a;
 
+    final finalNum = bestNumerator ~/ gcd;
+    final finalDen = bestDenominator ~/ gcd;
+
+    // لو الخطأ كبير جداً، ارجع الرقم العشري بدل الكسر
+    final checkError = (value - (finalNum / finalDen)).abs();
+    if (checkError > 0.001) {
+      return (numerator: value.round(), denominator: 1);
+    }
+
     return (
-      numerator: bestNumerator ~/ gcd,
-      denominator: bestDenominator ~/ gcd,
+      numerator: finalNum,
+      denominator: finalDen,
     );
   }
 
@@ -306,11 +326,27 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
   double _evaluateAtX(String exp, double xValue) {
     String evalStr = exp;
     evalStr = evalStr.replaceAll('√', 'sqrt');
+    // تحويل دائم لأسماء math_expressions بغض النظر عن الـ mode
+    evalStr = evalStr.replaceAll('asin(', '__ASIN__(');
+    evalStr = evalStr.replaceAll('acos(', '__ACOS__(');
+    evalStr = evalStr.replaceAll('atan(', '__ATAN__(');
 
     if (_isDegreeMode) {
+      // تطبيق تحويل الدرجات على الدوال المباشرة فقط
       evalStr = evalStr.replaceAll('sin(', 'sin((pi/180)*');
       evalStr = evalStr.replaceAll('cos(', 'cos((pi/180)*');
       evalStr = evalStr.replaceAll('tan(', 'tan((pi/180)*');
+      // إرجاع الدوال العكسية مع تحويل النتيجة من راديان لدرجات
+      evalStr = evalStr.replaceAll('__ASIN__(', '(180/pi)*arcsin(');
+      evalStr = evalStr.replaceAll('__ACOS__(', '(180/pi)*arccos(');
+      evalStr = evalStr.replaceAll('__ATAN__(', '(180/pi)*arctan(');
+    }
+
+    // في Rad mode نحول للأسماء الصحيحة بدون تعديل
+    if (!_isDegreeMode) {
+      evalStr = evalStr.replaceAll('__ASIN__(', 'arcsin(');
+      evalStr = evalStr.replaceAll('__ACOS__(', 'arccos(');
+      evalStr = evalStr.replaceAll('__ATAN__(', 'arctan(');
     }
 
     final parser = Parser();
@@ -319,6 +355,7 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
     cm.bindVariable(Variable('pi'), Number(math.pi));
     cm.bindVariable(Variable('e'), Number(math.e));
     cm.bindVariable(Variable('x'), Number(xValue));
+    cm.bindVariable(Variable('y'), Number(_yValue));
 
     final value = parsed.evaluate(EvaluationType.REAL, cm);
     if (value.isNaN || value.isInfinite) {
@@ -353,6 +390,7 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
 
     String latex = rawExp;
 
+    latex = latex.replaceAll('pi', r'\pi ');
     latex = latex.replaceAll('*', r'\times ');
     latex = latex.replaceAll('sin(', r'\sin(');
     latex = latex.replaceAll('cos(', r'\cos(');
@@ -445,6 +483,7 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
       _errorType = '';
 
       if (buttonText == 'AC') {
+        _undoStack.clear();
         _expression = '';
         _history = '';
         _cursorIndex = 0;
@@ -453,11 +492,37 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
       } else if (buttonText == 'SHIFT') {
         _isShiftMode = !_isShiftMode;
       } else if (buttonText == 'DEL') {
-        _deleteBeforeCursor();
+        if (_expression.isNotEmpty) {
+          _pushUndo();
+          _deleteBeforeCursor();
+        }
       } else if (buttonText == 'DEG\nRAD') {
         _isDegreeMode = !_isDegreeMode;
+      } else if (buttonText == 'UNDO') {
+        if (_undoStack.isNotEmpty) {
+          _expression = _undoStack.removeLast();
+          _errorType = '';
+          _cursorIndex = _expression.length;
+        }
       } else if (buttonText == '=') {
         _calculateResult();
+      } else if (buttonText == 'π') {
+        _insertAtCursor('pi');
+      } else if (buttonText == 'e') {
+        _insertAtCursor('2.718281828459045');
+      } else if (buttonText == 'y') {
+        _insertAtCursor('y');
+      } else if (buttonText == 'ans') {
+        _insertAtCursor(_history.isNotEmpty ? _history : '0');
+      } else if (buttonText == 'x²') {
+        if (_expression.isEmpty) {
+          _insertAtCursor('x^2');
+        } else {
+          _expression = '($_expression)^2';
+          _cursorIndex = _expression.length;
+        }
+      } else if (buttonText == 'xʸ') {
+        _insertAtCursor('^');
       } else if ([
         'sin',
         'cos',
@@ -468,11 +533,10 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
       ].contains(buttonText)) {
         _insertAtCursor('$buttonText(');
       } else if (buttonText == 'log') {
-        if (_expression.isEmpty) {
-          _insertAtCursor('log(10)');
-        } else {
-          _insertAtCursor('log(');
-        }
+        _expression = _expression.isEmpty
+            ? 'log(100)/log(10)'
+            : 'log($_expression)/log(10)';
+        _cursorIndex = _expression.length;
       } else if (buttonText == 'd/dx') {
         if (_expression.isEmpty) {
           _insertAtCursor('d/dx(x^2)');
@@ -503,7 +567,6 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
 
   void _calculateResult() {
     if (_expression.isEmpty) return;
-
     try {
       if (_expression.startsWith('d/dx(') && _expression.endsWith(')')) {
         final inner = _expression.substring(5, _expression.length - 1);
@@ -584,11 +647,26 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
       }
 
       evalStr = evalStr.replaceAll('√', 'sqrt');
+      // تحويل دائم لأسماء math_expressions
+      evalStr = evalStr.replaceAll('asin(', '__ASIN__(');
+      evalStr = evalStr.replaceAll('acos(', '__ACOS__(');
+      evalStr = evalStr.replaceAll('atan(', '__ATAN__(');
 
       if (_isDegreeMode) {
+        // تطبيق تحويل الدرجات على الدوال المباشرة فقط
         evalStr = evalStr.replaceAll('sin(', 'sin((pi/180)*');
         evalStr = evalStr.replaceAll('cos(', 'cos((pi/180)*');
         evalStr = evalStr.replaceAll('tan(', 'tan((pi/180)*');
+        // إرجاع الدوال العكسية مع تحويل النتيجة من راديان لدرجات
+        evalStr = evalStr.replaceAll('__ASIN__(', '(180/pi)*arcsin(');
+        evalStr = evalStr.replaceAll('__ACOS__(', '(180/pi)*arccos(');
+        evalStr = evalStr.replaceAll('__ATAN__(', '(180/pi)*arctan(');
+      }
+
+      if (!_isDegreeMode) {
+        evalStr = evalStr.replaceAll('__ASIN__(', 'arcsin(');
+        evalStr = evalStr.replaceAll('__ACOS__(', 'arccos(');
+        evalStr = evalStr.replaceAll('__ATAN__(', 'arctan(');
       }
 
       final parser = Parser();
@@ -597,6 +675,7 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
 
       cm.bindVariable(Variable('pi'), Number(math.pi));
       cm.bindVariable(Variable('e'), Number(math.e));
+      cm.bindVariable(Variable('y'), Number(_yValue));
 
       final eval = exp.evaluate(EvaluationType.REAL, cm);
 
@@ -630,9 +709,8 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
     Color? bgColor,
     Color? textColor,
     bool isPrimary = false,
+    required bool isDark,
   }) {
-    final isDark = context.watch<AppProvider>().isDarkMode;
-
     final defaultBg = isDark ? const Color(0xFF334155) : Colors.white;
     final defaultText = isDark ? Colors.white : const Color(0xFF1E293B);
 
@@ -686,7 +764,7 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = context.watch<AppProvider>().isDarkMode;
+    final isDark = context.select<AppProvider, bool>((p) => p.isDarkMode);
 
     final primaryColor = const Color(0xFF3B82F6);
     final scientificBg = isDark
@@ -710,6 +788,72 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
             color: isDark ? const Color(0xFF0B1120) : const Color(0xFFF8FAFC),
             child: Column(
               children: [
+                // Y Variable Input
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: Row(
+                children: [
+                  Text(
+                    'y =',
+                    style: TextStyle(
+                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                      fontSize: 14,
+                      fontFamily: 'Courier',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                        signed: true,
+                      ),
+                      style: TextStyle(
+                        color: isDark ? Colors.white : Colors.black87,
+                        fontSize: 14,
+                        fontFamily: 'Courier',
+                      ),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 6,
+                        ),
+                        filled: true,
+                        fillColor: isDark
+                            ? const Color(0xFF1E293B)
+                            : const Color(0xFFE2E8F0),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(6),
+                          borderSide: BorderSide.none,
+                        ),
+                        hintText: '0',
+                        hintStyle: TextStyle(
+                          color: isDark ? Colors.grey[600] : Colors.grey[400],
+                        ),
+                      ),
+                      onTap: () {
+                        setState(() {
+                          _isEditingY = true;
+                        });
+                      },
+                      onChanged: (val) {
+                        _yInput = val;
+                        final parsed = double.tryParse(val);
+                        if (parsed != null) {
+                          setState(() => _yValue = parsed);
+                        }
+                      },
+                      onEditingComplete: () {
+                        setState(() {
+                          _isEditingY = false;
+                        });
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
             Container(
               height: 140,
               width: double.infinity,
@@ -852,6 +996,7 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
                 ),
                 child: Column(
                   children: [
+                    // صف 1: SHIFT, asin/log, acos/d/dx, atan/∫, AC
                     _buildKeyRow([
                       _buildButton(
                         'SHIFT',
@@ -860,47 +1005,69 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
                             : scientificBg,
                         textColor: _isShiftMode ? Colors.white : scientificText,
                         isPrimary: _isShiftMode,
+                        isDark: isDark,
                       ),
                       _buildButton(
                         _isShiftMode ? 'log' : 'asin',
                         bgColor: scientificBg,
                         textColor: scientificText,
+                        isDark: isDark,
                       ),
                       _buildButton(
                         _isShiftMode ? 'd/dx' : 'acos',
                         bgColor: scientificBg,
                         textColor: scientificText,
+                        isDark: isDark,
+                      ),
+                      _buildButton(
+                        _isShiftMode ? '∫' : 'atan',
+                        bgColor: scientificBg,
+                        textColor: scientificText,
+                        isDark: isDark,
                       ),
                       _buildButton(
                         'AC',
                         bgColor: dangerColor,
                         textColor: Colors.white,
                         isPrimary: true,
+                        isDark: isDark,
                       ),
                     ]),
+                    // صف 2: sin, cos, tan, xʸ/x², DEL
                     _buildKeyRow([
                       _buildButton(
-                        _isShiftMode ? '∫' : 'sin',
+                        'sin',
                         bgColor: scientificBg,
                         textColor: scientificText,
+                        isDark: isDark,
                       ),
                       _buildButton(
-                        _isShiftMode ? 'x' : 'cos',
+                        'cos',
                         bgColor: scientificBg,
                         textColor: scientificText,
+                        isDark: isDark,
                       ),
                       _buildButton(
-                        _isShiftMode ? '^' : 'tan',
+                        'tan',
                         bgColor: scientificBg,
                         textColor: scientificText,
+                        isDark: isDark,
+                      ),
+                      _buildButton(
+                        _isShiftMode ? 'x²' : 'xʸ',
+                        bgColor: scientificBg,
+                        textColor: scientificText,
+                        isDark: isDark,
                       ),
                       _buildButton(
                         'DEL',
                         bgColor: warningColor,
                         textColor: Colors.white,
                         isPrimary: true,
+                        isDark: isDark,
                       ),
                     ]),
+                    // صف 3: a/b, √, π, e/ans, UNDO
                     _buildKeyRow([
                       _buildButton(
                         _isShiftMode
@@ -908,51 +1075,85 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
                             : 'a/b',
                         bgColor: scientificBg,
                         textColor: scientificText,
+                        isDark: isDark,
                       ),
                       _buildButton(
                         '√',
                         bgColor: scientificBg,
                         textColor: scientificText,
+                        isDark: isDark,
+                      ),
+                      _buildButton(
+                        'π',
+                        bgColor: scientificBg,
+                        textColor: scientificText,
+                        isDark: isDark,
+                      ),
+                      _buildButton(
+                        _isShiftMode ? 'ans' : 'e',
+                        bgColor: scientificBg,
+                        textColor: scientificText,
+                        isDark: isDark,
+                      ),
+                      _buildButton(
+                        'UNDO',
+                        bgColor: scientificBg,
+                        textColor: warningColor,
+                        isDark: isDark,
+                      ),
+                    ]),
+                    // صف 4: y, (, )
+                    _buildKeyRow([
+                      _buildButton(
+                        'y',
+                        bgColor: const Color(0xFF0F766E),
+                        textColor: Colors.white,
+                        isDark: isDark,
                       ),
                       _buildButton(
                         '(',
                         bgColor: scientificBg,
                         textColor: scientificText,
+                        isDark: isDark,
                       ),
                       _buildButton(
                         ')',
                         bgColor: scientificBg,
                         textColor: scientificText,
+                        isDark: isDark,
                       ),
                     ]),
                     _buildKeyRow([
-                      _buildButton('7'),
-                      _buildButton('8'),
-                      _buildButton('9'),
+                      _buildButton('7', isDark: isDark),
+                      _buildButton('8', isDark: isDark),
+                      _buildButton('9', isDark: isDark),
                       _buildButton(
                         '/',
                         bgColor: actionBg,
                         textColor: primaryColor,
+                        isDark: isDark,
                       ),
                     ]),
                     _buildKeyRow([
-                      _buildButton('4'),
-                      _buildButton('5'),
-                      _buildButton('6'),
+                      _buildButton('4', isDark: isDark),
+                      _buildButton('5', isDark: isDark),
+                      _buildButton('6', isDark: isDark),
                       _buildButton(
                         '*',
                         bgColor: actionBg,
                         textColor: primaryColor,
+                        isDark: isDark,
                       ),
                     ]),
                     _buildKeyRow([
-                      _buildButton('1'),
-                      _buildButton('2'),
-                      _buildButton('3'),
+                      _buildButton('1', isDark: isDark),
+                      _buildButton('2', isDark: isDark),
+                      _buildButton('3', isDark: isDark),
                       _buildButton(
                         '-',
                         bgColor: actionBg,
                         textColor: primaryColor,
+                        isDark: isDark,
                       ),
                     ]),
                     _buildKeyRow([
@@ -964,13 +1165,15 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
                         textColor: _isDegreeMode
                             ? Colors.white
                             : scientificText,
+                        isDark: isDark,
                       ),
-                      _buildButton('0'),
-                      _buildButton('.'),
+                      _buildButton('0', isDark: isDark),
+                      _buildButton('.', isDark: isDark),
                       _buildButton(
                         '+',
                         bgColor: actionBg,
                         textColor: primaryColor,
+                        isDark: isDark,
                       ),
                     ]),
                     _buildKeyRow([
@@ -979,6 +1182,7 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
                         bgColor: primaryColor,
                         textColor: Colors.white,
                         isPrimary: true,
+                        isDark: isDark,
                       ),
                     ]),
                   ],

@@ -1388,7 +1388,7 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
             ),
             _buildKeyRow(
               context,
-              'API Key',
+              app.aiProvider == 'groq' ? 'Groq API Key' : 'Gemini API Key',
               app.aiProvider == 'groq' ? app.groqApiKey : app.geminiApiKey,
               (v) => app.aiProvider == 'groq'
                   ? app.setGroqApiKey(v)

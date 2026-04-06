@@ -263,16 +263,18 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       }
     }
 
+    // Always lock sync flow, even for silent runs, to avoid overlapping
+    // reconciliation writes that can duplicate/override annotations.
+    _isSyncing = true;
     if (!silent) {
-      _isSyncing = true;
       _notify();
     }
 
     try {
       final sessionCode = currentSessionCode;
       if (sessionCode == null) {
+        _isSyncing = false;
         if (!silent) {
-          _isSyncing = false;
           _notify();
         }
         return;
@@ -381,8 +383,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     } catch (e) {
       debugPrint('ERROR: performBidirectionalSync failed: $e');
     } finally {
+      _isSyncing = false;
       if (!silent) {
-        _isSyncing = false;
         _notify();
       }
     }
@@ -2875,6 +2877,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   // Active editing state
   String? _activeEditingCommentId;
   String? get activeEditingCommentId => _activeEditingCommentId;
+  String? _lastEditedCommentId;
+  String? get lastEditedCommentId => _lastEditedCommentId;
 
   // ── Color-picker ID cache (survives focus-loss during dialog) ─────────────
   String? _cachedTargetIdForColor;
@@ -2935,6 +2939,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   // Start editing a comment
   void startEditing(String commentId, PdfComment comment) {
     _activeEditingCommentId = commentId;
+    _lastEditedCommentId = commentId;
     // Store initial styles
     _tempStyles[commentId] = {
       'color': comment.color.value,
@@ -2974,6 +2979,62 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     if (bgColor != null) styles['bgColor'] = bgColor.value;
 
     _notify(); // Triggers rebuild of DraggableTextWidget with new styles
+  }
+
+  /// Applies text style updates to either:
+  /// 1) live temp editing styles (when comment is currently being edited), or
+  /// 2) persisted comment model (after focus loss / edit end).
+  /// Returns true when a target comment was found and updated.
+  bool applyTextStyleToTarget({
+    required String commentId,
+    Color? color,
+    double? fontSize,
+    bool? isBold,
+    bool? isLatex,
+    String? fontFamily,
+    bool? showBorder,
+    Color? borderColor,
+    Color? bgColor,
+  }) {
+    _lastEditedCommentId = commentId;
+
+    if (_tempStyles.containsKey(commentId)) {
+      updateEditingStyle(
+        commentId: commentId,
+        color: color,
+        fontSize: fontSize,
+        isBold: isBold,
+        isLatex: isLatex,
+        fontFamily: fontFamily,
+        showBorder: showBorder,
+        borderColor: borderColor,
+        bgColor: bgColor,
+      );
+      return true;
+    }
+
+    for (final cls in _classes) {
+      for (final pdf in cls.pdfs) {
+        final idx = pdf.comments.indexWhere((c) => c.id == commentId);
+        if (idx == -1) continue;
+        final old = pdf.comments[idx];
+        pdf.comments[idx] = old.copyWith(
+          color: color ?? old.color,
+          fontSize: fontSize ?? old.fontSize,
+          isBold: isBold ?? old.isBold,
+          isLatex: isLatex ?? old.isLatex,
+          fontFamily: fontFamily ?? old.fontFamily,
+          showBorder: showBorder ?? old.showBorder,
+          borderColor: borderColor ?? old.borderColor,
+          bgColor: bgColor ?? old.bgColor,
+        );
+        _notify();
+        _markPdfDirty(pdf.id);
+        return true;
+      }
+    }
+
+    return false;
   }
 
   // Get current temporary styles (or null if not editing)

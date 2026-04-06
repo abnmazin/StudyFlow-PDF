@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:provider/provider.dart';
@@ -84,6 +85,14 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
     if (!mounted || _isEditingZoom) return;
     final changed = _refreshToolbarSnapshot();
     if (!changed) return;
+    final phase = SchedulerBinding.instance.schedulerPhase;
+    if (phase == SchedulerPhase.persistentCallbacks ||
+        phase == SchedulerPhase.postFrameCallbacks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() {});
+      });
+      return;
+    }
     setState(() {});
   }
 
@@ -160,8 +169,8 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
 Widget _buildEditableChip({
   required bool isEditing,
   required VoidCallback onTap,
-  required Widget displayChild,
-  required Widget editChild,
+  required WidgetBuilder displayBuilder,
+  required WidgetBuilder editBuilder,
   required Color backgroundColor,
   required Color borderColor,
   double width = 84,
@@ -184,14 +193,14 @@ Widget _buildEditableChip({
       switchInCurve: Curves.easeOut,
       switchOutCurve: Curves.easeIn,
       child: isEditing
-          ? editChild
+          ? editBuilder(context)
           : Material(
               key: const ValueKey('display'),
               color: Colors.transparent,
               child: InkWell(
                 borderRadius: BorderRadius.circular(10),
                 onTap: onTap,
-                child: displayChild,
+                child: displayBuilder(context),
               ),
             ),
     ),
@@ -323,7 +332,7 @@ Widget _buildEditableChip({
             (widget.pdfController.pageNumber ?? 1).toString();
       });
     },
-    displayChild: Center(
+    displayBuilder: (_) => Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10),
         child: Text(
@@ -338,7 +347,7 @@ Widget _buildEditableChip({
         ),
       ),
     ),
-    editChild: Center(
+    editBuilder: (_) => Center(
       child: SizedBox(
         width: double.infinity,
         child: TextField(
@@ -622,7 +631,7 @@ Widget _buildEditableChip({
                           (_currentZoomRatio() * 100).toStringAsFixed(0);
                     });
                   },
-                  displayChild: Center(
+                  displayBuilder: (_) => Center(
                     child: Text(
                       _currentZoomLabel(),
                       style: TextStyle(
@@ -632,7 +641,7 @@ Widget _buildEditableChip({
                       ),
                     ),
                   ),
-                  editChild: Center(
+                  editBuilder: (_) => Center(
                     child: SizedBox(
                       width: double.infinity,
                       child: TextField(

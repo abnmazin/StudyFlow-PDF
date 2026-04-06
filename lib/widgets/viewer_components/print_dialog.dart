@@ -697,7 +697,7 @@ class _PrintDialogState extends State<PrintDialog> {
       copies: _copies,
       orientation: _orientation,
       colorMode: _colorMode,
-      enableDiagnostics: false,
+      enableDiagnostics: true,
       runMode: PrintRunMode.normal,
       debugOutputPath: null,
     );

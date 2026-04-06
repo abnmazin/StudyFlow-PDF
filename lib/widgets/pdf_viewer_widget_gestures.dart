@@ -84,7 +84,7 @@ extension _PDFViewerWidgetStateGestures on _PDFViewerWidgetState {
       // For arrows, pen, and highlight: bgColorValue remains null
 
       final highlight = Highlight(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        id: 'h_${DateTime.now().microsecondsSinceEpoch}_${_currentPage}',
         path: List.from(_currentPath!),
         color: _currentColor,
         page: _currentPage,
@@ -230,7 +230,7 @@ extension _PDFViewerWidgetStateGestures on _PDFViewerWidgetState {
   void _addTextAt(Offset pt, int pageNumber) {
     if (_isProcessing) return;
 
-    final id = DateTime.now().millisecondsSinceEpoch.toString();
+    final id = 'c_${DateTime.now().microsecondsSinceEpoch}_$pageNumber';
     final comment = PdfComment(
       id: id,
       page: pageNumber,

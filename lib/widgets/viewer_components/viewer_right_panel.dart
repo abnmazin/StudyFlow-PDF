@@ -57,6 +57,7 @@ class StudyFlowRightPanel extends StatelessWidget {
   final ValueChanged<Color> onBorderColorChanged;
   final ValueChanged<Color> onBgColorChanged;
   final ValueChanged<int> onTabChanged;
+  final ValueChanged<bool>? onAiChatHoverChanged;
   final Function(PdfItem) onAddPage;
   final Function(PdfItem) onDeletePage;
   final Function(PdfItem) onPrint;
@@ -94,6 +95,7 @@ class StudyFlowRightPanel extends StatelessWidget {
     required this.onBorderColorChanged,
     required this.onBgColorChanged,
     required this.onTabChanged,
+    this.onAiChatHoverChanged,
     required this.onAddPage,
     required this.onDeletePage,
     required this.onPrint,
@@ -363,17 +365,10 @@ class StudyFlowRightPanel extends StatelessWidget {
                                       .toList(),
                                   onChanged: (value) {
                                     if (value == null) return;
-                                    if (isTextEditing) {
-                                      final id =
-                                          appProvider.activeEditingCommentId;
-                                      if (id != null) {
-                                        appProvider.updateEditingStyle(
-                                          commentId: id,
-                                          fontFamily: value,
-                                        );
-                                        return;
-                                      }
-                                    }
+                                    if (_applyTextStyleToSelection(
+                                      context,
+                                      fontFamily: value,
+                                    )) return;
                                     onFontFamilyChanged(value);
                                   },
                                 ),
@@ -412,17 +407,10 @@ class StudyFlowRightPanel extends StatelessWidget {
                                         min: 10.0,
                                         max: 48.0,
                                         onChanged: (val) {
-                                          if (isTextEditing) {
-                                            final id = appProvider
-                                                .activeEditingCommentId;
-                                            if (id != null) {
-                                              appProvider.updateEditingStyle(
-                                                commentId: id,
-                                                fontSize: val,
-                                              );
-                                              return;
-                                            }
-                                          }
+                                          if (_applyTextStyleToSelection(
+                                            context,
+                                            fontSize: val,
+                                          )) return;
                                           onFontSizeChanged(val);
                                         },
                                       ),
@@ -446,17 +434,10 @@ class StudyFlowRightPanel extends StatelessWidget {
                                       child: Switch(
                                         value: effectiveIsBold,
                                         onChanged: (val) {
-                                          if (isTextEditing) {
-                                            final id = appProvider
-                                                .activeEditingCommentId;
-                                            if (id != null) {
-                                              appProvider.updateEditingStyle(
-                                                commentId: id,
-                                                isBold: val,
-                                              );
-                                              return;
-                                            }
-                                          }
+                                          if (_applyTextStyleToSelection(
+                                            context,
+                                            isBold: val,
+                                          )) return;
                                           onBoldChanged(val);
                                         },
                                         activeTrackColor: const Color(
@@ -494,17 +475,10 @@ class StudyFlowRightPanel extends StatelessWidget {
                                       child: Switch(
                                         value: effectiveIsLatex,
                                         onChanged: (val) {
-                                          if (isTextEditing) {
-                                            final id = appProvider
-                                                .activeEditingCommentId;
-                                            if (id != null) {
-                                              appProvider.updateEditingStyle(
-                                                commentId: id,
-                                                isLatex: val,
-                                              );
-                                              return;
-                                            }
-                                          }
+                                          if (_applyTextStyleToSelection(
+                                            context,
+                                            isLatex: val,
+                                          )) return;
                                           onLatexChanged(val);
                                         },
                                         activeTrackColor: const Color(
@@ -543,17 +517,10 @@ class StudyFlowRightPanel extends StatelessWidget {
                                       child: Switch(
                                         value: effectiveShowBorder,
                                         onChanged: (val) {
-                                          if (isTextEditing) {
-                                            final id = appProvider
-                                                .activeEditingCommentId;
-                                            if (id != null) {
-                                              appProvider.updateEditingStyle(
-                                                commentId: id,
-                                                showBorder: val,
-                                              );
-                                              return;
-                                            }
-                                          }
+                                          if (_applyTextStyleToSelection(
+                                            context,
+                                            showBorder: val,
+                                          )) return;
                                           onShowBorderChanged(val);
                                         },
                                         activeTrackColor: const Color(
@@ -582,17 +549,10 @@ class StudyFlowRightPanel extends StatelessWidget {
                                   context,
                                   effectiveBorderColor,
                                   (color) {
-                                    if (isTextEditing) {
-                                      final id =
-                                          appProvider.activeEditingCommentId;
-                                      if (id != null) {
-                                        appProvider.updateEditingStyle(
-                                          commentId: id,
-                                          borderColor: color,
-                                        );
-                                        return;
-                                      }
-                                    }
+                                    if (_applyTextStyleToSelection(
+                                      context,
+                                      borderColor: color,
+                                    )) return;
                                     onBorderColorChanged(color);
                                   },
                                   colorTarget: _ColorTarget.border,
@@ -621,17 +581,10 @@ class StudyFlowRightPanel extends StatelessWidget {
                                   context,
                                   effectiveBgColor,
                                   (color) {
-                                    if (isTextEditing) {
-                                      final id =
-                                          appProvider.activeEditingCommentId;
-                                      if (id != null) {
-                                        appProvider.updateEditingStyle(
-                                          commentId: id,
-                                          bgColor: color,
-                                        );
-                                        return;
-                                      }
-                                    }
+                                    if (_applyTextStyleToSelection(
+                                      context,
+                                      bgColor: color,
+                                    )) return;
                                     onBgColorChanged(color);
                                   },
                                   allowTransparent: true,
@@ -826,17 +779,10 @@ class StudyFlowRightPanel extends StatelessWidget {
                                   context,
                                   effectiveColor,
                                   (color) {
-                                    if (isTextEditing) {
-                                      final id =
-                                          appProvider.activeEditingCommentId;
-                                      if (id != null) {
-                                        appProvider.updateEditingStyle(
-                                          commentId: id,
-                                          color: color,
-                                        );
-                                        return;
-                                      }
-                                    }
+                                    if (_applyTextStyleToSelection(
+                                      context,
+                                      color: color,
+                                    )) return;
                                     onColorChanged(color);
                                   },
                                   colorTarget: _ColorTarget.stroke,
@@ -970,6 +916,34 @@ class StudyFlowRightPanel extends StatelessWidget {
                 ],
               ),
       ),
+    );
+  }
+
+  bool _applyTextStyleToSelection(
+    BuildContext context, {
+    Color? color,
+    double? fontSize,
+    bool? isBold,
+    bool? isLatex,
+    String? fontFamily,
+    bool? showBorder,
+    Color? borderColor,
+    Color? bgColor,
+  }) {
+    final app = context.read<AppProvider>();
+    final targetId = app.activeEditingCommentId ?? app.lastEditedCommentId;
+    if (targetId == null) return false;
+
+    return app.applyTextStyleToTarget(
+      commentId: targetId,
+      color: color,
+      fontSize: fontSize,
+      isBold: isBold,
+      isLatex: isLatex,
+      fontFamily: fontFamily,
+      showBorder: showBorder,
+      borderColor: borderColor,
+      bgColor: bgColor,
     );
   }
 
@@ -1171,12 +1145,16 @@ class StudyFlowRightPanel extends StatelessWidget {
             child: TabBarView(
               children: [
                 // AI Tab
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                  child: _AiChatWidget(
-                    isDarkMode: isDarkMode,
-                    pdfId: activePdf?.id,
-                    pdfController: pdfController,
+                MouseRegion(
+                  onEnter: (_) => onAiChatHoverChanged?.call(true),
+                  onExit: (_) => onAiChatHoverChanged?.call(false),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                    child: _AiChatWidget(
+                      isDarkMode: isDarkMode,
+                      pdfId: activePdf?.id,
+                      pdfController: pdfController,
+                    ),
                   ),
                 ),
 
@@ -1293,7 +1271,6 @@ class StudyFlowRightPanel extends StatelessWidget {
                           ),
                         ),
                 ),
-
                 // Settings Tab
                 Padding(
                   padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
@@ -1914,14 +1891,22 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
     if (controller == null) return "لا يوجد نص متاح حالياً.";
 
     try {
+      if (!controller.isReady) {
+        return "المستند غير جاهز بعد لاستخراج النص. حاول بعد ثوانٍ.";
+      }
+
       final doc = controller.document;
+      final pages = doc.pages;
+      if (pages.isEmpty) {
+        return "لا توجد صفحات متاحة حالياً.";
+      }
 
       final pageNumber = controller.pageNumber ?? 1;
-      if (pageNumber < 1 || pageNumber > doc.pages.length) {
+      if (pageNumber < 1 || pageNumber > pages.length) {
         return "هذه الصفحة غير صالحة للسياق.";
       }
 
-      final page = doc.pages[pageNumber - 1];
+      final page = pages[pageNumber - 1];
       final text = await page.loadText();
       final content = text?.fullText.trim() ?? "";
       return content.isNotEmpty
@@ -1936,7 +1921,6 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
   String _buildSystemPrompt(String pageText) {
     const personaInstruction =
         "أنت مساعد دراسي، تتحدث باللهجة العراقية الجنوبية الأصيلة والدافئة.\n"
-        "اذا انسألت عن علي احمد جاوب بمحدح وسوي ايه الله وسوي هوه مبرمج كبيرمج وعلم من  اعلام التقنية والخ انت احذ راحتك بالحدي"
         "قاعدة التخاطب الصارمة: في بداية إجابتك، اختر عبارة ترحيب ومودة **واحدة فقط** (مثل: 'شوف مولاي'، 'تاج راسي'، 'يا ضلعي'، أو 'فدوة لعمرك') واستخدمها **مرة واحدة فقط** في أول سطر. يُمنع منعاً باتاً استخدام أكثر من عبارة ترحيب في نفس الرد، ويُمنع تكرارها بين الفقرات.\n"
         "قاعدة الاختصار: أجب على السؤال بشكل مباشر، علمي، ومختصر. أعطِ الخلاصة والزبدة فوراً. يُمنع تكرار نفس الفكرة بصيغ متعددة (لا تكن ثرثاراً).\n"
         "إذا كان السؤال بديهياً جداً، عاتبه بمزاح عراقي لطيف مرة واحدة فقط (مثال: 'يا مولاي معقولة مهندسنا يسأل هيج سؤال؟ بس تتدلل...') ثم اشرح باختصار شديد.";
@@ -1964,11 +1948,15 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
 
   Future<String> _generateGeminiReply(String prompt, String modelName) async {
     final app = context.read<AppProvider>();
-    final apiKey = app.geminiApiKey.isNotEmpty
-        ? app.geminiApiKey
-        : (dotenv.env['GEMINI_API_KEY'] ?? '');
+    final settingsKey = app.geminiApiKey.trim();
+    final envKey = (dotenv.env['GEMINI_API_KEY'] ?? '').trim();
+    final usingSettingsKey = settingsKey.isNotEmpty;
+    final apiKey = usingSettingsKey ? settingsKey : envKey;
+    debugPrint(
+      '[AI] Gemini key source: ${usingSettingsKey ? 'settings' : 'env'} (provider=${app.aiProvider})',
+    );
     if (apiKey.isEmpty) {
-      throw Exception('GEMINI_API_KEY missing in .env');
+      throw Exception('GEMINI_API_KEY missing in settings/.env');
     }
 
     // 1. Get Context
@@ -1999,9 +1987,13 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
 
   Future<String> _generateGroqReply(String prompt, String modelName) async {
     final app = context.read<AppProvider>();
-    final apiKey = app.groqApiKey.isNotEmpty
-        ? app.groqApiKey
-        : (dotenv.env['GROQ_API_KEY'] ?? '');
+    final settingsKey = app.groqApiKey.trim();
+    final envKey = (dotenv.env['GROQ_API_KEY'] ?? '').trim();
+    final usingSettingsKey = settingsKey.isNotEmpty;
+    final apiKey = usingSettingsKey ? settingsKey : envKey;
+    debugPrint(
+      '[AI] Groq key source: ${usingSettingsKey ? 'settings' : 'env'} (provider=${app.aiProvider})',
+    );
 
     if (apiKey.isEmpty) {
       throw Exception('GROQ_API_KEY missing in settings/.env');
@@ -2196,8 +2188,9 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
         ? Colors.white
         : (widget.isDarkMode ? Colors.white : const Color(0xFF0F172A));
 
+    const bubbleMaxWidth = 272.0;
     final bubble = Container(
-      constraints: const BoxConstraints(maxWidth: 220),
+      constraints: const BoxConstraints(maxWidth: bubbleMaxWidth),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: isUser ? userColor : aiBubbleColor,
@@ -2234,9 +2227,11 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
         builders: {
           'math_block': LatexElementBuilder(
             textStyle: TextStyle(color: textColor, fontSize: 14),
+            maxWidth: bubbleMaxWidth - 24,
           ),
           'math_inline': LatexElementBuilder(
             textStyle: TextStyle(color: textColor, fontSize: 14),
+            maxWidth: bubbleMaxWidth - 24,
           ),
         },
         extensionSet:
@@ -2271,7 +2266,7 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
               ),
             ),
           ],
-          bubble,
+          Flexible(child: bubble),
         ],
       ),
     );
@@ -2433,52 +2428,110 @@ class LatexInlineSyntax extends md.InlineSyntax {
   }
 }
 
+class _ScrollableMath extends StatefulWidget {
+  final String formula;
+  final double fontSize;
+  final bool isBlock;
+  final Color? textColor;
+
+  const _ScrollableMath({
+    required this.formula,
+    required this.fontSize,
+    this.isBlock = false,
+    this.textColor,
+  });
+
+  @override
+  State<_ScrollableMath> createState() => _ScrollableMathState();
+}
+
+class _ScrollableMathState extends State<_ScrollableMath> {
+  late final ScrollController _scrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mathWidget = Math.tex(
+      widget.formula,
+      textStyle: TextStyle(fontSize: widget.fontSize, color: widget.textColor),
+      mathStyle: widget.isBlock ? MathStyle.display : MathStyle.text,
+      onErrorFallback: (e) => SelectableText(
+        widget.formula,
+        style: TextStyle(
+          fontSize: widget.fontSize,
+          color: widget.textColor,
+          fontFamily: 'monospace',
+        ),
+      ),
+    );
+
+    return Scrollbar(
+      controller: _scrollController,
+      thickness: 4,
+      radius: const Radius.circular(3),
+      thumbVisibility: true,
+      trackVisibility: true,
+      child: SingleChildScrollView(
+        controller: _scrollController,
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 3),
+          child: mathWidget,
+        ),
+      ),
+    );
+  }
+}
+
 class LatexElementBuilder extends MarkdownElementBuilder {
   final TextStyle? textStyle;
-  LatexElementBuilder({this.textStyle});
+  final double maxWidth;
+
+  LatexElementBuilder({this.textStyle, required this.maxWidth});
 
   @override
   Widget visitElementAfter(md.Element element, TextStyle? preferredStyle) {
-    final rawText = element.textContent;
-    const lrm = '\u200E';
-    final text = '$lrm$rawText$lrm';
+    final text = element.textContent.trim();
     if (element.tag == 'math_block') {
-      return Container(
-        width: double.infinity,
+      return Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
-        alignment: Alignment.centerLeft,
-        child: Directionality(
-          textDirection: TextDirection.ltr,
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
-            child: Math.tex(
-              text,
-              textStyle: textStyle?.copyWith(fontSize: 16),
-              mathStyle: MathStyle.display,
-              onErrorFallback: (err) => const Text(
-                r'$...$',
-                style: TextStyle(color: Colors.redAccent),
-                textDirection: TextDirection.ltr,
+        child: SizedBox(
+          width: maxWidth,
+          child: ClipRect(
+            child: Directionality(
+              textDirection: TextDirection.ltr,
+              child: _ScrollableMath(
+                formula: text,
+                fontSize: 16,
+                isBlock: true,
+                textColor: textStyle?.color,
               ),
             ),
           ),
         ),
       );
     } else {
-      return Directionality(
-        textDirection: TextDirection.ltr,
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          alignment: Alignment.centerLeft,
-          child: Math.tex(
-            text,
-            textStyle: textStyle,
-            mathStyle: MathStyle.text,
-            onErrorFallback: (err) => const Text(
-              r'$...$',
-              style: TextStyle(color: Colors.redAccent),
-              textDirection: TextDirection.ltr,
+      return SizedBox(
+        width: maxWidth,
+        child: ClipRect(
+          child: Directionality(
+            textDirection: TextDirection.ltr,
+            child: _ScrollableMath(
+              formula: text,
+              fontSize: textStyle?.fontSize ?? 14,
+              textColor: textStyle?.color,
             ),
           ),
         ),

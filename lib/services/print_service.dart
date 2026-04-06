@@ -1,10 +1,9 @@
 import 'dart:io';
-import 'dart:typed_data';
-import 'dart:ui' show Offset, Rect, Size;
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:pdf/pdf.dart'; // هذا السطر سيحل مشكلة الـ Undefined class
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:printing/printing.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart' as sf;
 
@@ -111,6 +110,15 @@ class PrintService {
       enabled: settings.enableDiagnostics,
     );
 
+    final regularFontBytes =
+        (await rootBundle.load('assets/fonts/NotoNaskhArabic-Regular.ttf'))
+            .buffer
+            .asUint8List();
+    final boldFontBytes =
+        (await rootBundle.load('assets/fonts/NotoNaskhArabic-Bold.ttf'))
+            .buffer
+            .asUint8List();
+
     final processedBytes = await compute(
       _processPdfIsolate,
       _ProcessArgs(
@@ -125,6 +133,8 @@ class PrintService {
         orientationIndex: settings.orientation.index,
         colorModeIndex: settings.colorMode.index,
         annotationsJson: annotationsJson,
+        commentFontRegularBytes: regularFontBytes,
+        commentFontBoldBytes: boldFontBytes,
       ),
     );
     await logTiming('pdf processed in isolate (${processedBytes.length})');
@@ -360,7 +370,13 @@ class PrintService {
           origin,
           Size(srcSize.width, srcSize.height),
         );
-        _drawFlattenedAnnotations(g, pageAnnotations, srcSize);
+        _drawFlattenedAnnotations(
+          g,
+          pageAnnotations,
+          srcSize,
+          args.commentFontRegularBytes,
+          args.commentFontBoldBytes,
+        );
       } else if (!wantLandscape && !srcIsPortrait) {
         // Landscape → Portrait: rotate +90° with compensating translation
         g.translateTransform(srcSize.width, 0);
@@ -370,7 +386,13 @@ class PrintService {
           origin,
           Size(srcSize.width, srcSize.height),
         );
-        _drawFlattenedAnnotations(g, pageAnnotations, srcSize);
+        _drawFlattenedAnnotations(
+          g,
+          pageAnnotations,
+          srcSize,
+          args.commentFontRegularBytes,
+          args.commentFontBoldBytes,
+        );
       } else {
         // No rotation — same orientation, just blit the template
         g.drawPdfTemplate(
@@ -378,7 +400,13 @@ class PrintService {
           origin,
           Size(srcSize.width, srcSize.height),
         );
-        _drawFlattenedAnnotations(g, pageAnnotations, srcSize);
+        _drawFlattenedAnnotations(
+          g,
+          pageAnnotations,
+          srcSize,
+          args.commentFontRegularBytes,
+          args.commentFontBoldBytes,
+        );
       }
 
       g.restore();
@@ -395,11 +423,19 @@ class PrintService {
     sf.PdfGraphics g,
     List<Map<String, dynamic>> pageAnnotations,
     Size pageSize,
+    Uint8List regularFontBytes,
+    Uint8List boldFontBytes,
   ) {
     for (final a in pageAnnotations) {
       final kind = (a['annotationKind'] ?? '').toString();
       if (kind == 'comment') {
-        _drawCommentAnnotation(g, a, pageSize);
+        _drawCommentAnnotation(
+          g,
+          a,
+          pageSize,
+          regularFontBytes,
+          boldFontBytes,
+        );
       } else {
         _drawHighlightAnnotation(g, a, pageSize);
       }
@@ -411,6 +447,8 @@ class PrintService {
     Map<String, dynamic> a,
     Size pageSize,
   ) {
+    const rectHighlightOpacity = 0.10;
+    const strokeHighlightOpacity = 0.20;
     final type = (a['type'] ?? '').toString().toLowerCase();
     final strokeWidth = _toDouble(a['strokeWidth'], 2.0).clamp(0.5, 64.0);
     final strokeColor = _pdfColorFromArgb(
@@ -441,7 +479,7 @@ class PrintService {
         );
         g.drawRectangle(bounds: rect, brush: sf.PdfSolidBrush(_pdfColorFromArgb(
           a['color'] as int? ?? 0xFF000000,
-          opacity: 0.45,
+          opacity: rectHighlightOpacity,
         )));
       }
       return;
@@ -499,7 +537,10 @@ class PrintService {
 
     final drawPen = type.contains('highlight')
         ? sf.PdfPen(
-            _pdfColorFromArgb(a['color'] as int? ?? 0xFF000000, opacity: 0.55),
+            _pdfColorFromArgb(
+              a['color'] as int? ?? 0xFF000000,
+              opacity: strokeHighlightOpacity,
+            ),
             width: (strokeWidth * 1.4).clamp(0.5, 96.0),
           )
         : pen;
@@ -512,6 +553,8 @@ class PrintService {
     sf.PdfGraphics g,
     Map<String, dynamic> a,
     Size pageSize,
+    Uint8List regularFontBytes,
+    Uint8List boldFontBytes,
   ) {
     final content = (a['content'] ?? '').toString();
     if (content.trim().isEmpty) return;
@@ -520,19 +563,35 @@ class PrintService {
     final y = _mapY(_toDouble(a['dy']), a, pageSize);
     final fontSize = _toDouble(a['fontSize'], 14.0).clamp(6.0, 128.0);
     final isBold = a['isBold'] == true;
+    final fontFamily = (a['fontFamily'] ?? '').toString();
     final showBorder = a['showBorder'] != false;
     final textColor = _pdfColorFromArgb(a['color'] as int? ?? 0xFF000000);
     final borderColor = _pdfColorFromArgb(a['borderColor'] as int? ?? 0xFF000000);
-    final bgColor = _pdfColorFromArgb(a['bgColor'] as int? ?? 0xFFFEF3C7);
-
-    final font = sf.PdfStandardFont(
-      sf.PdfFontFamily.helvetica,
-      fontSize,
-      style: isBold ? sf.PdfFontStyle.bold : sf.PdfFontStyle.regular,
+    final bgColor = _pdfColorFromArgb(
+      a['bgColor'] as int? ?? 0xFFFEF3C7,
+      opacity: 0.10,
+    );
+    final isArabic = _containsArabic(content);
+    final textFormat = sf.PdfStringFormat(
+      alignment: isArabic ? sf.PdfTextAlignment.right : sf.PdfTextAlignment.left,
+      lineAlignment: sf.PdfVerticalAlignment.top,
+      textDirection:
+          isArabic ? sf.PdfTextDirection.rightToLeft : sf.PdfTextDirection.leftToRight,
+      wordWrap: sf.PdfWordWrapType.word,
+      measureTrailingSpaces: false,
     );
 
-    final textSize = font.measureString(content);
-    const padding = 4.0;
+    final font = _createCommentFont(
+      fontFamily: fontFamily,
+      content: content,
+      fontSize: fontSize,
+      isBold: isBold,
+      regularFontBytes: regularFontBytes,
+      boldFontBytes: boldFontBytes,
+    );
+
+    final textSize = font.measureString(content, format: textFormat);
+    const padding = 5.0;
     final bounds = Rect.fromLTWH(
       x,
       y,
@@ -558,6 +617,45 @@ class PrintService {
         textSize.width,
         textSize.height,
       ),
+      format: textFormat,
+    );
+  }
+
+  static bool _containsArabic(String text) {
+    return RegExp(r'[\u0600-\u06FF]').hasMatch(text);
+  }
+
+  static sf.PdfFont _createCommentFont({
+    required String fontFamily,
+    required String content,
+    required double fontSize,
+    required bool isBold,
+    required Uint8List regularFontBytes,
+    required Uint8List boldFontBytes,
+  }) {
+    final normalized = fontFamily.trim().toLowerCase();
+    final needsArabicFont = _containsArabic(content) ||
+        normalized.contains('noto') ||
+        normalized.contains('arabic') ||
+        normalized.contains('amiri');
+
+    if (needsArabicFont) {
+      return sf.PdfTrueTypeFont(
+        isBold ? boldFontBytes : regularFontBytes,
+        fontSize,
+      );
+    }
+
+    final pdfFamily = normalized.contains('courier')
+        ? sf.PdfFontFamily.courier
+        : normalized.contains('helvetica')
+            ? sf.PdfFontFamily.helvetica
+            : sf.PdfFontFamily.timesRoman;
+
+    return sf.PdfStandardFont(
+      pdfFamily,
+      fontSize,
+      style: isBold ? sf.PdfFontStyle.bold : sf.PdfFontStyle.regular,
     );
   }
 
@@ -611,6 +709,8 @@ class _ProcessArgs {
   final int orientationIndex;
   final int colorModeIndex;
   final List<Map<String, dynamic>> annotationsJson;
+  final Uint8List commentFontRegularBytes;
+  final Uint8List commentFontBoldBytes;
 
   const _ProcessArgs({
     required this.sourceBytes,
@@ -624,5 +724,7 @@ class _ProcessArgs {
     required this.orientationIndex,
     required this.colorModeIndex,
     required this.annotationsJson,
+    required this.commentFontRegularBytes,
+    required this.commentFontBoldBytes,
   });
 }
