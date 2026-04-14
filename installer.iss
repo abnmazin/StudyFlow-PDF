@@ -1,6 +1,6 @@
 [Setup]
 AppName=StudyFlow PDF Reader
-AppVersion=1.0.0
+AppVersion=1.1.0
 AppPublisher=StudyFlow
 AppComments=تم برمجة التطبيق بتاريخ 2 أبريل 2026 بواسطة Hassan Mazin
 AppCopyright=© 2026 Hassan Mazin. جميع الحقوق محفوظة.
