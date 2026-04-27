@@ -2,13 +2,17 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 
 class HardwareService {
+  static const String _installIdKey = 'studyflow_device_installation_id_v1';
+
   /// Generates a strong, multi-layer device fingerprint.
   /// Combines: device name, OS type, OS version, and machine UUID.
   Future<String> getDeviceFingerprint() async {
     try {
-      final deviceName = Platform.localHostname;
+      final deviceName = _safeHostName();
       final osType = Platform.operatingSystem;
       final osVersion = Platform.operatingSystemVersion;
       final machineUuid = await getDeviceUUID();
@@ -34,6 +38,10 @@ class HardwareService {
   }
 
   Future<String> getDeviceUUID() async {
+    if (!Platform.isWindows) {
+      return _fromInstallationId();
+    }
+
     final fromWmic = await _fromWmic();
     if (fromWmic != null) return fromWmic;
 
@@ -43,7 +51,27 @@ class HardwareService {
     final fromRegistry = await _fromRegistryMachineGuid();
     if (fromRegistry != null) return fromRegistry;
 
-    return 'Unknown-Device-ID';
+    return _fromInstallationId();
+  }
+
+  Future<String> _fromInstallationId() async {
+    final prefs = await SharedPreferences.getInstance();
+    final existing = prefs.getString(_installIdKey);
+    if (existing != null && existing.trim().isNotEmpty) {
+      return existing;
+    }
+
+    final generated = const Uuid().v4();
+    await prefs.setString(_installIdKey, generated);
+    return generated;
+  }
+
+  String _safeHostName() {
+    try {
+      final hostname = Platform.localHostname.trim();
+      if (hostname.isNotEmpty) return hostname;
+    } catch (_) {}
+    return 'unknown-host';
   }
 
   Future<String?> _fromWmic() async {

@@ -1,17 +1,28 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../utils/responsive_utils.dart';
+
 class DeveloperModal extends StatefulWidget {
-  final bool isOpen;
-  final VoidCallback onClose;
+  final bool isVisible;
+  final VoidCallback? onClose;
+  final bool isForceUpdate;
+  final String currentVersion;
+  final String requiredVersion;
 
   const DeveloperModal({
     super.key,
-    required this.isOpen,
-    required this.onClose,
-  });
+    bool? isVisible,
+    bool? isOpen,
+    this.onClose,
+    this.isForceUpdate = false,
+    this.currentVersion = '',
+    this.requiredVersion = '',
+  }) : isVisible = isVisible ?? isOpen ?? false;
 
   @override
   State<DeveloperModal> createState() => _DeveloperModalState();
@@ -19,6 +30,7 @@ class DeveloperModal extends StatefulWidget {
 
 class _DeveloperModalState extends State<DeveloperModal>
     with SingleTickerProviderStateMixin {
+  String _appVersion = '';
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
   late Animation<double> _opacityAnimation;
@@ -28,10 +40,14 @@ class _DeveloperModalState extends State<DeveloperModal>
   void initState() {
     super.initState();
 
+    PackageInfo.fromPlatform().then((info) {
+      if (mounted) setState(() => _appVersion = info.version);
+    });
+
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 500),
-      value: widget.isOpen ? 1.0 : 0.0,
+      value: widget.isVisible ? 1.0 : 0.0,
     );
 
     _scaleAnimation = Tween<double>(
@@ -55,9 +71,9 @@ class _DeveloperModalState extends State<DeveloperModal>
   @override
   void didUpdateWidget(covariant DeveloperModal oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.isOpen && !oldWidget.isOpen) {
+    if (widget.isVisible && !oldWidget.isVisible) {
       _controller.forward();
-    } else if (!widget.isOpen && oldWidget.isOpen) {
+    } else if (!widget.isVisible && oldWidget.isVisible) {
       _controller.reverse();
     }
   }
@@ -67,11 +83,13 @@ class _DeveloperModalState extends State<DeveloperModal>
     _controller.dispose();
     super.dispose();
   }
+
   // Helper to close modal with animation
   void _handleClose() {
+    if (widget.isForceUpdate) return;
     _controller.reverse().then((_) {
       if (mounted) {
-        widget.onClose();
+        widget.onClose?.call();
       }
     });
   }
@@ -89,18 +107,18 @@ class _DeveloperModalState extends State<DeveloperModal>
       animation: _controller,
       builder: (context, child) {
         // 1. Completely remove from render tree when animation finishes
-        if (!widget.isOpen && _controller.isDismissed) {
+        if (!widget.isVisible && _controller.isDismissed) {
           return const SizedBox.shrink();
         }
 
         // 2. Immediately drop all touch events when closing begins
         return IgnorePointer(
-          ignoring: !widget.isOpen,
+          ignoring: !widget.isVisible,
           child: Stack(
             children: [
               // Backdrop with dark blue blur
               GestureDetector(
-                onTap: _handleClose,
+                onTap: widget.isForceUpdate ? null : _handleClose,
                 child: BackdropFilter(
                   filter: ImageFilter.blur(
                     sigmaX: _blurAnimation.value,
@@ -133,10 +151,14 @@ class _DeveloperModalState extends State<DeveloperModal>
   }
 
   Widget _buildGlassContainer() {
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final dialogWidth = ResponsiveBreakpoints.dialogWidth(screenWidth, max: 380);
+    final horizontalMargin = screenWidth < 420 ? 16.0 : 24.0;
+
     return Container(
       width: double.infinity,
-      constraints: const BoxConstraints(maxWidth: 380),
-      margin: const EdgeInsets.symmetric(horizontal: 24),
+      constraints: BoxConstraints(maxWidth: dialogWidth),
+      margin: EdgeInsets.symmetric(horizontal: horizontalMargin),
       decoration: BoxDecoration(
         color: const Color(0xFF1E293B).withOpacity(0.95),
         borderRadius: BorderRadius.circular(40),
@@ -162,8 +184,11 @@ class _DeveloperModalState extends State<DeveloperModal>
   }
 
   Widget _buildAestheticHeader() {
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final headerPadding = screenWidth < 420 ? 20.0 : 30.0;
+
     return Container(
-      padding: const EdgeInsets.all(30),
+      padding: EdgeInsets.all(headerPadding),
       width: double.infinity,
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -246,6 +271,9 @@ class _DeveloperModalState extends State<DeveloperModal>
       padding: const EdgeInsets.fromLTRB(25, 10, 25, 30),
       child: Column(
         children: [
+          // Force update banner — shown only when app is blocked
+          if (widget.isForceUpdate) _buildForceUpdateBanner(),
+
           _buildElegantRow(
             icon: LucideIcons.send,
             color: const Color(0xFF38BDF8),
@@ -266,8 +294,169 @@ class _DeveloperModalState extends State<DeveloperModal>
             value: '07710529693',
             onTap: () => _launchUrl('https://wa.me/9647710529693'),
           ),
-          const SizedBox(height: 30),
-          _buildActionButtons(),
+          const SizedBox(height: 20),
+          // App version display
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white.withOpacity(0.08)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  LucideIcons.info,
+                  size: 13,
+                  color: Colors.white.withOpacity(0.4),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  _appVersion.isEmpty ? 'الإصدار ...' : 'الإصدار $_appVersion',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.4),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Hide close button when force update is active
+          if (!widget.isForceUpdate) _buildActionButtons(),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _clearForceUpdateCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('force_update_active');
+      await prefs.remove('force_update_min_version');
+      await prefs.remove('force_update_latest_version');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ تم مسح البلوك بنجاح — أعد تشغيل التطبيق الآن'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ خطأ: $e'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  Widget _buildForceUpdateBanner() {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(0, 0, 0, 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEF4444).withOpacity(0.12),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFEF4444).withOpacity(0.4)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: const [
+              Icon(Icons.warning_rounded, color: Color(0xFFEF4444), size: 18),
+              SizedBox(width: 8),
+              Text(
+                'يجب تحديث التطبيق للمتابعة',
+                style: TextStyle(
+                  color: Color(0xFFEF4444),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+          if (widget.currentVersion.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              'إصدارك الحالي: ${widget.currentVersion}',
+              style: TextStyle(
+                color: const Color(0xFFEF4444).withOpacity(0.7),
+                fontSize: 12,
+              ),
+            ),
+          ],
+          if (widget.requiredVersion.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              'الإصدار المطلوب: ${widget.requiredVersion}',
+              style: TextStyle(
+                color: const Color(0xFFEF4444).withOpacity(0.85),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () => _launchUrl('https://t.me/AnyDesire'),
+              icon: const Icon(
+                Icons.download_rounded,
+                size: 16,
+                color: Colors.white,
+              ),
+              label: const Text(
+                'تحديث الآن',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFEF4444),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _clearForceUpdateCache,
+              icon: const Icon(
+                Icons.clear_rounded,
+                size: 16,
+                color: Color(0xFFEF4444),
+              ),
+              label: const Text(
+                'مسح البلوك (للمطورين)',
+                style: TextStyle(
+                  color: Color(0xFFEF4444),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Color(0xFFEF4444)),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );

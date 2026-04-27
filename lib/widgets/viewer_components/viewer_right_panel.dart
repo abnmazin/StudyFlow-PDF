@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:markdown/markdown.dart' as md;
@@ -15,6 +16,7 @@ import 'package:markdown/markdown.dart' as md;
 import '../../models/models.dart';
 import '../../providers/app_state.dart';
 import '../../services/sync_service.dart';
+import '../../utils/responsive_utils.dart';
 import 'mini_calculator_widget.dart';
 import 'session_cards.dart';
 
@@ -168,22 +170,35 @@ class StudyFlowRightPanel extends StatelessWidget {
     final textMuted = isDarkMode
         ? const Color(0xFF94A3B8)
         : scheme.onSurfaceVariant;
+    final panelWidth = ResponsiveBreakpoints.rightPanelWidth(
+      MediaQuery.sizeOf(context).width,
+    );
 
     if (!isSettingsMode && activeTool == ToolType.cursor) {
       return TextFieldTapRegion(
         child: Container(
-          width: 320,
+          width: panelWidth,
           decoration: BoxDecoration(
             color: panelBg,
             border: Border(left: BorderSide(color: panelBorder, width: 1.5)),
           ),
-          child: _buildCursorUtilitiesHub(
-            context,
-            panelBg,
-            panelBorder,
-            surfaceAlt,
-            textPrimary,
-            textMuted,
+          child: _CursorUtilitiesHub(
+            isDarkMode: isDarkMode,
+            panelBg: panelBg,
+            panelBorder: panelBorder,
+            surfaceAlt: surfaceAlt,
+            textPrimary: textPrimary,
+            textMuted: textMuted,
+            activePdf: activePdf,
+            pdfController: pdfController,
+            onAiChatHoverChanged: onAiChatHoverChanged,
+            settingsTab: _buildSettingsTabContent(
+              context,
+              surfaceAlt,
+              panelBorder,
+              textPrimary,
+              textMuted,
+            ),
           ),
         ),
       );
@@ -191,7 +206,7 @@ class StudyFlowRightPanel extends StatelessWidget {
 
     return TextFieldTapRegion(
       child: Container(
-        width: 320, // Wider for Chat UI
+        width: panelWidth,
         decoration: BoxDecoration(
           color: panelBg,
           border: Border(left: BorderSide(color: panelBorder, width: 1.5)),
@@ -930,6 +945,8 @@ class StudyFlowRightPanel extends StatelessWidget {
     Color? borderColor,
     Color? bgColor,
   }) {
+    if (activeTool != ToolType.text) return false;
+
     final app = context.read<AppProvider>();
     final targetId = app.activeEditingCommentId ?? app.lastEditedCommentId;
     if (targetId == null) return false;
@@ -1076,219 +1093,6 @@ class StudyFlowRightPanel extends StatelessWidget {
     );
   }
 
-  Widget _buildCursorUtilitiesHub(
-    BuildContext context,
-    Color panelBg,
-    Color panelBorder,
-    Color surfaceAlt,
-    Color textPrimary,
-    Color textMuted,
-  ) {
-    final indicatorColor = const Color(0xFF3B82F6);
-    final tabBg = isDarkMode
-        ? const Color(0xFF111827)
-        : const Color(0xFFE2E8F0);
-
-    return DefaultTabController(
-      length: 4,
-      child: Column(
-        children: [
-          Container(
-            margin: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: tabBg,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: panelBorder),
-            ),
-            child: TabBar(
-              indicator: BoxDecoration(
-                color: indicatorColor.withValues(alpha: 0.18),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: indicatorColor.withValues(alpha: 0.45),
-                ),
-              ),
-              labelColor: indicatorColor,
-              unselectedLabelColor: textMuted,
-              dividerColor: Colors.transparent,
-              indicatorSize: TabBarIndicatorSize.tab,
-              tabs: const [
-                Tab(
-                  icon: Tooltip(
-                    message: 'ذكاء اصطناعي',
-                    child: Icon(LucideIcons.bot, size: 20),
-                  ),
-                ),
-                Tab(
-                  icon: Tooltip(
-                    message: 'حاسبة',
-                    child: Icon(LucideIcons.calculator, size: 20),
-                  ),
-                ),
-                Tab(
-                  icon: Tooltip(
-                    message: 'صفحات مرجعية',
-                    child: Icon(LucideIcons.bookmark, size: 20),
-                  ),
-                ),
-                Tab(
-                  icon: Tooltip(
-                    message: 'الإعدادات',
-                    child: Icon(LucideIcons.settings, size: 20),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: TabBarView(
-              children: [
-                // AI Tab
-                MouseRegion(
-                  onEnter: (_) => onAiChatHoverChanged?.call(true),
-                  onExit: (_) => onAiChatHoverChanged?.call(false),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                    child: _AiChatWidget(
-                      isDarkMode: isDarkMode,
-                      pdfId: activePdf?.id,
-                      pdfController: pdfController,
-                    ),
-                  ),
-                ),
-
-                // Calculator Tab
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                  child: const MiniCalculatorWidget(),
-                ),
-
-                // Bookmarks Tab
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-                  child: activePdf != null
-                      ? SingleChildScrollView(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (activePdf!.bookmarks.isNotEmpty)
-                                ...activePdf!.bookmarks.map((bookmark) {
-                                  return Card(
-                                    margin: const EdgeInsets.only(bottom: 8),
-                                    elevation: 1,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                      side: BorderSide(color: panelBorder),
-                                    ),
-                                    color: surfaceAlt,
-                                    child: InkWell(
-                                      onTap: () {
-                                        if (pdfController.isReady) {
-                                          pdfController.goToPage(
-                                            pageNumber: bookmark.page,
-                                          );
-                                        }
-                                      },
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: Padding(
-                                        padding: const EdgeInsets.all(12),
-                                        child: Row(
-                                          children: [
-                                            const Icon(
-                                              LucideIcons.bookmark,
-                                              size: 16,
-                                              color: Color(0xFF3B82F6),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    bookmark.name,
-                                                    style: TextStyle(
-                                                      fontSize: 14,
-                                                      fontWeight:
-                                                          FontWeight.w500,
-                                                      color: textPrimary,
-                                                    ),
-                                                  ),
-                                                  Text(
-                                                    'الصفحة ${bookmark.page}',
-                                                    style: TextStyle(
-                                                      fontSize: 12,
-                                                      color: textMuted,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                            IconButton(
-                                              icon: const Icon(
-                                                LucideIcons.trash2,
-                                                size: 16,
-                                                color: Color(0xFFDC2626),
-                                              ),
-                                              onPressed: () {
-                                                context
-                                                    .read<AppProvider>()
-                                                    .deleteBookmark(
-                                                      activePdf!.id,
-                                                      bookmark.id,
-                                                    );
-                                              },
-                                              tooltip: 'حذف العلامة المرجعية',
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                })
-                              else
-                                Center(
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(top: 32),
-                                    child: Text(
-                                      'لا توجد علامات مرجعية بعد\n\nاستخدم Ctrl+S لإضافة علامة مرجعية',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        color: textMuted,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        )
-                      : Center(
-                          child: Text(
-                            'لا يوجد مستند مفتوح',
-                            style: TextStyle(color: textMuted, fontSize: 14),
-                          ),
-                        ),
-                ),
-                // Settings Tab
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-                  child: _buildSettingsTabContent(
-                    context,
-                    surfaceAlt,
-                    panelBorder,
-                    textPrimary,
-                    textMuted,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildSettingsCard(
     BuildContext context,
@@ -1459,12 +1263,15 @@ class StudyFlowRightPanel extends StatelessWidget {
     final neutralBtnBg = isDarkMode
         ? const Color(0xFF64748B)
         : scheme.surfaceContainerHigh;
+    final shouldApplyCommentStyle = activeTool == ToolType.text;
 
     // Cache the comment ID BEFORE dialog steals focus
     final appProvider = context.read<AppProvider>();
-    appProvider.cacheTargetIdForColor(
-      appProvider.activeEditingCommentId ?? selectedHighlightId,
-    );
+    if (shouldApplyCommentStyle) {
+      appProvider.cacheTargetIdForColor(
+        appProvider.activeEditingCommentId ?? selectedHighlightId,
+      );
+    }
 
     // Freeze selection before dialog
     onColorPickerOpening?.call();
@@ -1504,32 +1311,34 @@ class StudyFlowRightPanel extends StatelessWidget {
                     label: const Text('بدون خلفية (شفاف)'),
                     onPressed: () {
                       onColorChanged(Colors.transparent);
-                      switch (colorTarget) {
-                        case _ColorTarget.bg:
-                          appProvider.applyColorToCachedComment(
-                            bgColor: Colors.transparent,
-                          );
-                        case _ColorTarget.border:
-                          appProvider.applyColorToCachedComment(
-                            borderColor: Colors.transparent,
-                          );
-                        case _ColorTarget.stroke:
-                          appProvider.applyColorToCachedComment(
-                            color: Colors.transparent,
-                          );
+                      if (shouldApplyCommentStyle) {
+                        switch (colorTarget) {
+                          case _ColorTarget.bg:
+                            appProvider.applyColorToCachedComment(
+                              bgColor: Colors.transparent,
+                            );
+                          case _ColorTarget.border:
+                            appProvider.applyColorToCachedComment(
+                              borderColor: Colors.transparent,
+                            );
+                          case _ColorTarget.stroke:
+                            appProvider.applyColorToCachedComment(
+                              color: Colors.transparent,
+                            );
+                        }
+                        // Directly update the cached comment/highlight via AppProvider
+                        appProvider.applyColorToCachedComment(
+                          color: colorTarget == _ColorTarget.stroke
+                              ? Colors.transparent
+                              : null,
+                          bgColor: colorTarget == _ColorTarget.bg
+                              ? Colors.transparent
+                              : null,
+                          borderColor: colorTarget == _ColorTarget.border
+                              ? Colors.transparent
+                              : null,
+                        );
                       }
-                      // Directly update the cached comment/highlight via AppProvider
-                      appProvider.applyColorToCachedComment(
-                        color: colorTarget == _ColorTarget.stroke
-                            ? Colors.transparent
-                            : null,
-                        bgColor: colorTarget == _ColorTarget.bg
-                            ? Colors.transparent
-                            : null,
-                        borderColor: colorTarget == _ColorTarget.border
-                            ? Colors.transparent
-                            : null,
-                      );
                       Navigator.of(dialogContext).pop();
                     },
                   ),
@@ -1549,28 +1358,36 @@ class StudyFlowRightPanel extends StatelessWidget {
               child: Text('اختيار', style: TextStyle(color: Colors.white)),
               onPressed: () {
                 onColorChanged(pickerColor);
-                // Apply to cached comment (works even after focus loss)
-                switch (colorTarget) {
-                  case _ColorTarget.stroke:
-                    appProvider.applyColorToCachedComment(color: pickerColor);
-                  case _ColorTarget.bg:
-                    appProvider.applyColorToCachedComment(bgColor: pickerColor);
-                  case _ColorTarget.border:
-                    appProvider.applyColorToCachedComment(
-                      borderColor: pickerColor,
-                    );
+                if (shouldApplyCommentStyle) {
+                  // Apply to cached comment (works even after focus loss)
+                  switch (colorTarget) {
+                    case _ColorTarget.stroke:
+                      appProvider.applyColorToCachedComment(color: pickerColor);
+                    case _ColorTarget.bg:
+                      appProvider.applyColorToCachedComment(
+                        bgColor: pickerColor,
+                      );
+                    case _ColorTarget.border:
+                      appProvider.applyColorToCachedComment(
+                        borderColor: pickerColor,
+                      );
+                  }
                 }
                 onColorChanged(pickerColor); // Update local state
-                appProvider.applyColorToCachedComment(
-                  // Update cached comment/highlight
-                  color: colorTarget == _ColorTarget.stroke
-                      ? pickerColor
-                      : null,
-                  bgColor: colorTarget == _ColorTarget.bg ? pickerColor : null,
-                  borderColor: colorTarget == _ColorTarget.border
-                      ? pickerColor
-                      : null,
-                );
+                if (shouldApplyCommentStyle) {
+                  appProvider.applyColorToCachedComment(
+                    // Update cached comment/highlight
+                    color: colorTarget == _ColorTarget.stroke
+                        ? pickerColor
+                        : null,
+                    bgColor: colorTarget == _ColorTarget.bg
+                        ? pickerColor
+                        : null,
+                    borderColor: colorTarget == _ColorTarget.border
+                        ? pickerColor
+                        : null,
+                  );
+                }
                 Navigator.of(dialogContext).pop();
               },
             ),
@@ -1581,7 +1398,9 @@ class StudyFlowRightPanel extends StatelessWidget {
 
     // Restore selection + clear cached id
     onColorPickerClosed?.call();
-    appProvider.clearCachedTargetId();
+    if (shouldApplyCommentStyle) {
+      appProvider.clearCachedTargetId();
+    }
   }
 
   // Helper widget to build color picker button
@@ -1772,6 +1591,306 @@ class StudyFlowRightPanel extends StatelessWidget {
   }
 }
 
+class _CursorUtilitiesHub extends StatefulWidget {
+  final bool isDarkMode;
+  final Color panelBg;
+  final Color panelBorder;
+  final Color surfaceAlt;
+  final Color textPrimary;
+  final Color textMuted;
+  final PdfItem? activePdf;
+  final PdfViewerController pdfController;
+  final ValueChanged<bool>? onAiChatHoverChanged;
+  final Widget settingsTab;
+
+  const _CursorUtilitiesHub({
+    required this.isDarkMode,
+    required this.panelBg,
+    required this.panelBorder,
+    required this.surfaceAlt,
+    required this.textPrimary,
+    required this.textMuted,
+    required this.activePdf,
+    required this.pdfController,
+    required this.settingsTab,
+    this.onAiChatHoverChanged,
+  });
+
+  @override
+  State<_CursorUtilitiesHub> createState() => _CursorUtilitiesHubState();
+}
+
+class _CursorUtilitiesHubState extends State<_CursorUtilitiesHub> {
+  @override
+  Widget build(BuildContext context) {
+    final indicatorColor = const Color(0xFF3B82F6);
+    final tabBg = widget.isDarkMode
+        ? const Color(0xFF111827)
+        : const Color(0xFFE2E8F0);
+
+    return DefaultTabController(
+      length: 4,
+      child: Column(
+        children: [
+          Container(
+            margin: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: tabBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: widget.panelBorder),
+            ),
+            child: TabBar(
+              indicator: BoxDecoration(
+                color: indicatorColor.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: indicatorColor.withValues(alpha: 0.45),
+                ),
+              ),
+              labelColor: indicatorColor,
+              unselectedLabelColor: widget.textMuted,
+              dividerColor: Colors.transparent,
+              indicatorSize: TabBarIndicatorSize.tab,
+              tabs: const [
+                Tab(
+                  icon: Tooltip(
+                    message: 'ذكاء اصطناعي',
+                    child: Icon(LucideIcons.bot, size: 20),
+                  ),
+                ),
+                Tab(
+                  icon: Tooltip(
+                    message: 'حاسبة',
+                    child: Icon(LucideIcons.calculator, size: 20),
+                  ),
+                ),
+                Tab(
+                  icon: Tooltip(
+                    message: 'صفحات مرجعية',
+                    child: Icon(LucideIcons.bookmark, size: 20),
+                  ),
+                ),
+                Tab(
+                  icon: Tooltip(
+                    message: 'الإعدادات',
+                    child: Icon(LucideIcons.settings, size: 20),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: TabBarView(
+              children: [
+                // AI Tab
+                MouseRegion(
+                  onEnter: (_) => widget.onAiChatHoverChanged?.call(true),
+                  onExit: (_) => widget.onAiChatHoverChanged?.call(false),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                    child: _AiChatWidget(
+                      isDarkMode: widget.isDarkMode,
+                      pdfId: widget.activePdf?.id,
+                      pdfController: widget.pdfController,
+                    ),
+                  ),
+                ),
+
+                // Calculator Tab
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                  child: const MiniCalculatorWidget(),
+                ),
+
+                // Bookmarks Tab
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                  child: widget.activePdf != null
+                      ? SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (widget.activePdf!.bookmarks.isNotEmpty)
+                                ...widget.activePdf!.bookmarks.map((bookmark) {
+                                  return Card(
+                                    margin: const EdgeInsets.only(bottom: 8),
+                                    elevation: 1,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                      side: BorderSide(
+                                        color: widget.panelBorder,
+                                      ),
+                                    ),
+                                    color: widget.surfaceAlt,
+                                    child: InkWell(
+                                      onTap: () {
+                                        if (widget.pdfController.isReady) {
+                                          widget.pdfController.goToPage(
+                                            pageNumber: bookmark.page,
+                                          );
+                                        }
+                                      },
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(12),
+                                        child: Row(
+                                          children: [
+                                            const Icon(
+                                              LucideIcons.bookmark,
+                                              size: 16,
+                                              color: Color(0xFF3B82F6),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    bookmark.name,
+                                                    style: TextStyle(
+                                                      fontSize: 14,
+                                                      fontWeight:
+                                                          FontWeight.w500,
+                                                      color: widget.textPrimary,
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    'الصفحة ${bookmark.page}',
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: widget.textMuted,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            IconButton(
+                                              icon: const Icon(
+                                                LucideIcons.trash2,
+                                                size: 16,
+                                                color: Color(0xFFDC2626),
+                                              ),
+                                              onPressed: () {
+                                                context
+                                                    .read<AppProvider>()
+                                                    .deleteBookmark(
+                                                      widget.activePdf!.id,
+                                                      bookmark.id,
+                                                    );
+                                              },
+                                              tooltip: 'حذف العلامة المرجعية',
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                })
+                              else
+                                Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(top: 32),
+                                    child: Text(
+                                      'لا توجد علامات مرجعية بعد\n\nاستخدم Ctrl+S لإضافة علامة مرجعية',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: widget.textMuted,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        )
+                      : Center(
+                          child: Text(
+                            'لا يوجد مستند مفتوح',
+                            style: TextStyle(
+                              color: widget.textMuted,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                ),
+                // Settings Tab
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                  child: widget.settingsTab,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+class _AnimatedDots extends StatefulWidget {
+  final Color color;
+  const _AnimatedDots({required this.color});
+
+  @override
+  State<_AnimatedDots> createState() => _AnimatedDotsState();
+}
+
+class _AnimatedDotsState extends State<_AnimatedDots>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (_, __) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(3, (i) {
+            // كل نقطة تتأخر بـ 200ms عن السابقة
+            final delay = i * 0.25;
+            final t = (_ctrl.value - delay).clamp(0.0, 1.0);
+            // curve: صعود وهبوط
+            final scale = 0.5 + 0.5 * math.sin(t * math.pi);
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 3),
+              child: Transform.scale(
+                scale: scale,
+                child: Container(
+                  width: 7,
+                  height: 7,
+                  decoration: BoxDecoration(
+                    color: widget.color.withValues(alpha: 0.4 + 0.6 * scale),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            );
+          }),
+        );
+      },
+    );
+  }
+}
+
 class _AiChatWidget extends StatefulWidget {
   final bool isDarkMode;
   final String? pdfId;
@@ -1787,7 +1906,10 @@ class _AiChatWidget extends StatefulWidget {
   State<_AiChatWidget> createState() => _AiChatWidgetState();
 }
 
-class _AiChatWidgetState extends State<_AiChatWidget> {
+class _AiChatWidgetState extends State<_AiChatWidget>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
   static const List<String> _geminiModels = [
     'gemini-2.5-flash',
     'gemini-2.0-flash',
@@ -1808,6 +1930,13 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
+  bool _wasAtBottom = true;
+
+  void _trackScrollPosition() {
+    if (!_scrollController.hasClients) return;
+    final pos = _scrollController.position;
+    _wasAtBottom = (pos.maxScrollExtent - pos.pixels) < 60.0;
+  }
 
   void _onConversationRevisionChanged() {
     _loadConversationForCurrentPdf();
@@ -1828,6 +1957,7 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
   void initState() {
     super.initState();
     _aiConversationRevision.addListener(_onConversationRevisionChanged);
+    _scrollController.addListener(_trackScrollPosition);
     _loadConversationForCurrentPdf();
   }
 
@@ -1850,7 +1980,7 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
           ..clear()
           ..addAll(_defaultMessages());
       });
-      _scrollToBottom();
+      _scrollToBottom(jump: true);
       return;
     }
 
@@ -1871,7 +2001,7 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
           ..clear()
           ..addAll(restored.isEmpty ? _defaultMessages() : restored);
       });
-      _scrollToBottom();
+      _scrollToBottom(jump: true);
     } catch (_) {
       setState(() {
         _messages
@@ -1926,10 +2056,17 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
         "إذا كان السؤال بديهياً جداً، عاتبه بمزاح عراقي لطيف مرة واحدة فقط (مثال: 'يا مولاي معقولة مهندسنا يسأل هيج سؤال؟ بس تتدلل...') ثم اشرح باختصار شديد.";
 
     const strictMathInstruction =
-        "قاعدة الرياضيات: يجب كتابة جميع المعادلات، الأرقام، والرموز باستخدام صيغة LaTeX محصورة بين علامات الدولار حصراً.\n"
-        "- للمعادلات داخل النص: \$equation\$\n"
-        "- للمعادلات في سطر منفصل: \$\$equation\$\$\n"
-        "يُمنع استخدام الأقواس المربعة [ ] أو \( \) لكتابة المعادلات.";
+        "قاعدة الرياضيات الصارمة — اتبعها حرفياً:\n"
+        "1. المعادلات الكاملة في سطر منفصل: \$\$equation\$\$\n"
+        "2. المتغيرات والرموز داخل الجملة: \$symbol\$ (مثال: حيث \$NF_i\$ هو معامل الضوضاء)\n"
+        "3. يُمنع منعاً باتاً وضع متغير رياضي على سطر وحده منفصل عن نصه\n"
+        "4. يُمنع وضع سطر فارغ قبل أو بعد المتغير داخل الجملة\n"
+        "5. مثال صحيح: 'حيث \$G_i\$ هو كسب الطاقة للمرحلة \$i\$'\n"
+        "6. مثال خاطئ:\n"
+        "   'حيث\n"
+        "   \$G_i\$\n"
+        "   هو كسب الطاقة'\n"
+        "7. يُمنع استخدام [ ] أو \\( \\) للمعادلات";
 
     return "$personaInstruction\n\n"
         "$strictMathInstruction\n\n"
@@ -1937,13 +2074,40 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
         "السياق الحالي لـ 'مولاي' من الصفحة المفتوحة في الملزمة هو:\n\n$pageText";
   }
 
-  // 2. دالة تنظيف اللاتكس (الآن هي في مكانها الصحيح ولن تسبب إيرور)
+  // 2. دالة تنظيف وتصحيح اللاتكس — تصلح المتغيرات اليتيمة
   String formatChatResponseForLaTeX(String text) {
-    String formatted = text.replaceAll(r'\[', r'$$').replaceAll(r'\]', r'$$');
+    // Step 1: normalize \[ \] and \( \) to $$ and $
+    String result = text
+        .replaceAll(r'\[', r'$$')
+        .replaceAll(r'\]', r'$$')
+        .replaceAll(r'\(', r'$')
+        .replaceAll(r'\)', r'$');
 
-    formatted = formatted.replaceAll(r'\(', r'$').replaceAll(r'\)', r'$');
+    // Step 2: fix orphaned inline variables — when $var$ is alone on its
+    // own line surrounded by text lines, merge it with adjacent lines.
+    // Pattern: text_line \n $var$ \n text_line → text_line $var$ text_line
+    result = result.replaceAllMapped(
+      RegExp(
+        r'([^\n\$]+)\n(\$[^\$\n]+?\$)\n([^\n\$]+)',
+        multiLine: true,
+      ),
+      (m) => '${m[1]} ${m[2]} ${m[3]}',
+    );
 
-    return formatted;
+    // Step 3: fix orphaned variable at start of line followed by text
+    // Pattern: \n$var$\n text → $var$ text
+    result = result.replaceAllMapped(
+      RegExp(r'\n(\$[^\$\n]+?\$)\n([^\n\$])', multiLine: true),
+      (m) => ' ${m[1]} ${m[2]}',
+    );
+
+    // Step 4: fix orphaned variable at end — text\n$var$\n
+    result = result.replaceAllMapped(
+      RegExp(r'([^\n\$])\n(\$[^\$\n]+?\$)\n', multiLine: true),
+      (m) => '${m[1]} ${m[2]}\n',
+    );
+
+    return result;
   }
 
   Future<String> _generateGeminiReply(String prompt, String modelName) async {
@@ -2085,20 +2249,29 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
 
   @override
   void dispose() {
+    _scrollController.removeListener(_trackScrollPosition);
     _aiConversationRevision.removeListener(_onConversationRevisionChanged);
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
-  void _scrollToBottom() {
+  void _scrollToBottom({bool jump = false}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scrollController.hasClients) return;
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOut,
-      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!_scrollController.hasClients) return;
+        if (jump) {
+          _scrollController.jumpTo(
+            _scrollController.position.maxScrollExtent,
+          );
+        } else {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOut,
+          );
+        }
+      });
     });
   }
 
@@ -2191,23 +2364,34 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
     const bubbleMaxWidth = 272.0;
     final bubble = Container(
       constraints: const BoxConstraints(maxWidth: bubbleMaxWidth),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: isUser ? userColor : aiBubbleColor,
         borderRadius: BorderRadius.only(
-          topLeft: const Radius.circular(14),
-          topRight: const Radius.circular(14),
-          bottomLeft: Radius.circular(isUser ? 14 : 0),
-          bottomRight: Radius.circular(isUser ? 0 : 14),
+          topLeft: const Radius.circular(18),
+          topRight: const Radius.circular(18),
+          bottomLeft: Radius.circular(isUser ? 18 : 4),
+          bottomRight: Radius.circular(isUser ? 4 : 18),
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: widget.isDarkMode ? 0.2 : 0.06),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
-      child: MarkdownBody(
+      child: Directionality(
+        textDirection: TextDirection.rtl,
+        child: MarkdownBody(
         data: content,
         selectable: true,
         styleSheet: MarkdownStyleSheet(
           p: TextStyle(color: textColor, fontSize: 14, height: 1.35),
           pPadding: EdgeInsets.zero,
+          blockSpacing: 6,
           listBullet: TextStyle(color: textColor, fontSize: 14),
+          listBulletPadding: const EdgeInsets.only(right: 4),
           code: TextStyle(
             color: widget.isDarkMode
                 ? const Color(0xFFE2E8F0)
@@ -2241,6 +2425,7 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
               ...md.ExtensionSet.gitHubFlavored.inlineSyntaxes,
             ]),
       ),
+      ),
     );
 
     return Padding(
@@ -2253,8 +2438,8 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
         children: [
           if (!isUser) ...[
             Container(
-              margin: const EdgeInsets.only(right: 6, bottom: 2),
-              padding: const EdgeInsets.all(6),
+              margin: const EdgeInsets.only(right: 10, bottom: 2),
+              padding: const EdgeInsets.all(7),
               decoration: BoxDecoration(
                 color: const Color(0xFF3B82F6).withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(8),
@@ -2276,6 +2461,7 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
     final bg = widget.isDarkMode
         ? const Color(0xFF1E293B)
         : const Color(0xFFF1F5F9);
+    const dotColor = Color(0xFF3B82F6);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -2287,17 +2473,13 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
             margin: const EdgeInsets.only(right: 6, bottom: 2),
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
-              color: const Color(0xFF3B82F6).withValues(alpha: 0.15),
+              color: dotColor.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Icon(
-              LucideIcons.bot,
-              size: 14,
-              color: Color(0xFF3B82F6),
-            ),
+            child: const Icon(LucideIcons.bot, size: 14, color: dotColor),
           ),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
               color: bg,
               borderRadius: const BorderRadius.only(
@@ -2308,10 +2490,7 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
               ),
             ),
             child: const RepaintBoundary(
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF3B82F6)),
-              ),
+              child: _AnimatedDots(color: dotColor),
             ),
           ),
         ],
@@ -2321,6 +2500,7 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Required by AutomaticKeepAliveClientMixin
     final scheme = Theme.of(context).colorScheme;
     final panelBg = widget.isDarkMode
         ? const Color(0xFF0B1220)
@@ -2347,16 +2527,22 @@ class _AiChatWidgetState extends State<_AiChatWidget> {
       child: Column(
         children: [
           Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.fromLTRB(10, 12, 10, 8),
-              itemCount: _messages.length + (_isLoading ? 1 : 0),
-              itemBuilder: (context, index) {
-                if (_isLoading && index == _messages.length) {
-                  return _buildTypingIndicator();
-                }
-                return _buildChatBubble(_messages[index]);
+            child: NotificationListener<ScrollMetricsNotification>(
+              onNotification: (notification) {
+                if (_wasAtBottom) _scrollToBottom(jump: true);
+                return false;
               },
+              child: ListView.builder(
+                controller: _scrollController,
+                padding: const EdgeInsets.fromLTRB(10, 12, 10, 8),
+                itemCount: _messages.length + (_isLoading ? 1 : 0),
+                itemBuilder: (context, index) {
+                  if (_isLoading && index == _messages.length) {
+                    return _buildTypingIndicator();
+                  }
+                  return _buildChatBubble(_messages[index]);
+                },
+              ),
             ),
           ),
           Container(
@@ -2523,17 +2709,13 @@ class LatexElementBuilder extends MarkdownElementBuilder {
         ),
       );
     } else {
-      return SizedBox(
-        width: maxWidth,
-        child: ClipRect(
-          child: Directionality(
-            textDirection: TextDirection.ltr,
-            child: _ScrollableMath(
-              formula: text,
-              fontSize: textStyle?.fontSize ?? 14,
-              textColor: textStyle?.color,
-            ),
-          ),
+      // inline math — لا نضعها في SizedBox حتى لا تصير block
+      return Directionality(
+        textDirection: TextDirection.ltr,
+        child: _ScrollableMath(
+          formula: text,
+          fontSize: textStyle?.fontSize ?? 14,
+          textColor: textStyle?.color,
         ),
       );
     }

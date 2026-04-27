@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../../providers/app_state.dart';
 import '../../services/sync_service.dart';
 import '../../utils/sync_naming_utils.dart';
+import '../../utils/responsive_utils.dart';
 
 // ─────────────────────────────────────────────────────────────
 // LECTURER SESSION CARD
@@ -140,10 +141,14 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) {
+          final dialogWidth = ResponsiveBreakpoints.dialogWidth(
+            MediaQuery.sizeOf(context).width,
+            max: 400,
+          );
           return AlertDialog(
             title: const Text('إعداد بث الدرس'),
             content: SizedBox(
-              width: 400,
+              width: dialogWidth,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -682,7 +687,7 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
                 ? const SizedBox(
                     width: 14,
                     height: 14,
-                    child: const RepaintBoundary(child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+                    child: RepaintBoundary(child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
                   )
                 : const Icon(LucideIcons.refreshCw, size: 16),
             label: const Text('مزامنة التغييرات الآن'),
@@ -1221,6 +1226,12 @@ class _MemberSessionCardState extends State<MemberSessionCard> {
         TextField(
           controller: _codeCtrl,
           textCapitalization: TextCapitalization.characters,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) {
+            if (!_joining) {
+              _join();
+            }
+          },
           decoration: InputDecoration(
             hintText: 'أدخل كود المزامنة (مثال: XK7P2Q)',
             hintStyle: TextStyle(color: widget.textMuted, fontSize: 13),
@@ -1256,7 +1267,7 @@ class _MemberSessionCardState extends State<MemberSessionCard> {
               ? const SizedBox(
                   width: 14,
                   height: 14,
-                  child: const RepaintBoundary(child: CircularProgressIndicator(strokeWidth: 2)),
+                  child: RepaintBoundary(child: CircularProgressIndicator(strokeWidth: 2)),
                 )
               : const Icon(LucideIcons.logIn, size: 16),
           label: const Text('الانضمام إلى درس'),

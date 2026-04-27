@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../services/pdf_tools_service.dart';
+import '../../utils/responsive_utils.dart';
 
 class ImagesToPdfDialog extends StatefulWidget {
   const ImagesToPdfDialog({super.key});
@@ -93,11 +94,15 @@ class _ImagesToPdfDialogState extends State<ImagesToPdfDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final screen = MediaQuery.sizeOf(context);
+    final dialogWidth = ResponsiveBreakpoints.dialogWidth(screen.width, max: 600);
+    final dialogHeight = (screen.height * 0.9).clamp(420.0, 700.0).toDouble();
+
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
-        width: 600,
-        height: 600,
+        width: dialogWidth,
+        height: dialogHeight,
         padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

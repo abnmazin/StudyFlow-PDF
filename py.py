@@ -1,17 +1,23 @@
 import pandas as pd
 
 file_name = 'data.xlsx'
-search_number = 1234567
+search_number = 7702996800
 
-# قراءة كل الصفحات ودمجها في جدول واحد ضخم
-all_sheets = pd.read_excel(file_name, sheet_name=None, header=None)
-df_combined = pd.concat(all_sheets.values(), ignore_index=True)
+# قراءة ملف الإكسيل، نحدد الصفحة المطلوبة فقط
+df = pd.read_excel(file_name, sheet_name='محافضات', header=None)
 
-# بحث واحد سريع في الجدول المدمج
-result = df_combined[df_combined.apply(lambda row: row.astype(str).str.contains(str(search_number)).any(), axis=1)]
-
-if not result.empty:
-    print(f"✅ تم العثور على الرقم {search_number} في {len(result)} موقع")
-    print(result)
+# التأكد من وجود عمود D (الفهرس 3 لأن العد يبدأ من 0)
+if df.shape[1] > 3:
+    # البحث في العمود D فقط
+    column_d = df[3].astype(str)  # العمود D هو الفهرس رقم 3
+    mask = column_d.str.contains(str(search_number), na=False)
+    result = df[mask]
+    
+    if not result.empty:
+        print(f"✅ تم العثور على الرقم {search_number} في {len(result)} موقع")
+        print(result)
+    else:
+        print("❌ لم يتم العثور على الرقم")
 else:
-    print("❌ لم يتم العثور على الرقم")
+    print("⚠️ الملف لا يحتوي على عمود D")
+

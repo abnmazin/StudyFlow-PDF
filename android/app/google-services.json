@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "288519312647",
+    "project_id": "pdfreader-6b661",
+    "storage_bucket": "pdfreader-6b661.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:288519312647:android:927c2e22c3bc170f14e1a2",
+        "android_client_info": {
+          "package_name": "com.abnmazin"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAwDdWDv7Wl2Ynj8OuYKZOt1MsMIvcHRUU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

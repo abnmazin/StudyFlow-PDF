@@ -11,6 +11,8 @@ import 'dart:async';
 import 'dart:ffi' hide Size;
 import 'dart:io';
 
+import 'dart:ui';
+import '../services/translation_service.dart';
 import '../providers/app_state.dart';
 import '../models/models.dart';
 import '../models/app_user.dart';
@@ -26,6 +28,7 @@ import '../services/file_manager_service.dart'; // NEW: for getRecentDocuments
 import 'dialogs/merge_pdf_dialog.dart'; // NEW
 import 'dialogs/images_to_pdf_dialog.dart'; // NEW
 import '../services/sync_service.dart';
+import '../utils/responsive_utils.dart';
 
 part 'pdf_viewer_widget_dashboard.dart';
 part 'pdf_viewer_widget_actions.dart';
@@ -146,6 +149,8 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   bool _isSearchVisible = false;
   PdfTextSelection? _textSelection;
   bool _isTextSelectionMenuVisible = false;
+  bool _isTranslating = false;
+  String? _translatedText;
   bool _suppressTextSelection =
       false; // Suppress zombie refire after clearing selection
   int _selectionChangeToken = 0;
@@ -199,6 +204,33 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
       });
     } catch (_) {
       // Ignore transient selection failures from underlying PDF engine.
+    }
+  }
+
+  Future<void> _handleTranslate() async {
+    if (_textSelection == null) return;
+
+    setState(() {
+      _isTranslating = true;
+      _translatedText = "جاري الترجمة...";
+    });
+
+    try {
+      final text = await _textSelection!.getSelectedText();
+      final result = await TranslationService().translate(text, _app);
+      if (mounted) {
+        setState(() {
+          _translatedText = result;
+          _isTranslating = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _translatedText = "تعذر الترجمة: $e";
+          _isTranslating = false;
+        });
+      }
     }
   }
 
@@ -270,7 +302,8 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
           // SCENARIO 3: SESSION DELETED / ENDED
           if (!snap.exists) {
             _sessionSub?.cancel();
-            _annotationsSub?.cancel(); // CANCEL INSTANTLY SO SCREEN DOES NOT WIPE
+            _annotationsSub
+                ?.cancel(); // CANCEL INSTANTLY SO SCREEN DOES NOT WIPE
             _sessionSub = null;
             _annotationsSub = null;
             _currentListeningCode = null;
@@ -280,8 +313,11 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
           }
 
           final data = snap.data()!;
-          final kicked = (data['kicked_usernames'] as List?)?.cast<String>() ?? [];
-          final isPurge = data['notesPurgeFor'] == user.username; // Assuming this flag exists
+          final kicked =
+              (data['kicked_usernames'] as List?)?.cast<String>() ?? [];
+          final isPurge =
+              data['notesPurgeFor'] ==
+              user.username; // Assuming this flag exists
 
           // SCENARIO 1 & 2: KICKED (WITH OR WITHOUT PURGE)
           if (kicked.contains(user.username)) {
@@ -296,8 +332,12 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
             if (isPurge) {
               final pdf = app.activePdf;
               if (pdf != null) {
-                pdf.highlights.removeWhere((h) => h.createdBy != null && h.createdBy != user.username);
-                pdf.comments.removeWhere((c) => c.createdBy != null && c.createdBy != user.username);
+                pdf.highlights.removeWhere(
+                  (h) => h.createdBy != null && h.createdBy != user.username,
+                );
+                pdf.comments.removeWhere(
+                  (c) => c.createdBy != null && c.createdBy != user.username,
+                );
                 app.saveStateNow(); // Flush to disk immediately
               }
             }
@@ -411,9 +451,9 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         SchedulerBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('فشل التزامن: $e')),
-            );
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text('فشل التزامن: $e')));
           }
         });
       }
@@ -826,6 +866,13 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                                   width: 200,
                                                   child: TextField(
                                                     autofocus: true,
+                                                    contextMenuBuilder:
+                                                        (
+                                                          context,
+                                                          editableTextState,
+                                                        ) {
+                                                          return const SizedBox.shrink();
+                                                        },
                                                     decoration:
                                                         const InputDecoration(
                                                           hintText: 'بحث...',
@@ -1008,107 +1055,210 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                         _textSelection != null)
                                       Positioned(
                                         bottom: 32,
-                                        left: 0,
-                                        right: 0,
-                                        child: GestureDetector(
-                                          behavior: HitTestBehavior.opaque,
-                                          onTap:
-                                              () {}, // Absorb taps — stop bleed-through to pdfrx
-                                          child: Center(
-                                            child: Container(
-                                              decoration: BoxDecoration(
-                                                color: Colors.white,
-                                                borderRadius:
-                                                    BorderRadius.circular(12),
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    color: Colors.black
-                                                        .withValues(alpha: 0.1),
-                                                    blurRadius: 10,
-                                                    offset: const Offset(0, 4),
-                                                  ),
-                                                ],
+                                        left: 20,
+                                        right: 20,
+                                        child: Center(
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(
+                                              20,
+                                            ),
+                                            child: BackdropFilter(
+                                              filter: ImageFilter.blur(
+                                                sigmaX: 12,
+                                                sigmaY: 12,
                                               ),
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 16,
-                                                    vertical: 8,
+                                              child: Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 12,
+                                                      vertical: 8,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: isDarkMode
+                                                      ? Colors.black54
+                                                      : Colors.white70,
+                                                  borderRadius:
+                                                      BorderRadius.circular(20),
+                                                  border: Border.all(
+                                                    color: isDarkMode
+                                                        ? Colors.white10
+                                                        : Colors.black12,
                                                   ),
-                                              child: Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  ...[
-                                                    const Color(
-                                                      0xFFFBEA7A,
-                                                    ), // Apple Books Yellow
-                                                    const Color(
-                                                      0xFFA4D376,
-                                                    ), // Apple Books Green
-                                                    const Color(
-                                                      0xFF84C0F2,
-                                                    ), // Apple Books Blue
-                                                    const Color(
-                                                      0xFFF59EB9,
-                                                    ), // Apple Books Pink
-                                                    const Color(
-                                                      0xFFC9A6D8,
-                                                    ), // Apple Books Purple
-                                                  ].map(
-                                                    (c) => GestureDetector(
-                                                      onTap: () =>
-                                                          _addTextHighlight(c),
-                                                      child: Container(
-                                                        width: 24,
-                                                        height: 24,
-                                                        margin:
-                                                            const EdgeInsets.only(
-                                                              right: 12,
-                                                            ),
-                                                        decoration: BoxDecoration(
-                                                          color: c,
-                                                          shape:
-                                                              BoxShape.circle,
-                                                          border: Border.all(
-                                                            color: const Color(
-                                                              0xFFE2E8F0,
-                                                            ),
-                                                            width: 1,
+                                                ),
+                                                child: Row(
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
+                                                  children: [
+                                                    IconButton(
+                                                      icon: const Icon(
+                                                        LucideIcons.copy,
+                                                        size: 20,
+                                                      ),
+                                                      onPressed: () async {
+                                                        final text =
+                                                            await _textSelection!
+                                                                .getSelectedText();
+                                                        await Clipboard.setData(
+                                                          ClipboardData(
+                                                            text: text,
                                                           ),
+                                                        );
+                                                        _clearCurrentTextSelection();
+                                                      },
+                                                      tooltip: 'نسخ',
+                                                    ),
+                                                    IconButton(
+                                                      icon: _isTranslating
+                                                          ? const SizedBox(
+                                                              width: 20,
+                                                              height: 20,
+                                                              child:
+                                                                  CircularProgressIndicator(
+                                                                    strokeWidth:
+                                                                        2,
+                                                                  ),
+                                                            )
+                                                          : const Icon(
+                                                              LucideIcons
+                                                                  .languages,
+                                                              size: 20,
+                                                            ),
+                                                      onPressed:
+                                                          _handleTranslate,
+                                                      tooltip: 'ترجمة',
+                                                    ),
+                                                    Container(
+                                                      width: 1,
+                                                      height: 24,
+                                                      color: isDarkMode
+                                                          ? Colors.white10
+                                                          : Colors.black12,
+                                                      margin:
+                                                          const EdgeInsets.symmetric(
+                                                            horizontal: 8,
+                                                          ),
+                                                    ),
+                                                    ...[
+                                                      const Color(0xFFFBEA7A),
+                                                      const Color(0xFFA4D376),
+                                                      const Color(0xFF84C0F2),
+                                                      const Color(0xFFF59EB9),
+                                                      const Color(0xFFC9A6D8),
+                                                    ].map(
+                                                      (c) => GestureDetector(
+                                                        onTap: () =>
+                                                            _addTextHighlight(
+                                                              c,
+                                                            ),
+                                                        child: Container(
+                                                          width: 24,
+                                                          height: 24,
+                                                          margin:
+                                                              const EdgeInsets.symmetric(
+                                                                horizontal: 6,
+                                                              ),
+                                                          decoration:
+                                                              BoxDecoration(
+                                                                color: c,
+                                                                shape: BoxShape
+                                                                    .circle,
+                                                                border: Border.all(
+                                                                  color: Colors
+                                                                      .white24,
+                                                                  width: 2,
+                                                                ),
+                                                              ),
                                                         ),
                                                       ),
                                                     ),
-                                                  ),
-                                                  Container(
-                                                    width: 1,
-                                                    height: 24,
-                                                    color: const Color(
-                                                      0xFFE2E8F0,
+                                                    Container(
+                                                      width: 1,
+                                                      height: 24,
+                                                      color: isDarkMode
+                                                          ? Colors.white10
+                                                          : Colors.black12,
+                                                      margin:
+                                                          const EdgeInsets.symmetric(
+                                                            horizontal: 8,
+                                                          ),
                                                     ),
-                                                    margin:
-                                                        const EdgeInsets.only(
-                                                          right: 8,
-                                                        ),
-                                                  ),
-                                                  IconButton(
-                                                    icon: const Icon(
-                                                      LucideIcons.x,
-                                                      size: 20,
+                                                    IconButton(
+                                                      icon: const Icon(
+                                                        LucideIcons.x,
+                                                        size: 20,
+                                                      ),
+                                                      onPressed: () =>
+                                                          _clearCurrentTextSelection(),
+                                                      tooltip: 'إغلاق',
                                                     ),
-                                                    onPressed: () {
-                                                      _clearCurrentTextSelection();
-                                                    },
-                                                    tooltip: 'مسح التحديد',
-                                                    color: const Color(
-                                                      0xFF64748B,
-                                                    ),
-                                                    padding: EdgeInsets.zero,
-                                                    constraints:
-                                                        const BoxConstraints(
-                                                          minWidth: 32,
-                                                          minHeight: 32,
-                                                        ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+
+                                    // Floating Translation Result UI
+                                    if (_translatedText != null)
+                                      Positioned(
+                                        bottom: 110,
+                                        left: 20,
+                                        right: 20,
+                                        child: Center(
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(
+                                              20,
+                                            ),
+                                            child: BackdropFilter(
+                                              filter: ImageFilter.blur(
+                                                sigmaX: 10,
+                                                sigmaY: 10,
+                                              ),
+                                              child: Container(
+                                                padding: const EdgeInsets.all(
+                                                  16,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: isDarkMode
+                                                      ? Colors.black54
+                                                      : Colors.white70,
+                                                  borderRadius:
+                                                      BorderRadius.circular(20),
+                                                  border: Border.all(
+                                                    color: isDarkMode
+                                                        ? Colors.white10
+                                                        : Colors.black12,
                                                   ),
-                                                ],
+                                                ),
+                                                child: Column(
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
+                                                  children: [
+                                                    Text(
+                                                      _translatedText!,
+                                                      style: TextStyle(
+                                                        fontSize: 14,
+                                                        color: isDarkMode
+                                                            ? Colors.white
+                                                            : Colors.black,
+                                                      ),
+                                                      textAlign:
+                                                          TextAlign.center,
+                                                    ),
+                                                    const SizedBox(height: 8),
+                                                    IconButton(
+                                                      icon: const Icon(
+                                                        LucideIcons.x,
+                                                        size: 16,
+                                                      ),
+                                                      onPressed: () => setState(
+                                                        () => _translatedText =
+                                                            null,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
                                               ),
                                             ),
                                           ),
@@ -1310,85 +1460,85 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                       // 3. Right Panel (Side-by-Side)
                       if (_isRightPanelOpen)
                         StudyFlowRightPanel(
-                            isSettingsMode: _isSettingsMode,
-                            activeTool: panelTool,
-                            activeColor: _colorForTool(panelTool),
-                            strokeWidth: _toolStrokeWidths[panelTool] ?? 2.0,
-                            fontSize: _fontSize,
-                            fontFamily: _textFontFamily,
-                            fontOptions: const [
-                              'Segoe UI',
-                              'Times New Roman',
-                              'Tahoma',
-                              'Arial',
-                              'Noto Naskh Arabic',
-                              'Noto Sans Arabic',
-                              'Amiri',
-                            ],
-                            isBold: _isBold,
-                            activeTabIndex: _rightPanelTabIndex,
-                            isDarkMode: isDarkMode,
-                            activePdf: pdf,
-                            pdfController: _pdfController,
-                            selectedHighlightId: _selectedHighlightId,
-                            onToolChanged: (t) => _activateTool(t),
-                            onColorChanged: _onColorChanged,
-                            onStrokeWidthChanged: _onStrokeWidthChanged,
-                            onFontSizeChanged: (v) {
-                              setState(() => _fontSize = v);
-                              if (_tool == ToolType.text)
+                          isSettingsMode: _isSettingsMode,
+                          activeTool: panelTool,
+                          activeColor: _colorForTool(panelTool),
+                          strokeWidth: _toolStrokeWidths[panelTool] ?? 2.0,
+                          fontSize: _fontSize,
+                          fontFamily: _textFontFamily,
+                          fontOptions: const [
+                            'Segoe UI',
+                            'Times New Roman',
+                            'Tahoma',
+                            'Arial',
+                            'Noto Naskh Arabic',
+                            'Noto Sans Arabic',
+                            'Amiri',
+                          ],
+                          isBold: _isBold,
+                          activeTabIndex: _rightPanelTabIndex,
+                          isDarkMode: isDarkMode,
+                          activePdf: pdf,
+                          pdfController: _pdfController,
+                          selectedHighlightId: _selectedHighlightId,
+                          onToolChanged: (t) => _activateTool(t),
+                          onColorChanged: _onColorChanged,
+                          onStrokeWidthChanged: _onStrokeWidthChanged,
+                          onFontSizeChanged: (v) {
+                            setState(() => _fontSize = v);
+                            if (_tool == ToolType.text)
+                              _updateCurrentEditingText();
+                          },
+                          onFontFamilyChanged: (family) {
+                            setState(() => _textFontFamily = family);
+                            if (_tool == ToolType.text)
+                              _updateCurrentEditingText();
+                          },
+                          onBoldChanged: (v) {
+                            setState(() => _isBold = v);
+                            if (_tool == ToolType.text)
+                              _updateCurrentEditingText();
+                          },
+                          isLatex: _isLatex,
+                          onLatexChanged: (v) {
+                            setState(() => _isLatex = v);
+                            if (_tool == ToolType.text)
+                              _updateCurrentEditingText();
+                          },
+                          showBorder: _showBorder,
+                          borderColor: _borderColor,
+                          bgColor: panelTool == ToolType.text
+                              ? _textBgColor
+                              : _shapeFillColor,
+                          onShowBorderChanged: (v) {
+                            setState(() => _showBorder = v);
+                            if (_tool == ToolType.text)
+                              _updateCurrentEditingText();
+                          },
+                          onBorderColorChanged: (c) {
+                            setState(() => _borderColor = c);
+                            if (_tool == ToolType.text)
+                              _updateCurrentEditingText();
+                          },
+                          onBgColorChanged: (c) {
+                            setState(() {
+                              if (_tool == ToolType.text) {
+                                _textBgColor = c;
                                 _updateCurrentEditingText();
-                            },
-                            onFontFamilyChanged: (family) {
-                              setState(() => _textFontFamily = family);
-                              if (_tool == ToolType.text)
-                                _updateCurrentEditingText();
-                            },
-                            onBoldChanged: (v) {
-                              setState(() => _isBold = v);
-                              if (_tool == ToolType.text)
-                                _updateCurrentEditingText();
-                            },
-                            isLatex: _isLatex,
-                            onLatexChanged: (v) {
-                              setState(() => _isLatex = v);
-                              if (_tool == ToolType.text)
-                                _updateCurrentEditingText();
-                            },
-                            showBorder: _showBorder,
-                            borderColor: _borderColor,
-                            bgColor: panelTool == ToolType.text
-                                ? _textBgColor
-                                : _shapeFillColor,
-                            onShowBorderChanged: (v) {
-                              setState(() => _showBorder = v);
-                              if (_tool == ToolType.text)
-                                _updateCurrentEditingText();
-                            },
-                            onBorderColorChanged: (c) {
-                              setState(() => _borderColor = c);
-                              if (_tool == ToolType.text)
-                                _updateCurrentEditingText();
-                            },
-                            onBgColorChanged: (c) {
-                              setState(() {
-                                if (_tool == ToolType.text) {
-                                  _textBgColor = c;
-                                  _updateCurrentEditingText();
-                                } else if (_tool == ToolType.rectangle ||
-                                    _tool == ToolType.circle) {
-                                  _shapeFillColor = c;
-                                }
-                              });
-                            },
-                            onTabChanged: (i) =>
-                                setState(() => _rightPanelTabIndex = i),
-                            onAiChatHoverChanged: _setAiChatPointerHover,
-                            onAddPage: (pdf) => _addPage(pdf),
-                            onDeletePage: (pdf) => _deleteCurrentPage(pdf),
-                            onPrint: (pdf) => _showPrintDialog(pdf),
-                            onToggleDarkMode: () => app.toggleDarkMode(),
-                          ),
+                              } else if (_tool == ToolType.rectangle ||
+                                  _tool == ToolType.circle) {
+                                _shapeFillColor = c;
+                              }
+                            });
+                          },
+                          onTabChanged: (i) =>
+                              setState(() => _rightPanelTabIndex = i),
+                          onAiChatHoverChanged: _setAiChatPointerHover,
+                          onAddPage: (pdf) => _addPage(pdf),
+                          onDeletePage: (pdf) => _deleteCurrentPage(pdf),
+                          onPrint: (pdf) => _showPrintDialog(pdf),
+                          onToggleDarkMode: () => app.toggleDarkMode(),
+                        ),
                     ],
                   ),
                 ),
@@ -1566,66 +1716,78 @@ class TextFormattingToolbar extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-              IconButton(
-                icon: Icon(LucideIcons.minus, size: 20, color: iconColor),
-                onPressed: onDecreaseFont,
-                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                padding: EdgeInsets.zero,
-                tooltip: 'تصغير الخط',
-              ),
-              SizedBox(
-                width: 32,
-                child: Text(
-                  fontSize.toInt().toString(),
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: isDarkMode ? Colors.white : Colors.black87,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
+                IconButton(
+                  icon: Icon(LucideIcons.minus, size: 20, color: iconColor),
+                  onPressed: onDecreaseFont,
+                  constraints: const BoxConstraints(
+                    minWidth: 36,
+                    minHeight: 36,
+                  ),
+                  padding: EdgeInsets.zero,
+                  tooltip: 'تصغير الخط',
+                ),
+                SizedBox(
+                  width: 32,
+                  child: Text(
+                    fontSize.toInt().toString(),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: isDarkMode ? Colors.white : Colors.black87,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
                   ),
                 ),
-              ),
-              IconButton(
-                icon: Icon(LucideIcons.plus, size: 20, color: iconColor),
-                onPressed: onIncreaseFont,
-                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                padding: EdgeInsets.zero,
-                tooltip: 'تكبير الخط',
-              ),
-              Container(
-                width: 1,
-                height: 24,
-                color: borderColor,
-                margin: const EdgeInsets.symmetric(horizontal: 8),
-              ),
-              IconButton(
-                icon: Icon(
-                  Icons.functions,
-                  size: 22,
-                  color: isLatex ? activeColor : iconColor,
+                IconButton(
+                  icon: Icon(LucideIcons.plus, size: 20, color: iconColor),
+                  onPressed: onIncreaseFont,
+                  constraints: const BoxConstraints(
+                    minWidth: 36,
+                    minHeight: 36,
+                  ),
+                  padding: EdgeInsets.zero,
+                  tooltip: 'تكبير الخط',
                 ),
-                onPressed: () => onToggleLatex(!isLatex),
-                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                padding: EdgeInsets.zero,
-                tooltip: 'معادلة رياضية (LaTeX)',
-              ),
-              Container(
-                width: 1,
-                height: 24,
-                color: borderColor,
-                margin: const EdgeInsets.symmetric(horizontal: 8),
-              ),
-              IconButton(
-                icon: Icon(
-                  showBorder ? Icons.border_outer : Icons.border_clear,
-                  size: 22,
-                  color: showBorder ? activeColor : iconColor,
+                Container(
+                  width: 1,
+                  height: 24,
+                  color: borderColor,
+                  margin: const EdgeInsets.symmetric(horizontal: 8),
                 ),
-                onPressed: () => onToggleBorder(!showBorder),
-                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                padding: EdgeInsets.zero,
-                tooltip: 'إظهار/إخفاء الإطار',
-              ),
+                IconButton(
+                  icon: Icon(
+                    Icons.functions,
+                    size: 22,
+                    color: isLatex ? activeColor : iconColor,
+                  ),
+                  onPressed: () => onToggleLatex(!isLatex),
+                  constraints: const BoxConstraints(
+                    minWidth: 36,
+                    minHeight: 36,
+                  ),
+                  padding: EdgeInsets.zero,
+                  tooltip: 'معادلة رياضية (LaTeX)',
+                ),
+                Container(
+                  width: 1,
+                  height: 24,
+                  color: borderColor,
+                  margin: const EdgeInsets.symmetric(horizontal: 8),
+                ),
+                IconButton(
+                  icon: Icon(
+                    showBorder ? Icons.border_outer : Icons.border_clear,
+                    size: 22,
+                    color: showBorder ? activeColor : iconColor,
+                  ),
+                  onPressed: () => onToggleBorder(!showBorder),
+                  constraints: const BoxConstraints(
+                    minWidth: 36,
+                    minHeight: 36,
+                  ),
+                  padding: EdgeInsets.zero,
+                  tooltip: 'إظهار/إخفاء الإطار',
+                ),
               ],
             ),
           ),

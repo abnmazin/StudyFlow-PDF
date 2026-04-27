@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
+import 'package:lucide_icons/lucide_icons.dart';
+import 'package:math_expressions/math_expressions.dart';
 
 class DraggableTextWidget extends StatefulWidget {
   final String commentId;
@@ -131,6 +133,68 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
     super.dispose();
   }
 
+  void _tryAutoSolveLatex(String currentText) {
+    if (!widget.isLatex) return;
+    if (!currentText.endsWith('=')) return;
+
+    // Extract the equation before the '='
+    String rawEquation = currentText.substring(0, currentText.length - 1).trim();
+
+    // Clean LaTeX formatting into a standard math expression using Regex
+    String cleanEq = rawEquation;
+    cleanEq = cleanEq.replaceAllMapped(RegExp(r'\\frac{([^}]+)}{([^}]+)}'), (m) => '(${m[1]})/(${m[2]})');
+    cleanEq = cleanEq.replaceAll(RegExp(r'\\times'), '*');
+    cleanEq = cleanEq.replaceAll(RegExp(r'\\div'), '/');
+    cleanEq = cleanEq.replaceAllMapped(RegExp(r'\\sqrt{([^}]+)}'), (m) => 'sqrt(${m[1]})');
+    cleanEq = cleanEq.replaceAll(RegExp(r'\\left\('), '(');
+    cleanEq = cleanEq.replaceAll(RegExp(r'\\right\)'), ')');
+    cleanEq = cleanEq.replaceAll(' ', ''); // remove spaces
+
+    try {
+      Parser p = Parser();
+      Expression exp = p.parse(cleanEq);
+      ContextModel cm = ContextModel();
+      double eval = exp.evaluate(EvaluationType.REAL, cm);
+
+      // Format result (remove trailing .0 for integers)
+      String resultStr = eval.toString();
+      if (resultStr.endsWith('.0')) {
+        resultStr = resultStr.substring(0, resultStr.length - 2);
+      }
+
+      // Auto-append the result to the controller
+      final newText = '$currentText $resultStr';
+      _textController.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection.collapsed(offset: newText.length),
+      );
+    } catch (e) {
+      // Not a mathematically solvable equation (e.g., contains variables or text)
+      // Do nothing, just leave the '=' there.
+      return;
+    }
+  }
+
+  void _insertAtCursor(String code) {
+    final ctrl = _textController;
+    final selection = ctrl.selection;
+
+    // إذا لم يكن هناك cursor، أضف للنهاية
+    final base = selection.baseOffset < 0
+        ? ctrl.text.length
+        : selection.baseOffset.clamp(0, ctrl.text.length);
+    final extent = selection.extentOffset < 0
+        ? ctrl.text.length
+        : selection.extentOffset.clamp(0, ctrl.text.length);
+
+    final newText = ctrl.text.replaceRange(base, extent, code);
+
+    ctrl.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: base + code.length),
+    );
+  }
+
   // ✅ هذا هو الإصلاح: تصفير الإزاحة عند تحديث الودجت من الخارج
   @override
   void didUpdateWidget(DraggableTextWidget oldWidget) {
@@ -172,11 +236,11 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
     final editingIsArabic = _containsArabic(_textController.text);
     final displayIsArabic = _containsArabic(widget.content);
     final editingDirection = widget.isLatex
-      ? TextDirection.ltr
-      : _plainTextDirection(_textController.text);
+        ? TextDirection.ltr
+        : _plainTextDirection(_textController.text);
     final displayDirection = widget.isLatex
-      ? TextDirection.ltr
-      : _plainTextDirection(widget.content);
+        ? TextDirection.ltr
+        : _plainTextDirection(widget.content);
 
     final sharedStyle = TextStyle(
       color: widget.color,
@@ -199,74 +263,179 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
           : _plainTextFontFamily(_textController.text),
     );
     final displayStyle = sharedStyle.copyWith(
-      fontFamily: widget.isLatex ? widget.fontFamily : _plainTextFontFamily(widget.content),
+      fontFamily: widget.isLatex
+          ? widget.fontFamily
+          : _plainTextFontFamily(widget.content),
     );
 
     // تجهيز المحتوى (حقل تعديل أو نص عرض)
     Widget contentWidget;
 
     if (widget.isEditing) {
-      // ── وضع التعديل: حقل نص مضمّن ──────────────────────────────────────
-      contentWidget = Directionality(
-        textDirection: editingDirection,
-        child: IntrinsicWidth(
-          child: TapRegion(
-            groupId: 'text_editing_region',
-            onTapOutside: (event) {
-              widget.onEditComplete(_textController.text, event);
-            },
-            child: Focus(
-              onKeyEvent: (node, event) {
-                if (event.logicalKey == LogicalKeyboardKey.space) {
-                  return KeyEventResult.skipRemainingHandlers;
-                }
+      // ── وضع التعديل: حقل نص مضمّن مع معاينة حية للـ LaTeX ────────────────────────
+      contentWidget = TapRegion(
+        groupId: 'text_editing_region',
+        onTapOutside: (event) {
+          widget.onEditComplete(_textController.text, event);
+        },
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            if (widget.isLatex)
+              ValueListenableBuilder<TextEditingValue>(
+                valueListenable: _textController,
+                builder: (context, value, child) {
+                  if (value.text.trim().isEmpty) return const SizedBox.shrink();
+                  final isDark =
+                      Theme.of(context).brightness == Brightness.dark;
 
-                // Keep arrow keys inside the text editor and stop viewer-level
-                // handlers from hijacking navigation.
-                if (event.logicalKey == LogicalKeyboardKey.arrowLeft ||
-                    event.logicalKey == LogicalKeyboardKey.arrowRight ||
-                    event.logicalKey == LogicalKeyboardKey.arrowUp ||
-                    event.logicalKey == LogicalKeyboardKey.arrowDown ||
-                    event.logicalKey == LogicalKeyboardKey.home ||
-                    event.logicalKey == LogicalKeyboardKey.end) {
-                  return KeyEventResult.skipRemainingHandlers;
-                }
-
-                return KeyEventResult.ignored;
-              },
-              child: TextField(
-                controller: _textController,
-                focusNode: _focusNode,
-                autofocus: true,
-                maxLines: null,
-                minLines: 1,
-                style: editingStyle,
-                textDirection: editingDirection,
-                textAlign: editingDirection == TextDirection.rtl
-                    ? TextAlign.right
-                    : TextAlign.left,
-                decoration: const InputDecoration(
-                  border: InputBorder.none,
-                  isDense: true,
-                  contentPadding: EdgeInsets.zero,
-                ),
-                onChanged: (_) {
-                  // Re-evaluate direction while typing so mixed-language text feels natural.
-                  setState(() {});
-                },
-                onSubmitted: (value) {
-                  widget.onEditComplete(value, null);
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 14),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: isDark
+                            ? [
+                                const Color(0xFF1E293B).withValues(alpha: 0.9),
+                                const Color(0xFF0F172A).withValues(alpha: 0.95),
+                              ]
+                            : [
+                                const Color(0xFFF8FAFC),
+                                const Color(0xFFFFFFFF),
+                              ],
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: const Color(0xFF3B82F6).withValues(alpha: 0.4),
+                        width: 1.5,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.15),
+                          blurRadius: 15,
+                          offset: const Offset(0, 6),
+                        ),
+                        BoxShadow(
+                          color: const Color(0xFF3B82F6).withValues(alpha: 0.1),
+                          blurRadius: 4,
+                          spreadRadius: -2,
+                        ),
+                      ],
+                    ),
+                    child: Directionality(
+                      textDirection: TextDirection.ltr,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Math.tex(
+                            value.text,
+                            textStyle: TextStyle(
+                              fontSize: 20,
+                              color: isDark
+                                  ? const Color(0xFFF1F5F9)
+                                  : const Color(0xFF1E293B),
+                              fontWeight: FontWeight.w500,
+                            ),
+                            onErrorFallback: (err) => Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  LucideIcons.alertCircle,
+                                  color: Color(0xFFEF4444),
+                                  size: 14,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'خطأ في الكود',
+                                  style: TextStyle(
+                                    color: const Color(0xFFEF4444),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
                 },
               ),
+            Directionality(
+              textDirection: editingDirection,
+              child: IntrinsicWidth(
+                child: Focus(
+                  onKeyEvent: (node, event) {
+                    if (event.logicalKey == LogicalKeyboardKey.space) {
+                      return KeyEventResult.skipRemainingHandlers;
+                    }
+
+                    // Keep arrow keys inside the text editor and stop viewer-level
+                    // handlers from hijacking navigation.
+                    if (event.logicalKey == LogicalKeyboardKey.arrowLeft ||
+                        event.logicalKey == LogicalKeyboardKey.arrowRight ||
+                        event.logicalKey == LogicalKeyboardKey.arrowUp ||
+                        event.logicalKey == LogicalKeyboardKey.arrowDown ||
+                        event.logicalKey == LogicalKeyboardKey.home ||
+                        event.logicalKey == LogicalKeyboardKey.end) {
+                      return KeyEventResult.skipRemainingHandlers;
+                    }
+
+                    return KeyEventResult.ignored;
+                  },
+                  child: TextField(
+                    controller: _textController,
+                    focusNode: _focusNode,
+                    autofocus: true,
+                    maxLines: null,
+                    minLines: 1,
+                    style: editingStyle,
+                    textDirection: editingDirection,
+                    textAlign: editingDirection == TextDirection.rtl
+                        ? TextAlign.right
+                        : TextAlign.left,
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    onChanged: (val) {
+                      _tryAutoSolveLatex(val);
+                      // Re-evaluate direction while typing so mixed-language text feels natural.
+                      setState(() {});
+                    },
+                    onSubmitted: (value) {
+                      widget.onEditComplete(value, null);
+                    },
+                  ),
+                ),
+              ),
             ),
-          ),
+            if (widget.isLatex)
+              _MathToolbar(
+                onInsert: (code) {
+                  _insertAtCursor(code);
+                  _focusNode.requestFocus();
+                },
+              ),
+          ],
         ),
       );
     } else if (widget.isLatex) {
       // ── وضع العرض: لاتيكس ────────────────────────────────────────────────
       contentWidget = Directionality(
         textDirection: TextDirection.ltr,
-        child: Math.tex(widget.content, textStyle: sharedStyle.copyWith(fontFamily: widget.fontFamily)),
+        child: Math.tex(
+          widget.content,
+          textStyle: sharedStyle.copyWith(fontFamily: widget.fontFamily),
+        ),
       );
     } else {
       // ── وضع العرض: نص عادي ───────────────────────────────────────────────
@@ -327,6 +496,97 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
             borderRadius: BorderRadius.circular(4),
           ),
           child: contentWidget,
+        ),
+      ),
+    );
+  }
+}
+
+class _MathSymbol {
+  final String label;
+  final String code;
+  final String? tooltip;
+  const _MathSymbol({required this.label, required this.code, this.tooltip});
+}
+
+const _basicSymbols = [
+  _MathSymbol(label: 'x/y', code: r'\frac{x}{y}', tooltip: 'كسر'),
+  _MathSymbol(label: '√x', code: r'\sqrt{x}', tooltip: 'جذر تربيعي'),
+  _MathSymbol(label: 'ⁿ√x', code: r'\sqrt[n]{x}', tooltip: 'جذر n'),
+  _MathSymbol(label: '( )', code: r'\left(  \right)', tooltip: 'أقواس'),
+  _MathSymbol(label: '∑', code: r'\sum_{i=1}^{n}', tooltip: 'مجموع'),
+  _MathSymbol(label: '∞', code: r'\infty', tooltip: 'مالانهاية'),
+];
+
+class _MathToolbar extends StatelessWidget {
+  final void Function(String code) onInsert;
+
+  const _MathToolbar({required this.onInsert});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tabBg = isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9);
+    final tabBorder = isDark
+        ? const Color(0xFF334155)
+        : const Color(0xFFCBD5E1);
+    final chipBg = isDark ? const Color(0xFF0F172A) : Colors.white;
+
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+      decoration: BoxDecoration(
+        color: tabBg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: tabBorder),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        child: Row(
+          children: _basicSymbols.map((sym) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Tooltip(
+                message: sym.tooltip ?? sym.code,
+                child: Material(
+                  color: chipBg,
+                  borderRadius: BorderRadius.circular(8),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: () => onInsert(sym.code),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: tabBorder),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Directionality(
+                        textDirection: TextDirection.ltr,
+                        child: Math.tex(
+                          sym.label,
+                          textStyle: TextStyle(
+                            fontSize: 16,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                          onErrorFallback: (_) => Text(
+                            sym.label,
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: isDark ? Colors.white : Colors.black87,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
         ),
       ),
     );

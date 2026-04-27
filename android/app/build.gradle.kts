@@ -3,6 +3,7 @@ plugins {
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -41,4 +42,20 @@ android {
 
 flutter {
     source = "../.."
+}
+
+// WORKAROUND: Inject missing namespace into isar_flutter_libs to satisfy AGP 8.x
+gradle.projectsEvaluated {
+    project.rootProject.subprojects {
+        if (name == "isar_flutter_libs") {
+            val extension = extensions.findByName("android")
+            if (extension != null) {
+                val namespaceMethod = extension.javaClass.methods.find { it.name == "namespace" }
+                if (namespaceMethod != null) {
+                    namespaceMethod.invoke(extension, "dev.isar.isar_flutter_libs")
+                    println("Applied namespace to isar_flutter_libs successfully")
+                }
+            }
+        }
+    }
 }

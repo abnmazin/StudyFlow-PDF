@@ -12,6 +12,8 @@ class DefaultFirebaseOptions {
     }
 
     switch (defaultTargetPlatform) {
+      case TargetPlatform.android:
+        return android;
       case TargetPlatform.windows:
         return windows;
       default:
@@ -20,6 +22,16 @@ class DefaultFirebaseOptions {
         );
     }
   }
+
+  static FirebaseOptions get android => FirebaseOptions(
+    apiKey: _require('FIREBASE_API_KEY'),
+    appId: _require('FIREBASE_APP_ID_ANDROID'),
+    projectId: _require('FIREBASE_PROJECT_ID'),
+    messagingSenderId: _optional(
+      'FIREBASE_MESSAGING_SENDER_ID',
+      '288519312647',
+    ),
+  );
 
   static FirebaseOptions get windows => FirebaseOptions(
     apiKey: _require('FIREBASE_API_KEY'),

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../providers/app_state.dart';
 import '../models/models.dart';
+import '../utils/responsive_utils.dart';
 
 class Sidebar extends StatefulWidget {
   const Sidebar({super.key});
@@ -107,7 +108,9 @@ class _SidebarState extends State<Sidebar> {
         final classes = data.classes;
         final isCollapsed = data.isCollapsed;
 
-        final isMobile = MediaQuery.of(context).size.width < 768;
+        final screenWidth = MediaQuery.sizeOf(context).width;
+        final isMobile = ResponsiveBreakpoints.isMobile(screenWidth);
+        final sidebarWidth = ResponsiveBreakpoints.sidebarWidth(screenWidth);
         final scheme = Theme.of(context).colorScheme;
         final sidebarBg = isDarkMode ? const Color(0xFF0F172A) : scheme.surface;
         final separatorColor = isDarkMode
@@ -121,7 +124,7 @@ class _SidebarState extends State<Sidebar> {
             : scheme.onSurfaceVariant;
 
         return Container(
-          width: 288, // w-72
+          width: sidebarWidth,
           decoration: BoxDecoration(
             color: sidebarBg,
             border: Border(right: BorderSide(color: separatorColor, width: 1)),
@@ -140,23 +143,30 @@ class _SidebarState extends State<Sidebar> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      children: [
-                        const Icon(
-                          LucideIcons.book,
-                          color: Color(0xFF60A5FA),
-                          size: 24,
-                        ),
-                        SizedBox(width: 8),
-                        Text(
-                          'StudyFlow PDF',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: textPrimary,
+                    Expanded(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            LucideIcons.book,
+                            color: Color(0xFF60A5FA),
+                            size: 24,
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              'StudyFlow PDF',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: isMobile ? 17 : 20,
+                                fontWeight: FontWeight.bold,
+                                color: textPrimary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                     Row(
                       children: [

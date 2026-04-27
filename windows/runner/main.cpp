@@ -13,6 +13,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     CreateAndAttachConsole();
   }
 
+  HANDLE hMutex = CreateMutex(NULL, TRUE, L"StudyFlow_PDF_SingleInstance_Mutex");
+  const bool isSecondaryInstance = (GetLastError() == ERROR_ALREADY_EXISTS);
+
   // Initialize COM, so that it is available for use in the library and/or
   // plugins.
   ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
@@ -27,8 +30,21 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(1280, 720);
+  window.SetIsPrimaryInstance(!isSecondaryInstance);
   if (!window.Create(L"StudyFlow PDF", origin, size)) {
+    if (!isSecondaryInstance && hMutex != NULL) {
+      ReleaseMutex(hMutex);
+      CloseHandle(hMutex);
+    }
     return EXIT_FAILURE;
+  }
+  if (isSecondaryInstance) {
+    window.mutex_handle_ = NULL;
+    if (hMutex != NULL) {
+      CloseHandle(hMutex);
+    }
+  } else {
+    window.mutex_handle_ = hMutex;
   }
   window.SetQuitOnClose(true);
 

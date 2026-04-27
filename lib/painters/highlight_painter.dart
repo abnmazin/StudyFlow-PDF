@@ -40,7 +40,8 @@ class HighlightPainter extends CustomPainter {
         ..color = h.color
         ..style = PaintingStyle.stroke
         ..strokeWidth = h.strokeWidth
-        ..strokeCap = StrokeCap.round;
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round;
 
       if (h.type == HighlightType.pen) {
         // For freehand drawing, use round joins for smooth curves
@@ -60,12 +61,21 @@ class HighlightPainter extends CustomPainter {
           h.type == HighlightType.text) {
         final highlightPaint = Paint()
           ..style = PaintingStyle.fill
-          ..color = h.color.withOpacity(0.45);
+          ..color = h.color.withOpacity(0.35);
         if (h.rects != null && h.rects!.isNotEmpty) {
-          for (final rect in h.rects!) canvas.drawRect(rect, highlightPaint);
+          for (final rect in h.rects!) {
+            // Use a capsule-like radius so highlight ends feel circular.
+            final circularRadius = Radius.circular(
+              (rect.height * 0.5).clamp(4.0, 18.0),
+            );
+            canvas.drawRRect(
+              RRect.fromRectAndRadius(rect, circularRadius),
+              highlightPaint,
+            );
+          }
         } else if (h.path.length >= 2) {
           final strokePaint = Paint()
-            ..color = h.color.withOpacity(0.55)
+            ..color = h.color.withOpacity(0.35)
             ..style = PaintingStyle.stroke
             ..strokeWidth = h.strokeWidth * 1.4
             ..strokeCap = StrokeCap.round
@@ -184,9 +194,9 @@ class HighlightPainter extends CustomPainter {
     final angle = math.atan2(dy, dx);
     final distance = math.sqrt(dx * dx + dy * dy);
 
-    final arrowLength = 20.0 + (paint.strokeWidth * 2);
+    final arrowLength = paint.strokeWidth * 5.0;
     final effectiveArrowLength = math.min(arrowLength, distance * 0.6);
-    final arrowWidth = effectiveArrowLength * 0.35;
+    final arrowWidth = paint.strokeWidth * 2.0;
 
     final arrowBase = Offset(
       p2.dx - effectiveArrowLength * math.cos(angle),

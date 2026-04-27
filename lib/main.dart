@@ -15,14 +15,17 @@ import 'widgets/sidebar_w.dart';
 import 'widgets/pdf_viewer_widget_w.dart';
 import 'widgets/developer_modal_w.dart';
 import 'widgets/global_settings_modal.dart'; // NEW
+import 'widgets/version_check_gate.dart';
 import 'screens/auth/login_screen.dart';
 import 'models/app_user.dart';
 import 'firebase_options.dart';
+import 'utils/responsive_utils.dart';
 
 const int _kSingleInstancePort = 45678;
 final StreamController<String> _incomingPdfPaths =
     StreamController<String>.broadcast();
 ServerSocket? _singleInstanceServer;
+String? _pendingColdStartPath;
 
 String? _extractPdfPathFromArgs(List<String> args) {
   for (final raw in args) {
@@ -137,50 +140,68 @@ Future<void> _startSingleInstanceServer() async {
   }
 }
 
+Future<void> _bootstrapApp(List<String> args) async {
+  String? startupError;
+  StackTrace? startupStack;
+
+  try {
+    String? initialFilePath = _extractPdfPathFromArgs(args);
+    if (initialFilePath != null) {
+      final forwarded = await _sendPdfToRunningInstance(initialFilePath);
+      if (forwarded) {
+        exit(0);
+      }
+    }
+
+    // Load .env file if it exists (graceful error handling)
+    try {
+      await dotenv.load(fileName: '.env');
+    } catch (e) {
+      debugPrint('⚠️ [Boot] .env load skipped: $e');
+    }
+
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    FirebaseFirestore.instance.settings = const Settings(
+      persistenceEnabled: false,
+    );
+
+    // 🚀 OPTIMIZATION: Ultra-lean startup RAM (Set to 2MB for Dashboard)
+    // This will be expanded to 50MB in AppProvider when a PDF is opened.
+    PaintingBinding.instance.imageCache.maximumSizeBytes = 2 * 1024 * 1024;
+    PaintingBinding.instance.imageCache.maximumSize = 10;
+
+    // Initialize file storage layer before the first frame
+    final fileManager = FileManagerService();
+    await fileManager.init();
+
+    await _startSingleInstanceServer();
+
+    _pendingColdStartPath = initialFilePath;
+    runApp(MyApp(fileManager: fileManager));
+  } catch (error, stackTrace) {
+    startupError = error.toString();
+    startupStack = stackTrace;
+    debugPrint('❌ [Boot] Startup failed: $startupError');
+    runApp(
+      StartupDiagnosticApp(
+        errorMessage: startupError,
+        stackTrace: startupStack,
+      ),
+    );
+  }
+}
+
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Load .env file if it exists (graceful error handling)
-  try {
-    await dotenv.load(fileName: '.env');
-  } catch (e) {
-    debugPrint('⚠️ [Boot] .env load skipped: $e');
-  }
-
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  FirebaseFirestore.instance.settings = const Settings(
-    persistenceEnabled: false,
-  );
-
-  // 🚀 OPTIMIZATION: Ultra-lean startup RAM (Set to 2MB for Dashboard)
-  // This will be expanded to 50MB in AppProvider when a PDF is opened.
-  PaintingBinding.instance.imageCache.maximumSizeBytes = 2 * 1024 * 1024;
-  PaintingBinding.instance.imageCache.maximumSize = 10;
-
-  // Initialize file storage layer before the first frame
-  final fileManager = FileManagerService();
-  await fileManager.init();
-
-  // WINDOWS FILE ASSOCIATION: Capture PDF file path from command-line
-  String? initialFilePath = _extractPdfPathFromArgs(args);
-
-  if (initialFilePath != null) {
-    final forwarded = await _sendPdfToRunningInstance(initialFilePath);
-    if (forwarded) {
-      return;
-    }
-  }
-
-  await _startSingleInstanceServer();
-
-  runApp(MyApp(initialPdfPath: initialFilePath, fileManager: fileManager));
+  await _bootstrapApp(args);
 }
 
 class MyApp extends StatelessWidget {
-  final String? initialPdfPath;
   final FileManagerService fileManager;
 
-  const MyApp({super.key, this.initialPdfPath, required this.fileManager});
+  const MyApp({super.key, required this.fileManager});
 
   @override
   Widget build(BuildContext context) {
@@ -194,41 +215,104 @@ class MyApp extends StatelessWidget {
           final themeMode = context.select<AppProvider, ThemeMode>(
             (app) => app.isDarkMode ? ThemeMode.dark : ThemeMode.light,
           );
-          return MaterialApp(
-            title: 'StudyFlow PDF',
-            debugShowCheckedModeBanner: false,
-            locale: const Locale('ar'),
-            supportedLocales: const [Locale('ar'), Locale('en')],
-            localizationsDelegates: const [
-              GlobalMaterialLocalizations.delegate,
-              GlobalWidgetsLocalizations.delegate,
-              GlobalCupertinoLocalizations.delegate,
-            ],
-            themeMode: themeMode,
-            theme: ThemeData.light().copyWith(
-              colorScheme: ThemeData.light().colorScheme.copyWith(
-                primary: Colors.blueAccent,
-                surface: Colors.white,
-                onSurface: const Color(0xFF0F172A), // Dark slate wording
-                surfaceContainerHighest: const Color(
-                  0xFFF1F5F9,
-                ), // Subtle slate backgrounds
-                outlineVariant: const Color(0xFFE2E8F0),
+          return VersionCheckGate(
+            child: MaterialApp(
+              title: 'StudyFlow PDF',
+              debugShowCheckedModeBanner: false,
+              locale: const Locale('ar'),
+              supportedLocales: const [Locale('ar'), Locale('en')],
+              localizationsDelegates: const [
+                GlobalMaterialLocalizations.delegate,
+                GlobalWidgetsLocalizations.delegate,
+                GlobalCupertinoLocalizations.delegate,
+              ],
+              themeMode: themeMode,
+              theme: ThemeData.light().copyWith(
+                colorScheme: ThemeData.light().colorScheme.copyWith(
+                  primary: Colors.blueAccent,
+                  surface: Colors.white,
+                  onSurface: const Color(0xFF0F172A), // Dark slate wording
+                  surfaceContainerHighest: const Color(
+                    0xFFF1F5F9,
+                  ), // Subtle slate backgrounds
+                  outlineVariant: const Color(0xFFE2E8F0),
+                ),
+                scaffoldBackgroundColor: const Color(
+                  0xFFF8FAFC,
+                ), // Off-white clean background
+                cardColor: Colors.white,
               ),
-              scaffoldBackgroundColor: const Color(
-                0xFFF8FAFC,
-              ), // Off-white clean background
-              cardColor: Colors.white,
-            ),
-            darkTheme: ThemeData.dark().copyWith(
-              colorScheme: ThemeData.dark().colorScheme.copyWith(
-                primary: Colors.blueAccent,
+              darkTheme: ThemeData.dark().copyWith(
+                colorScheme: ThemeData.dark().colorScheme.copyWith(
+                  primary: Colors.blueAccent,
+                ),
+                scaffoldBackgroundColor: const Color(0xFF121212),
               ),
-              scaffoldBackgroundColor: const Color(0xFF121212),
+              home: const RootWrapper(),
             ),
-            home: const RootWrapper(),
           );
         },
+      ),
+    );
+  }
+}
+
+class StartupDiagnosticApp extends StatelessWidget {
+  final String? errorMessage;
+  final StackTrace? stackTrace;
+
+  const StartupDiagnosticApp({super.key, this.errorMessage, this.stackTrace});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        body: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 640),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Startup configuration error',
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Firebase or app bootstrap failed before the main UI could load.',
+                    style: Theme.of(context).textTheme.bodyLarge,
+                  ),
+                  const SizedBox(height: 16),
+                  SelectableText(
+                    errorMessage ?? 'Unknown startup error',
+                    style: const TextStyle(fontFamily: 'monospace'),
+                  ),
+                  if (stackTrace != null) ...[
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Stack trace',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 220,
+                      child: SingleChildScrollView(
+                        child: SelectableText(
+                          stackTrace.toString(),
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -295,9 +379,7 @@ class RootWrapper extends StatelessWidget {
 }
 
 class MainLayout extends StatefulWidget {
-  final String? initialPdfPath;
-
-  const MainLayout({super.key, this.initialPdfPath});
+  const MainLayout({super.key});
 
   @override
   State<MainLayout> createState() => _MainLayoutState();
@@ -353,14 +435,15 @@ class _MainLayoutState extends State<MainLayout> {
       await app.loadPdfFromPath(path);
     });
 
-    // Load initial PDF file if provided via command-line
-    if (widget.initialPdfPath != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) async {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final coldPath = _pendingColdStartPath;
+      if (coldPath != null) {
+        _pendingColdStartPath = null;
         final app = _appProvider;
-        await app.initialized; // Wait for state to load
-        app.loadPdfFromPath(widget.initialPdfPath!);
-      });
-    }
+        await app.initialized;
+        await app.loadPdfFromPath(coldPath);
+      }
+    });
   }
 
   @override
@@ -425,7 +508,8 @@ class _MainLayoutState extends State<MainLayout> {
       (p) => p.isSettingsOpen,
     );
 
-    final isMobile = MediaQuery.of(context).size.width < 768;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final isMobile = ResponsiveBreakpoints.isMobile(screenWidth);
 
     return Scaffold(
       body: DropTarget(

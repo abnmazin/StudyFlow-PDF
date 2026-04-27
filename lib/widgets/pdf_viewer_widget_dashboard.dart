@@ -89,8 +89,12 @@ class _DashboardWrapperState extends State<_DashboardWrapper> {
         bottom: false,
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final padding = constraints.maxWidth < 600 ? 12.0 : 20.0;
-            final isWide = constraints.maxWidth > 900;
+            final width = constraints.maxWidth;
+            final padding = width < 600
+                ? 12.0
+                : (width < 900 ? 16.0 : 20.0);
+            final isWide = ResponsiveBreakpoints.isDesktop(width);
+            final isTablet = ResponsiveBreakpoints.isTablet(width);
 
             return Container(
               margin: EdgeInsets.all(padding),
@@ -130,6 +134,7 @@ class _DashboardWrapperState extends State<_DashboardWrapper> {
                           recentDocs,
                           readingTimeEstimate,
                           isWide,
+                          isTablet,
                         ),
 
                         const SizedBox(height: 48),
@@ -184,6 +189,7 @@ Widget _buildMainContentArea(
   List<PdfDocument> recentDocs,
   int readingTimeEstimate,
   bool isWide,
+  bool isTablet,
 ) {
   final content = [
     // Left/Primary Column Logic
@@ -260,6 +266,16 @@ Widget _buildMainContentArea(
         Expanded(flex: 2, child: content[0]),
         content[1],
         Expanded(flex: 1, child: content[2]),
+      ],
+    );
+  } else if (isTablet) {
+    return Column(
+      children: [
+        content[0],
+        const SizedBox(height: 24),
+        content[1],
+        const SizedBox(height: 24),
+        content[2],
       ],
     );
   } else {

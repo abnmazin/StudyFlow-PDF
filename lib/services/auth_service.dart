@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../models/app_user.dart';
 import 'hardware_service.dart';
@@ -19,6 +20,7 @@ class AuthService {
     if (normalizedUsername.isEmpty) {
       throw Exception('اسم المستخدم مطلوب');
     }
+    final appVersion = await _resolveAppVersion();
 
     // 1. GENERATE FINGERPRINT
     final currentFingerprint = await _hardwareService.getDeviceFingerprint();
@@ -61,11 +63,17 @@ class AuthService {
         'primaryDeviceFingerprint': currentFingerprint,
         'displayName': user.displayName.isEmpty ? user.username : user.displayName,
         'hardwareId': currentFingerprint, // Migration fallback
+        'appVersion': appVersion,
+        'lastSeenAt': FieldValue.serverTimestamp(),
       });
       debugPrint('✅ [Security] Device binding success: User=${user.username} -> Fingerprint=$currentFingerprint');
       
       // Refresh user data after binding
-      return AppUser.fromFirestore(doc.id, {...data, 'primaryDeviceFingerprint': currentFingerprint});
+      return AppUser.fromFirestore(doc.id, {
+        ...data,
+        'primaryDeviceFingerprint': currentFingerprint,
+        'appVersion': appVersion,
+      });
     } 
     
     if (primaryFingerprint != currentFingerprint) {
@@ -80,8 +88,32 @@ class AuthService {
       throw Exception('تم حظر حسابك بسبب مشاركة حسابك مع جهاز آخر. هذا الجهاز وجهازك الأصلي تم منعهما نهائيا.');
     }
 
+    await _updateLoginMetadata(doc.reference, appVersion);
     debugPrint('✅ [Security] Secure Login successful for: ${user.username}');
     return user;
+  }
+
+  Future<String> _resolveAppVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      return info.version;
+    } catch (_) {
+      return 'unknown';
+    }
+  }
+
+  Future<void> _updateLoginMetadata(
+    DocumentReference<Map<String, dynamic>> userRef,
+    String appVersion,
+  ) async {
+    try {
+      await userRef.update({
+        'appVersion': appVersion,
+        'lastSeenAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('⚠️ [Auth] Failed to update appVersion metadata: $e');
+    }
   }
 
   /// Part of the ZERO-TOLERANCE policy. Bans the user and blacklists both devices.

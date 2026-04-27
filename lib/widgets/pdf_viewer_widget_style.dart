@@ -342,6 +342,13 @@ extension _PDFViewerWidgetStateStyle on _PDFViewerWidgetState {
   }
 
   void _onColorChanged(Color color) {
+    // If a shape is explicitly selected, always update the shape color.
+    if (_selectedHighlightId != null) {
+      setState(() => _shapeStrokeColor = color);
+      _updateSelectedShapeColor(color);
+      return;
+    }
+
     final effectiveTool = _tool == ToolType.select
         ? (_selectedAnnotationTool(context.read<AppProvider>().activePdf) ??
               _tool)

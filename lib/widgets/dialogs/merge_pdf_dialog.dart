@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:path/path.dart' as p;
 import '../../services/pdf_tools_service.dart';
+import '../../utils/responsive_utils.dart';
 
 class MergePdfDialog extends StatefulWidget {
   const MergePdfDialog({super.key});
@@ -92,10 +93,14 @@ class _MergePdfDialogState extends State<MergePdfDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final screen = MediaQuery.sizeOf(context);
+    final dialogWidth = ResponsiveBreakpoints.dialogWidth(screen.width, max: 520);
+    final listHeight = (screen.height * 0.45).clamp(220.0, 360.0).toDouble();
+
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
-        width: 500,
+        width: dialogWidth,
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -128,7 +133,7 @@ class _MergePdfDialogState extends State<MergePdfDialog> {
 
             // File List
             Container(
-              height: 300,
+              height: listHeight,
               decoration: BoxDecoration(
                 border: Border.all(color: Colors.grey.withOpacity(0.3)),
                 borderRadius: BorderRadius.circular(8),

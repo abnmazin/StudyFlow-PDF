@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/gestures.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../screens/auth/login_screen.dart';
@@ -18,6 +20,17 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
   bool _isGenerating = false;
   String? _generatedMasterCode;
   bool _showDevDashboard = false;
+  int _selectedIndex = 0;
+
+  // Version management
+  String _currentAppVersion = '';
+  String _minVersion = '';
+  String _latestVersion = '';
+  bool _versionLoading = true;
+  bool _versionSaving = false;
+  final TextEditingController _minVersionController = TextEditingController();
+  final TextEditingController _latestVersionController =
+      TextEditingController();
 
   final TextEditingController _joinCodeController = TextEditingController();
   bool _isJoining = false;
@@ -25,9 +38,82 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
+  void initState() {
+    super.initState();
+    _loadVersionData();
+  }
+
+  @override
   void dispose() {
+    _minVersionController.dispose();
+    _latestVersionController.dispose();
     _joinCodeController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadVersionData() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      setState(() => _currentAppVersion = packageInfo.version);
+
+      // Load remote versions for developer editing
+      if (context.read<AppProvider>().currentUser?.role == 'developer') {
+        final doc = await FirebaseFirestore.instance
+            .collection('app_config')
+            .doc('version')
+            .get();
+        if (!mounted) return;
+        if (doc.exists && doc.data() != null) {
+          setState(() {
+            _minVersion = doc.data()!['min_version'] as String? ?? '';
+            _latestVersion = doc.data()!['latest_version'] as String? ?? '';
+            _minVersionController.text = _minVersion;
+            _latestVersionController.text = _latestVersion;
+          });
+        }
+      }
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _versionLoading = false);
+    }
+  }
+
+  Future<void> _saveVersions() async {
+    final newMin = _minVersionController.text.trim();
+    final newLatest = _latestVersionController.text.trim();
+    final semver = RegExp(r'^\d+\.\d+\.\d+$');
+    if (!semver.hasMatch(newMin) || !semver.hasMatch(newLatest)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('صيغة غير صحيحة — استخدم x.y.z مثل 1.0.0'),
+        ),
+      );
+      return;
+    }
+    setState(() => _versionSaving = true);
+    try {
+      await FirebaseFirestore.instance.collection('app_config').doc('version').set({
+        'min_version': newMin,
+        'latest_version': newLatest,
+        'updated_at': FieldValue.serverTimestamp(),
+      });
+      if (!mounted) return;
+      setState(() {
+        _minVersion = newMin;
+        _latestVersion = newLatest;
+        _versionSaving = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('✅ تم حفظ الإصدار بنجاح')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _versionSaving = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('❌ فشل الحفظ: $e')));
+    }
   }
 
   // ─── ميثودات التحكم بالحزم (قفل، حظر، حذف) ──────────────────────────────────
@@ -405,23 +491,22 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
     final scheme = Theme.of(context).colorScheme;
 
     final bg = isDark ? const Color(0xFF0F172A) : scheme.surface;
-    final panelBorder = isDark
-        ? const Color(0xFF334155)
-        : scheme.outlineVariant;
+    final panelBorder = isDark ? const Color(0xFF334155) : scheme.outlineVariant;
     final textPrimary = isDark ? Colors.white : scheme.onSurface;
-    final textMuted = isDark
-        ? const Color(0xFF94A3B8)
-        : scheme.onSurfaceVariant;
-    final surfaceAlt = isDark
-        ? const Color(0xFF1E293B)
-        : scheme.surfaceContainerHighest;
+    final textMuted = isDark ? const Color(0xFF94A3B8) : scheme.onSurfaceVariant;
+    final surfaceAlt = isDark ? const Color(0xFF1E293B) : scheme.surfaceContainerHighest;
+    final role = app.currentUser?.role ?? 'member';
+    final isDev = role == 'developer';
+    final isLecturer = role == 'lecturer';
+    final isStudent = !isDev && !isLecturer;
 
     return Container(
-      width: 450,
-      padding: const EdgeInsets.all(24),
+      width: 650,
+      height: 650,
+      clipBehavior: Clip.hardEdge,
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: const BorderRadius.horizontal(left: Radius.circular(24)),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.3),
@@ -434,149 +519,327 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
           ? DeveloperDashboardView(
               onBack: () => setState(() => _showDevDashboard = false),
             )
-          : Column(
+          : Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          LucideIcons.settings,
-                          color: textPrimary,
-                          size: 24,
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          'الإعدادات العامة',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: textPrimary,
-                          ),
-                        ),
-                      ],
-                    ),
-                    IconButton(
-                      onPressed: () => app.toggleSettings(false),
-                      icon: Icon(LucideIcons.x, color: textMuted),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 32),
-                Expanded(
-                  child: ListView(
+                // ── Sidebar (الجانب الأيمن) ──
+                SizedBox(
+                  width: 170,
+                  child: Column(
                     children: [
-                      _buildSectionHeader(
-                        'المظهر والنظام',
-                        LucideIcons.palette,
-                        textMuted,
+                      Align(
+                        alignment: Alignment.topRight,
+                        child: IconButton(
+                          padding: const EdgeInsets.all(12),
+                          onPressed: () => app.toggleSettings(false),
+                          icon: Icon(LucideIcons.x, color: textMuted),
+                        ),
                       ),
+                      _buildSidebarHeader(app),
                       const SizedBox(height: 12),
-                      _buildSettingsCard(surfaceAlt, panelBorder, [
-                        _buildToggleTile(
-                          icon: isDark ? LucideIcons.sun : LucideIcons.moon,
-                          label: isDark ? 'الوضع الفاتح' : 'الوضع الداكن',
-                          value: isDark,
-                          onChanged: (_) => app.toggleDarkMode(),
-                          textPrimary: textPrimary,
+                      Expanded(
+                        child: ListView(
+                          padding: EdgeInsets.zero,
+                          physics: const BouncingScrollPhysics(),
+                          children: [
+                            _buildNavItem(LucideIcons.palette, 'المظهر', 0, textPrimary, textMuted),
+                            _buildNavItem(LucideIcons.bot, 'الذكاء الاصطناعي', 1, textPrimary, textMuted),
+                            _buildNavItem(LucideIcons.info, 'عن التطبيق', 2, textPrimary, textMuted),
+
+                            const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                              child: Divider(height: 1),
+                            ),
+
+                            if (isStudent)
+                              _buildNavItem(LucideIcons.link2, 'ربط حزمة', 3, textPrimary, textMuted),
+
+                            if (isLecturer || isDev) ...[
+                              _buildNavItem(LucideIcons.graduationCap, 'إنشاء حزمة', 3, textPrimary, textMuted),
+                              _buildNavItem(LucideIcons.history, 'سجل الحزم', 4, textPrimary, textMuted),
+                            ],
+
+                            if (isDev) ...[
+                              const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                                child: Divider(height: 1),
+                              ),
+                              _buildNavItem(LucideIcons.shieldCheck, 'لوحة التحكم', 5, textPrimary, textMuted),
+                              _buildNavItem(LucideIcons.packageOpen, 'الإصدارات', 6, textPrimary, textMuted),
+                            ],
+                          ],
                         ),
-                      ]),
-                      const SizedBox(height: 24),
-                      _buildSectionHeader(
-                        'إعدادات الذكاء الاصطناعي',
-                        LucideIcons.bot,
-                        textMuted,
                       ),
-                      const SizedBox(height: 12),
-                      _buildAiSettingsContent(
-                        context,
-                        app,
-                        surfaceAlt,
-                        panelBorder,
-                        textPrimary,
-                        textMuted,
-                      ),
-
-                      if (app.currentUser?.role == 'lecturer' ||
-                          app.currentUser?.role == 'developer') ...[
-                        const SizedBox(height: 24),
-                        _buildSectionHeader(
-                          'أدوات المحاضر: إنشاء حزمة',
-                          LucideIcons.graduationCap,
-                          textMuted,
-                        ),
-                        const SizedBox(height: 12),
-                        _buildMasterBundleCreator(
-                          app,
-                          surfaceAlt,
-                          panelBorder,
-                          textPrimary,
-                          textMuted,
-                          isDark,
-                        ),
-
-                        const SizedBox(height: 24),
-                        _buildSectionHeader(
-                          'سجل الحزم السابقة وإدارتها',
-                          LucideIcons.history,
-                          textMuted,
-                        ),
-                        const SizedBox(height: 12),
-                        _buildMasterBundleHistory(
-                          app,
-                          surfaceAlt,
-                          panelBorder,
-                          textPrimary,
-                          textMuted,
-                        ),
-                      ],
-
-                      if (app.currentUser?.role != 'lecturer') ...[
-                        const SizedBox(height: 24),
-                        _buildSectionHeader(
-                          'أدوات الطالب',
-                          LucideIcons.userCheck,
-                          textMuted,
-                        ),
-                        const SizedBox(height: 12),
-                        _buildCompactJoinCard(
-                          context,
-                          app,
-                          surfaceAlt,
-                          panelBorder,
-                          textPrimary,
-                          textMuted,
-                        ),
-                      ],
-
-                      if (app.currentUser?.role == 'developer') ...[
-                        const SizedBox(height: 24),
-                        _buildSectionHeader(
-                          'خيارات المطور المتقدمة',
-                          LucideIcons.code,
-                          textMuted,
-                        ),
-                        const SizedBox(height: 12),
-                        _buildSettingsCard(surfaceAlt, panelBorder, [
-                          _buildActionTile(
-                            icon: LucideIcons.shieldCheck,
-                            label: 'إدارة النظام (Dashboard)',
-                            onTap: () =>
-                                setState(() => _showDevDashboard = true),
-                            textPrimary: textPrimary,
-                          ),
-                        ]),
-                      ],
-                      const SizedBox(height: 32),
-                      _buildLogoutButton(context, app),
-                      const SizedBox(height: 24),
+                      _buildLogoutItem(app),
+                      const SizedBox(height: 16),
                     ],
+                  ),
+                ),
+
+                // فاصل عمودي
+                VerticalDivider(width: 1, color: panelBorder, thickness: 1),
+
+                // ── Content Area (الجانب الأيسر) ──
+                Expanded(
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 200),
+                    child: KeyedSubtree(
+                      key: ValueKey(_selectedIndex),
+                      child: _selectedIndex == 5 && isDev
+                          // لوحة التحكم تملك الـ Scroll الخاص بها، لذا لا نضعها بداخل SingleChildScrollView
+                          ? Padding(
+                              padding: const EdgeInsets.all(20.0),
+                              child: DeveloperDashboardView(
+                                onBack: () => setState(() => _selectedIndex = 0),
+                              ),
+                            )
+                          : SingleChildScrollView(
+                              padding: const EdgeInsets.all(24),
+                              physics: const BouncingScrollPhysics(),
+                              child: _buildContentForIndex(
+                                _selectedIndex,
+                                app,
+                                surfaceAlt,
+                                panelBorder,
+                                textPrimary,
+                                textMuted,
+                                isDark,
+                              ),
+                            ),
+                    ),
                   ),
                 ),
               ],
             ),
+    );
+  }
+
+  Widget _buildContentForIndex(
+    int index,
+    AppProvider app,
+    Color surfaceAlt,
+    Color panelBorder,
+    Color textPrimary,
+    Color textMuted,
+    bool isDark,
+  ) {
+    final role = app.currentUser?.role ?? 'member';
+    final isDev = role == 'developer';
+    final isLecturer = role == 'lecturer';
+
+    switch (index) {
+      case 0:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildSectionHeader('المظهر والنظام', LucideIcons.palette, textPrimary),
+            const SizedBox(height: 16),
+            _buildSettingsCard(surfaceAlt, panelBorder, [
+              _buildToggleTile(
+                icon: isDark ? LucideIcons.sun : LucideIcons.moon,
+                label: isDark ? 'الوضع الفاتح' : 'الوضع الداكن',
+                value: isDark,
+                onChanged: (_) => app.toggleDarkMode(),
+                textPrimary: textPrimary,
+              ),
+            ]),
+          ],
+        );
+      case 1:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildSectionHeader('إعدادات الذكاء الاصطناعي', LucideIcons.bot, textPrimary),
+            const SizedBox(height: 16),
+            _buildAiSettingsContent(context, app, surfaceAlt, panelBorder, textPrimary, textMuted),
+          ],
+        );
+      case 2:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildSectionHeader('عن التطبيق', LucideIcons.info, textPrimary),
+            const SizedBox(height: 16),
+            _buildAboutSection(surfaceAlt, panelBorder, textPrimary, textMuted),
+          ],
+        );
+      case 3:
+        if (isLecturer || isDev) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSectionHeader('أدوات المحاضر: إنشاء حزمة', LucideIcons.graduationCap, textPrimary),
+              const SizedBox(height: 16),
+              _buildMasterBundleCreator(app, surfaceAlt, panelBorder, textPrimary, textMuted, isDark),
+              if (isLecturer) ...[
+                const SizedBox(height: 32),
+                _buildSectionHeader('الانضمام إلى حزمة', LucideIcons.link2, textPrimary),
+                const SizedBox(height: 16),
+                _buildCompactJoinCard(context, app, surfaceAlt, panelBorder, textPrimary, textMuted),
+              ]
+            ],
+          );
+        } else {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSectionHeader('أدوات الطالب', LucideIcons.userCheck, textPrimary),
+              const SizedBox(height: 16),
+              _buildCompactJoinCard(context, app, surfaceAlt, panelBorder, textPrimary, textMuted),
+            ],
+          );
+        }
+      case 4:
+        if (isLecturer || isDev) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSectionHeader('سجل الحزم السابقة وإدارتها', LucideIcons.history, textPrimary),
+              const SizedBox(height: 16),
+              _buildMasterBundleHistory(app, surfaceAlt, panelBorder, textPrimary, textMuted),
+            ],
+          );
+        }
+        return const SizedBox.shrink();
+      case 6:
+        if (isDev) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSectionHeader('إدارة إصدارات التطبيق', LucideIcons.packageOpen, textPrimary),
+              const SizedBox(height: 16),
+              _buildVersionManagement(surfaceAlt, panelBorder, textPrimary, textMuted),
+            ],
+          );
+        }
+        return const SizedBox.shrink();
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  Widget _buildSidebarHeader(AppProvider app) {
+    final role = app.currentUser?.role ?? 'member';
+    final name = app.currentUser?.displayName ?? app.currentUser?.username ?? 'مستخدم';
+
+    Color roleColor = Colors.blue;
+    String roleLabel = 'طالب';
+    if (role == 'developer') {
+      roleColor = Colors.amber;
+      roleLabel = 'مشرف (مطور)';
+    } else if (role == 'lecturer') {
+      roleColor = Colors.purple;
+      roleLabel = 'محاضر';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        children: [
+          CircleAvatar(
+            radius: 28,
+            backgroundColor: roleColor.withOpacity(0.15),
+            child: Icon(LucideIcons.user, color: roleColor, size: 26),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            name,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: roleColor.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              roleLabel,
+              style: TextStyle(fontSize: 10, color: roleColor, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNavItem(IconData icon, String label, int index, Color textPrimary, Color textMuted) {
+    final isSelected = _selectedIndex == index;
+    return InkWell(
+      onTap: () => setState(() => _selectedIndex = index),
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? const Color(0xFF3B82F6).withOpacity(0.15)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          border: isSelected
+              ? Border.all(color: const Color(0xFF3B82F6).withOpacity(0.3))
+              : Border.all(color: Colors.transparent),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: isSelected ? const Color(0xFF3B82F6) : textMuted,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                  color: isSelected ? const Color(0xFF3B82F6) : textPrimary,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLogoutItem(AppProvider app) {
+    return InkWell(
+      onTap: () => _confirmLogout(context, app),
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.red.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.red.withOpacity(0.2)),
+        ),
+        child: Row(
+          children: [
+            const Icon(
+              LucideIcons.logOut,
+              size: 16,
+              color: Colors.red,
+            ),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                'تسجيل الخروج',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.red,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1076,6 +1339,174 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
         child: Column(children: children),
       );
 
+  Widget _buildVersionManagement(
+    Color surfaceAlt,
+    Color panelBorder,
+    Color textPrimary,
+    Color textMuted,
+  ) {
+    if (_versionLoading) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+    return _buildSettingsCard(surfaceAlt, panelBorder, [
+      // Current version display
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Icon(LucideIcons.tag, color: textMuted, size: 18),
+            const SizedBox(width: 12),
+            Text('الإصدار الحالي للتطبيق', style: TextStyle(color: textPrimary)),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF38BDF8).withOpacity(0.15),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: const Color(0xFF38BDF8).withOpacity(0.4),
+                ),
+              ),
+              child: Text(
+                _currentAppVersion.isEmpty ? '...' : _currentAppVersion,
+                style: const TextStyle(
+                  color: Color(0xFF38BDF8),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      const Divider(height: 1),
+      // min_version field
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+        child: _buildVersionField(
+          label: 'الحد الأدنى — Force Update',
+          controller: _minVersionController,
+          textPrimary: textPrimary,
+          textMuted: textMuted,
+        ),
+      ),
+      // latest_version field
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        child: _buildVersionField(
+          label: 'الأحدث — Soft Update',
+          controller: _latestVersionController,
+          textPrimary: textPrimary,
+          textMuted: textMuted,
+        ),
+      ),
+      // Save button
+      Padding(
+        padding: const EdgeInsets.all(16),
+        child: SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _versionSaving ? null : _saveVersions,
+            icon: _versionSaving
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.save_rounded, size: 16),
+            label: Text(_versionSaving ? 'جاري الحفظ...' : 'حفظ الإصدار'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF38BDF8).withOpacity(0.15),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(
+                  color: const Color(0xFF38BDF8).withOpacity(0.4),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ]);
+  }
+
+  Widget _buildVersionField({
+    required String label,
+    required TextEditingController controller,
+    required Color textPrimary,
+    required Color textMuted,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: TextStyle(color: textMuted, fontSize: 11)),
+        const SizedBox(height: 4),
+        TextField(
+          controller: controller,
+          style: TextStyle(color: textPrimary, fontSize: 13),
+          decoration: InputDecoration(
+            hintText: '1.0.0',
+            hintStyle: TextStyle(color: textMuted.withOpacity(0.5)),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: textMuted.withOpacity(0.3)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(
+                color: Color(0xFF38BDF8),
+                width: 1.5,
+              ),
+            ),
+            filled: true,
+            fillColor: textMuted.withOpacity(0.05),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAboutSection(
+    Color surfaceAlt,
+    Color panelBorder,
+    Color textPrimary,
+    Color textMuted,
+  ) {
+    return _buildSettingsCard(surfaceAlt, panelBorder, [
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            Icon(LucideIcons.info, color: textMuted, size: 18),
+            const SizedBox(width: 12),
+            Text('إصدار التطبيق', style: TextStyle(color: textPrimary)),
+            const Spacer(),
+            Text(
+              _currentAppVersion.isEmpty ? '...' : 'v$_currentAppVersion',
+              style: TextStyle(
+                color: textMuted,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ]);
+  }
+
   Widget _buildToggleTile({
     required IconData icon,
     required String label,
@@ -1241,6 +1672,14 @@ class DeveloperDashboardView extends StatefulWidget {
 
 class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final ScrollController _adminTabsScrollController = ScrollController();
+  int _adminTabIndex = 0;
+
+  @override
+  void dispose() {
+    _adminTabsScrollController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1249,6 +1688,44 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
     final textPrimary = isDark ? Colors.white : Colors.black87;
     final surfaceAlt = isDark ? const Color(0xFF1E293B) : Colors.white;
     final panelBorder = isDark ? const Color(0xFF334155) : Colors.grey.shade300;
+
+    final tabContent = switch (_adminTabIndex) {
+      0 => _buildAdminCard(
+          surfaceAlt,
+          panelBorder,
+          SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.all(12),
+            child: _buildDetailedStats(surfaceAlt, panelBorder),
+          ),
+        ),
+      1 => _buildAdminCard(
+          surfaceAlt,
+          panelBorder,
+          _buildUserManagementList(),
+        ),
+      2 => _buildAdminCard(
+          surfaceAlt,
+          panelBorder,
+          _buildBannedDevicesList(),
+        ),
+      3 => _buildAdminCard(
+          surfaceAlt,
+          panelBorder,
+          _buildActiveBundlesList(app),
+        ),
+      4 => _buildAdminCard(
+          surfaceAlt,
+          panelBorder,
+          _buildActiveSessionsList(app),
+        ),
+      5 => _buildAdminCard(
+          surfaceAlt,
+          panelBorder,
+          _buildAnnouncementsList(),
+        ),
+      _ => const SizedBox.shrink(),
+    };
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1297,88 +1774,51 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
             ),
           ],
         ),
-        const SizedBox(height: 24),
-
-        // ─── Main Dashboard Content ─────────────────────────
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.only(bottom: 40),
-            physics: const BouncingScrollPhysics(),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
-              _buildAdminSectionHeader(
-                'إحصائيات النظام الشاملة',
-                LucideIcons.barChart3,
-              ),
-              _buildDetailedStats(surfaceAlt, panelBorder),
-
-              const SizedBox(height: 24),
-              _buildAdminSectionHeader('إدارة المستخدمين', LucideIcons.users),
-              _buildAdminCard(
-                surfaceAlt,
-                panelBorder,
-                _buildUserManagementList(),
-              ),
-
-              const SizedBox(height: 24),
-              _buildAdminSectionHeader('الأجهزة المحظورة', LucideIcons.ban),
-              _buildAdminCard(
-                surfaceAlt,
-                panelBorder,
-                _buildBannedDevicesList(),
-              ),
-
-              const SizedBox(height: 24),
-              _buildAdminSectionHeader(
-                'إدارة الحزم الدراسية (Master Bundles)',
-                LucideIcons.layers,
-                trailing: _buildClearButton(
-                  'مسح الكل',
-                  () => _confirmWipe(
-                    context,
-                    'master_sessions',
-                    'الحزم الدراسية',
-                  ),
-                ),
-              ),
-              _buildAdminCard(
-                surfaceAlt,
-                panelBorder,
-                _buildActiveBundlesList(app),
-              ),
-
-              const SizedBox(height: 24),
-              _buildAdminSectionHeader(
-                'الدروس والنشاط اللحظي (Sessions)',
-                LucideIcons.radio,
-                trailing: _buildClearButton(
-                  'مسح الكل',
-                  () => _confirmWipe(context, 'sync_sessions', 'الدروس'),
-                ),
-              ),
-              _buildAdminCard(
-                surfaceAlt,
-                panelBorder,
-                _buildActiveSessionsList(app),
-              ),
-
-              const SizedBox(height: 24),
-              _buildAdminSectionHeader(
-                'إدارة الإشعارات العامة',
-                LucideIcons.bell,
-              ),
-              _buildAdminCard(
-                surfaceAlt,
-                panelBorder,
-                _buildAnnouncementsList(),
-              ),
+              _buildAdminChoiceChip('الإحصائيات', LucideIcons.barChart3, 0),
+              _buildAdminChoiceChip('المستخدمين', LucideIcons.users, 1),
+              _buildAdminChoiceChip('المحظورين', LucideIcons.ban, 2),
+              _buildAdminChoiceChip('الحزم', LucideIcons.layers, 3),
+              _buildAdminChoiceChip('الدروس', LucideIcons.radio, 4),
+              _buildAdminChoiceChip('الإشعارات', LucideIcons.bell, 5),
             ],
           ),
         ),
+          const SizedBox(height: 12),
+          Expanded(child: tabContent),
       ],
     );
-  }
 
-  // ─── Modular UI Components ────────────────────────────────────────────────
+    }
+
+    Widget _buildAdminChoiceChip(String label, IconData icon, int index) {
+      final isSelected = _adminTabIndex == index;
+      return ChoiceChip(
+          selected: isSelected,
+          onSelected: (_) => setState(() => _adminTabIndex = index),
+          avatar: Icon(
+            icon,
+            size: 14,
+            color: isSelected ? Colors.white : Colors.blueGrey,
+          ),
+          label: Text(
+            label,
+            style: TextStyle(
+              color: isSelected ? Colors.white : Colors.blueGrey,
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+            ),
+          ),
+          selectedColor: const Color(0xFF3B82F6),
+          backgroundColor: Colors.blueGrey.withOpacity(0.08),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      );
+    }
 
   Widget _buildAdminSectionHeader(
     String title,
@@ -1624,8 +2064,7 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
         if (docs.isEmpty) return _buildEmptyState('لا يوجد مستخدمين مسجلين');
 
         return ListView.separated(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
+          physics: const BouncingScrollPhysics(),
           itemCount: docs.length,
           separatorBuilder: (_, __) =>
               Divider(height: 1, color: Colors.grey.withOpacity(0.2)),
@@ -1646,6 +2085,7 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
 
             final displayName = data['displayName'] as String? ?? '';
             final username = data['username'] as String? ?? 'User';
+            final appVersion = (data['appVersion'] ?? '').toString();
 
             return ListTile(
               dense: true,
@@ -1678,6 +2118,10 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
                       fontSize: 10,
                       color: hwId.isNotEmpty ? Colors.green : Colors.redAccent,
                     ),
+                  ),
+                  Text(
+                    'الإصدار: ${appVersion.isEmpty ? "-" : appVersion}',
+                    style: const TextStyle(fontSize: 10, color: Colors.grey),
                   ),
                 ],
               ),
@@ -1747,8 +2191,7 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
         if (docs.isEmpty) return _buildEmptyState('لا توجد أجهزة محظورة');
 
         return ListView.separated(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
+          physics: const BouncingScrollPhysics(),
           itemCount: docs.length,
           separatorBuilder: (_, __) =>
               Divider(height: 1, color: Colors.grey.withOpacity(0.2)),
@@ -1814,8 +2257,7 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
         if (docs.isEmpty) return _buildEmptyState('لا توجد حزم نشطة');
 
         return ListView.separated(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
+          physics: const BouncingScrollPhysics(),
           itemCount: docs.length,
           separatorBuilder: (_, __) =>
               Divider(height: 1, color: Colors.grey.withOpacity(0.2)),
@@ -1913,8 +2355,7 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
         if (docs.isEmpty) return _buildEmptyState('لا توجد دروس حالية');
 
         return ListView.separated(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
+          physics: const BouncingScrollPhysics(),
           itemCount: docs.length,
           separatorBuilder: (_, __) =>
               Divider(height: 1, color: Colors.grey.withOpacity(0.2)),
@@ -2001,8 +2442,7 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
         if (docs.isEmpty) return _buildEmptyState('لا توجد إشعارات عامة');
 
         return ListView.separated(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
+          physics: const BouncingScrollPhysics(),
           itemCount: docs.length,
           separatorBuilder: (_, __) =>
               Divider(height: 1, color: Colors.grey.withOpacity(0.2)),

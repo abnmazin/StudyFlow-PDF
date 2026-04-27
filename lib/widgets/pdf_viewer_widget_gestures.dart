@@ -334,6 +334,7 @@ extension _PDFViewerWidgetStateGestures on _PDFViewerWidgetState {
         _textSelection = null;
         _isTextSelectionMenuVisible = false;
         _suppressTextSelection = true;
+        _translatedText = null;
       });
     }
 

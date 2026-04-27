@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../models/print_settings.dart';
+import '../../utils/responsive_utils.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 // PrintDialog — Phase 1: destination, page range, copies, orientation, color
 // ─────────────────────────────────────────────────────────────────────────────
@@ -63,11 +64,16 @@ class _PrintDialogState extends State<PrintDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final dialogWidth = ResponsiveBreakpoints.dialogWidth(
+      MediaQuery.sizeOf(context).width,
+      max: 460,
+    );
+
     return Dialog(
       backgroundColor: _surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: SizedBox(
-        width: 440,
+        width: dialogWidth,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
