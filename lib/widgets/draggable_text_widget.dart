@@ -121,13 +121,17 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
     // didUpdateWidget never fires, so we must request focus here.
     if (widget.isEditing) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _focusNode.requestFocus();
+        if (mounted) {
+          _focusNode.requestFocus();
+          if (widget.isLatex) _showOverlay();
+        }
       });
     }
   }
 
   @override
   void dispose() {
+    _removeOverlay();
     _textController.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -138,16 +142,29 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
     if (!currentText.endsWith('=')) return;
 
     // Extract the equation before the '='
-    String rawEquation = currentText.substring(0, currentText.length - 1).trim();
+    String rawEquation = currentText
+        .substring(0, currentText.length - 1)
+        .trim();
 
     // Clean LaTeX formatting into a standard math expression using Regex
     String cleanEq = rawEquation;
-    cleanEq = cleanEq.replaceAllMapped(RegExp(r'\\frac{([^}]+)}{([^}]+)}'), (m) => '(${m[1]})/(${m[2]})');
-    cleanEq = cleanEq.replaceAll(RegExp(r'\\times'), '*');
-    cleanEq = cleanEq.replaceAll(RegExp(r'\\div'), '/');
-    cleanEq = cleanEq.replaceAllMapped(RegExp(r'\\sqrt{([^}]+)}'), (m) => 'sqrt(${m[1]})');
+
+    // 1. تحويل الأقواس الخاصة باللاتكس
     cleanEq = cleanEq.replaceAll(RegExp(r'\\left\('), '(');
     cleanEq = cleanEq.replaceAll(RegExp(r'\\right\)'), ')');
+
+    // 2. معالجة الأسس للتخلص من الأقواس المعكوفة {} قبل الوصول للكسور
+    cleanEq = cleanEq.replaceAllMapped(RegExp(r'\^\{([^}]+)\}'), (m) => '^(${m[1]})');
+    cleanEq = cleanEq.replaceAllMapped(RegExp(r'_\{([^}]+)\}'), (m) => '_(${m[1]})');
+
+    // 3. معالجة الجذور والكسور
+    cleanEq = cleanEq.replaceAllMapped(RegExp(r'\\sqrt{([^}]+)}'), (m) => 'sqrt(${m[1]})');
+    cleanEq = cleanEq.replaceAllMapped(RegExp(r'\\frac{([^}]+)}{([^}]+)}'), (m) => '(${m[1]})/(${m[2]})');
+
+    // 4. العمليات الأساسية
+    cleanEq = cleanEq.replaceAll(RegExp(r'\\times'), '*');
+    cleanEq = cleanEq.replaceAll(RegExp(r'\\div'), '/');
+    
     cleanEq = cleanEq.replaceAll(' ', ''); // remove spaces
 
     try {
@@ -156,10 +173,27 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
       ContextModel cm = ContextModel();
       double eval = exp.evaluate(EvaluationType.REAL, cm);
 
-      // Format result (remove trailing .0 for integers)
-      String resultStr = eval.toString();
-      if (resultStr.endsWith('.0')) {
-        resultStr = resultStr.substring(0, resultStr.length - 2);
+      String resultStr;
+      
+      // تقريب الأرقام الكبيرة جداً أو الصغيرة جداً إلى صيغة علمية احترافية
+      if (eval.abs() >= 100000 || (eval.abs() < 0.001 && eval != 0)) {
+        String expStr = eval.toStringAsExponential(4); // e.g., "3.1250e9"
+        expStr = expStr.replaceAll(RegExp(r'0+e'), 'e'); // remove trailing zeros in base
+        expStr = expStr.replaceAll(RegExp(r'\.e'), 'e'); // clean dangling dot
+        
+        List<String> parts = expStr.split('e');
+        if (parts.length == 2) {
+          String base = parts[0];
+          String exponent = parts[1];
+          if (exponent.startsWith('+')) exponent = exponent.substring(1);
+          resultStr = '$base \\times 10^{$exponent}';
+        } else {
+          resultStr = expStr;
+        }
+      } else {
+        // الأرقام العادية: نحدد 4 مراتب عشرية كحد أقصى ثم نزيل الأصفار الزائدة
+        resultStr = eval.toStringAsFixed(4);
+        resultStr = resultStr.replaceAll(RegExp(r'0*$'), '').replaceAll(RegExp(r'\.$'), '');
       }
 
       // Auto-append the result to the controller
@@ -195,6 +229,31 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
     );
   }
 
+  OverlayEntry? _overlayEntry;
+
+  void _showOverlay() {
+    if (_overlayEntry != null) return;
+
+    _overlayEntry = OverlayEntry(
+      builder: (context) {
+        return _MathOverlayWidget(
+          textController: _textController,
+          onInsert: (code) {
+            _insertAtCursor(code);
+            _focusNode.requestFocus();
+          },
+        );
+      },
+    );
+
+    Overlay.of(context).insert(_overlayEntry!);
+  }
+
+  void _removeOverlay() {
+    _overlayEntry?.remove();
+    _overlayEntry = null;
+  }
+
   // ✅ هذا هو الإصلاح: تصفير الإزاحة عند تحديث الودجت من الخارج
   @override
   void didUpdateWidget(DraggableTextWidget oldWidget) {
@@ -208,18 +267,37 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
     // NEW LOGIC FOR TEXT EDITING:
     if (widget.isEditing && !oldWidget.isEditing) {
       // Transitioning INTO editing mode
-      _textController.text = widget.content;
-      // Move cursor to end
-      _textController.selection = TextSelection.fromPosition(
-        TextPosition(offset: _textController.text.length),
-      );
-      _focusNode.requestFocus();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (_textController.text != widget.content) {
+          _textController.text = widget.content;
+        }
+        // Move cursor to end
+        _textController.selection = TextSelection.fromPosition(
+          TextPosition(offset: _textController.text.length),
+        );
+        _focusNode.requestFocus();
+        if (widget.isLatex) {
+          _showOverlay();
+        }
+      });
     } else if (!widget.isEditing && oldWidget.isEditing) {
       // Transitioning OUT of editing mode — sync read-only display
-      _textController.text = widget.content;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _removeOverlay();
+        if (_textController.text != widget.content) {
+          _textController.text = widget.content;
+        }
+      });
     } else if (!widget.isEditing && widget.content != oldWidget.content) {
       // Content updated from outside while not editing
-      _textController.text = widget.content;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (_textController.text != widget.content) {
+          _textController.text = widget.content;
+        }
+      });
     }
   }
 
@@ -268,169 +346,69 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
           : _plainTextFontFamily(widget.content),
     );
 
-    // تجهيز المحتوى (حقل تعديل أو نص عرض)
-    Widget contentWidget;
+    // تجهيز قلب المحتوى (حقل تعديل أو نص عرض)
+    Widget coreContent;
 
     if (widget.isEditing) {
-      // ── وضع التعديل: حقل نص مضمّن مع معاينة حية للـ LaTeX ────────────────────────
-      contentWidget = TapRegion(
-        groupId: 'text_editing_region',
-        onTapOutside: (event) {
-          widget.onEditComplete(_textController.text, event);
-        },
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            if (widget.isLatex)
-              ValueListenableBuilder<TextEditingValue>(
-                valueListenable: _textController,
-                builder: (context, value, child) {
-                  if (value.text.trim().isEmpty) return const SizedBox.shrink();
-                  final isDark =
-                      Theme.of(context).brightness == Brightness.dark;
+      // ── وضع التعديل: حقل نص مضمّن ──────────────────────────────────────
+      coreContent = Directionality(
+        textDirection: editingDirection,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.85,
+          ),
+          child: IntrinsicWidth(
+            child: Focus(
+            onKeyEvent: (node, event) {
+              if (event.logicalKey == LogicalKeyboardKey.space) {
+                return KeyEventResult.skipRemainingHandlers;
+              }
 
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 14),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: isDark
-                            ? [
-                                const Color(0xFF1E293B).withValues(alpha: 0.9),
-                                const Color(0xFF0F172A).withValues(alpha: 0.95),
-                              ]
-                            : [
-                                const Color(0xFFF8FAFC),
-                                const Color(0xFFFFFFFF),
-                              ],
-                      ),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: const Color(0xFF3B82F6).withValues(alpha: 0.4),
-                        width: 1.5,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.15),
-                          blurRadius: 15,
-                          offset: const Offset(0, 6),
-                        ),
-                        BoxShadow(
-                          color: const Color(0xFF3B82F6).withValues(alpha: 0.1),
-                          blurRadius: 4,
-                          spreadRadius: -2,
-                        ),
-                      ],
-                    ),
-                    child: Directionality(
-                      textDirection: TextDirection.ltr,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Math.tex(
-                            value.text,
-                            textStyle: TextStyle(
-                              fontSize: 20,
-                              color: isDark
-                                  ? const Color(0xFFF1F5F9)
-                                  : const Color(0xFF1E293B),
-                              fontWeight: FontWeight.w500,
-                            ),
-                            onErrorFallback: (err) => Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(
-                                  LucideIcons.alertCircle,
-                                  color: Color(0xFFEF4444),
-                                  size: 14,
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'خطأ في الكود',
-                                  style: TextStyle(
-                                    color: const Color(0xFFEF4444),
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            Directionality(
+              // Keep arrow keys inside the text editor and stop viewer-level
+              // handlers from hijacking navigation.
+              if (event.logicalKey == LogicalKeyboardKey.arrowLeft ||
+                  event.logicalKey == LogicalKeyboardKey.arrowRight ||
+                  event.logicalKey == LogicalKeyboardKey.arrowUp ||
+                  event.logicalKey == LogicalKeyboardKey.arrowDown ||
+                  event.logicalKey == LogicalKeyboardKey.home ||
+                  event.logicalKey == LogicalKeyboardKey.end) {
+                return KeyEventResult.skipRemainingHandlers;
+              }
+
+              return KeyEventResult.ignored;
+            },
+            child: TextField(
+              controller: _textController,
+              focusNode: _focusNode,
+              autofocus: true,
+              maxLines: null,
+              minLines: 1,
+              style: editingStyle,
               textDirection: editingDirection,
-              child: IntrinsicWidth(
-                child: Focus(
-                  onKeyEvent: (node, event) {
-                    if (event.logicalKey == LogicalKeyboardKey.space) {
-                      return KeyEventResult.skipRemainingHandlers;
-                    }
-
-                    // Keep arrow keys inside the text editor and stop viewer-level
-                    // handlers from hijacking navigation.
-                    if (event.logicalKey == LogicalKeyboardKey.arrowLeft ||
-                        event.logicalKey == LogicalKeyboardKey.arrowRight ||
-                        event.logicalKey == LogicalKeyboardKey.arrowUp ||
-                        event.logicalKey == LogicalKeyboardKey.arrowDown ||
-                        event.logicalKey == LogicalKeyboardKey.home ||
-                        event.logicalKey == LogicalKeyboardKey.end) {
-                      return KeyEventResult.skipRemainingHandlers;
-                    }
-
-                    return KeyEventResult.ignored;
-                  },
-                  child: TextField(
-                    controller: _textController,
-                    focusNode: _focusNode,
-                    autofocus: true,
-                    maxLines: null,
-                    minLines: 1,
-                    style: editingStyle,
-                    textDirection: editingDirection,
-                    textAlign: editingDirection == TextDirection.rtl
-                        ? TextAlign.right
-                        : TextAlign.left,
-                    decoration: const InputDecoration(
-                      border: InputBorder.none,
-                      isDense: true,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                    onChanged: (val) {
-                      _tryAutoSolveLatex(val);
-                      // Re-evaluate direction while typing so mixed-language text feels natural.
-                      setState(() {});
-                    },
-                    onSubmitted: (value) {
-                      widget.onEditComplete(value, null);
-                    },
-                  ),
-                ),
+              textAlign: editingDirection == TextDirection.rtl
+                  ? TextAlign.right
+                  : TextAlign.left,
+              decoration: const InputDecoration(
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
               ),
+              onChanged: (val) {
+                _tryAutoSolveLatex(val);
+                // Re-evaluate direction while typing so mixed-language text feels natural.
+                setState(() {});
+              },
+              onSubmitted: (value) {
+                widget.onEditComplete(value, null);
+              },
             ),
-            if (widget.isLatex)
-              _MathToolbar(
-                onInsert: (code) {
-                  _insertAtCursor(code);
-                  _focusNode.requestFocus();
-                },
-              ),
-          ],
+            ),
+          ),
         ),
       );
     } else if (widget.isLatex) {
       // ── وضع العرض: لاتيكس ────────────────────────────────────────────────
-      contentWidget = Directionality(
+      coreContent = Directionality(
         textDirection: TextDirection.ltr,
         child: Math.tex(
           widget.content,
@@ -444,7 +422,7 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
         isArabic: displayIsArabic,
       );
 
-      contentWidget = Directionality(
+      coreContent = Directionality(
         textDirection: displayDirection,
         child: Text(
           displayText,
@@ -456,6 +434,54 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
           locale: displayIsArabic ? const Locale('ar') : null,
           softWrap: true,
         ),
+      );
+    }
+
+    // تغليف المحتوى الأساسي بالمربع ذو الحدود والخلفية
+    final isDarkContext = Theme.of(context).brightness == Brightness.dark;
+
+    Widget boxedContent = Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: widget.isEditing
+            ? (isDarkContext
+                  ? const Color.fromARGB(255, 255, 255, 255).withOpacity(0.9)
+                  : Colors.white.withOpacity(0.9))
+            : (effectiveBgColor == Colors.transparent
+                  ? null
+                  : effectiveBgColor),
+        border: Border.all(
+          color: widget.isEditing
+              ? Colors.blue.withOpacity(0.5) // إطار أزرق عند التعديل
+              : (effectiveShowBorder
+                    ? effectiveBorderColor
+                    : Colors.transparent),
+          width: widget.isEditing ? 1.5 : (effectiveShowBorder ? 2 : 0),
+        ),
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: widget.isEditing
+            ? [
+                BoxShadow(
+                  color: Colors.black.withOpacity(isDarkContext ? 0.3 : 0.1),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ]
+            : null,
+      ),
+      child: coreContent,
+    );
+
+    // إضافة الكبسولات والأدوات حول المربع عند التعديل
+    Widget finalContent = boxedContent;
+
+    if (widget.isEditing) {
+      finalContent = TapRegion(
+        groupId: 'text_editing_region',
+        onTapOutside: (event) {
+          widget.onEditComplete(_textController.text, event);
+        },
+        child: boxedContent,
       );
     }
 
@@ -477,27 +503,7 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
               // لأننا نعتمد على didUpdateWidget لتقوم بذلك بعد تحديث الأب
             }
           : null,
-      child: Transform.translate(
-        offset: _dragOffset,
-        child: Container(
-          padding: const EdgeInsets.all(4),
-          decoration: BoxDecoration(
-            color: effectiveBgColor == Colors.transparent
-                ? null
-                : effectiveBgColor,
-            border: Border.all(
-              color: widget.isEditing
-                  ? Colors.blue.withOpacity(0.5) // إطار أزرق عند التعديل
-                  : (effectiveShowBorder
-                        ? effectiveBorderColor
-                        : Colors.transparent),
-              width: widget.isEditing ? 1.5 : (effectiveShowBorder ? 2 : 0),
-            ),
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: contentWidget,
-        ),
-      ),
+      child: Transform.translate(offset: _dragOffset, child: finalContent),
     );
   }
 }
@@ -587,6 +593,115 @@ class _MathToolbar extends StatelessWidget {
               ),
             );
           }).toList(),
+        ),
+      ),
+    );
+  }
+}
+
+class _MathOverlayWidget extends StatelessWidget {
+  final TextEditingController textController;
+  final void Function(String code) onInsert;
+
+  const _MathOverlayWidget({
+    required this.textController,
+    required this.onInsert,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    return Positioned(
+      bottom: MediaQuery.of(context).viewInsets.bottom + 80, // Float above main toolbar or keyboard
+      left: 0,
+      right: 0,
+      child: SafeArea(
+        child: TapRegion(
+          groupId: 'text_editing_region',
+          child: Material(
+            type: MaterialType.transparency,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: textController,
+                  builder: (context, value, child) {
+                    if (value.text.trim().isEmpty) return const SizedBox.shrink();
+
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: isDark
+                              ? [
+                                  const Color(0xFF1E293B).withValues(alpha: 0.9),
+                                  const Color(0xFF0F172A).withValues(alpha: 0.95),
+                                ]
+                              : [
+                                  const Color(0xFFF8FAFC),
+                                  const Color(0xFFFFFFFF),
+                                ],
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: const Color(0xFF3B82F6).withValues(alpha: 0.4),
+                          width: 1.5,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.15),
+                            blurRadius: 15,
+                            offset: const Offset(0, 6),
+                          ),
+                          BoxShadow(
+                            color: const Color(0xFF3B82F6).withValues(alpha: 0.1),
+                            blurRadius: 4,
+                            spreadRadius: -2,
+                          ),
+                        ],
+                      ),
+                      child: Directionality(
+                        textDirection: TextDirection.ltr,
+                        child: Math.tex(
+                          value.text,
+                          textStyle: TextStyle(
+                            fontSize: 20,
+                            color: isDark ? const Color(0xFFF1F5F9) : const Color(0xFF1E293B),
+                            fontWeight: FontWeight.w500,
+                          ),
+                          onErrorFallback: (err) => Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                LucideIcons.alertCircle,
+                                color: Color(0xFFEF4444),
+                                size: 14,
+                              ),
+                              const SizedBox(width: 8),
+                              const Text(
+                                'خطأ في الكود',
+                                style: TextStyle(
+                                  color: Color(0xFFEF4444),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                _MathToolbar(onInsert: onInsert),
+              ],
+            ),
+          ),
         ),
       ),
     );
