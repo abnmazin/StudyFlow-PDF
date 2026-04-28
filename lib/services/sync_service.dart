@@ -1094,4 +1094,55 @@ class SyncService {
       debugPrint('❌ خطأ في حذف الإشعار: $e');
     }
   }
+
+  // ─────────────────────────────────────────────
+  // GLOBAL TRASH SYNC (Collaborative Trash)
+  // ─────────────────────────────────────────────
+
+  /// Syncs deleted annotations (Trash) for a session.
+  /// 1. Pushes local unsynced deletions to Firestore.
+  /// 2. Fetches new deletions from Firestore.
+  /// 3. Returns a list of new deletions to be saved locally.
+  Future<List<Map<String, dynamic>>> syncDeletedAnnotations({
+    required String sessionCode,
+    required List<Map<String, dynamic>> localUnsynced,
+  }) async {
+    final trashCol = _db
+        .collection('sync_sessions')
+        .doc(sessionCode)
+        .collection('trash');
+
+    // 1. Push local unsynced
+    for (final item in localUnsynced) {
+      final originalId = item['originalId'] as String;
+      await _withTimeout(
+        trashCol.doc(originalId).set(item),
+        operationName: 'pushDeletedAnnotation',
+      );
+    }
+
+    // 2. Fetch from Firestore
+    final snap = await _withTimeout(
+      trashCol.get(),
+      operationName: 'fetchDeletedAnnotations',
+    );
+
+    return snap.docs.map((doc) => doc.data()).toList();
+  }
+
+  /// Removes a record from the remote trash collection when an item is restored.
+  Future<void> removeAnnotationFromRemoteTrash(
+    String sessionCode,
+    String originalId,
+  ) async {
+    await _withTimeout(
+      _db
+          .collection('sync_sessions')
+          .doc(sessionCode)
+          .collection('trash')
+          .doc(originalId)
+          .delete(),
+      operationName: 'removeAnnotationFromRemoteTrash',
+    );
+  }
 }

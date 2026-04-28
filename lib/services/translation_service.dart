@@ -13,15 +13,27 @@ class TranslationService {
   Future<String> translate(String text, AppProvider app) async {
     if (text.trim().isEmpty) return "";
 
-    try {
-      if (app.aiProvider == 'groq') {
-        return await _translateGroq(text, app);
-      } else {
-        return await _translateGemini(text, app);
+    app.resetFallbackAttempts();
+
+    while (true) {
+      try {
+        final result = app.aiProvider == 'gemini'
+            ? await _translateGemini(text, app)
+            : await _translateGroq(text, app);
+        return result;
+      } catch (e) {
+        debugPrint(
+          '[TranslationService] Failed with ${app.aiProvider} '
+          '(${app.currentModel}): $e',
+        );
+        final canRetry = app.triggerAiFallback();
+        if (!canRetry) {
+          debugPrint('[TranslationService] All providers exhausted.');
+          return 'فشلت الترجمة: تحقق من مفاتيح API أو الاتصال بالإنترنت.';
+        }
+        // Brief pause before retrying the next model/provider
+        await Future.delayed(const Duration(milliseconds: 500));
       }
-    } catch (e) {
-      debugPrint('[TranslationService] Error: $e');
-      return "خطأ في الترجمة: $e";
     }
   }
 

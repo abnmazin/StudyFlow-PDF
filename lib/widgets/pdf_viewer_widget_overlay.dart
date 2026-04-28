@@ -1,4 +1,4 @@
-﻿part of 'pdf_viewer_widget_w.dart';
+part of 'pdf_viewer_widget_w.dart';
 
 extension _PDFViewerWidgetStateOverlay on _PDFViewerWidgetState {
   Widget _buildPageOverlay(
@@ -183,6 +183,42 @@ extension _PDFViewerWidgetStateOverlay on _PDFViewerWidgetState {
                     appProvider.endEditing(c.id, newText);
                   }
                   setState(() => _editingCommentId = null);
+                },
+                onIncreaseSize: () {
+                  final styles = appProvider.getEditingStyles(c.id);
+                  if (styles != null) {
+                    appProvider.updateEditingStyle(
+                      commentId: c.id,
+                      fontSize: (styles['fontSize'] as double) + 2,
+                    );
+                  }
+                },
+                onDecreaseSize: () {
+                  final styles = appProvider.getEditingStyles(c.id);
+                  if (styles != null && (styles['fontSize'] as double) > 8) {
+                    appProvider.updateEditingStyle(
+                      commentId: c.id,
+                      fontSize: (styles['fontSize'] as double) - 2,
+                    );
+                  }
+                },
+                onToggleBorder: () {
+                  final styles = appProvider.getEditingStyles(c.id);
+                  if (styles != null) {
+                    appProvider.updateEditingStyle(
+                      commentId: c.id,
+                      showBorder: !(styles['showBorder'] as bool),
+                    );
+                  }
+                },
+                onToggleLatex: () {
+                  final styles = appProvider.getEditingStyles(c.id);
+                  if (styles != null) {
+                    appProvider.updateEditingStyle(
+                      commentId: c.id,
+                      isLatex: false,
+                    );
+                  }
                 },
                 onTap: () {
                   if (_tool == ToolType.text) {

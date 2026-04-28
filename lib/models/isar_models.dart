@@ -327,6 +327,52 @@ class IsarBookmark {
   String name = '';
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DeletedAnnotation: Stores soft-deleted items as JSON snapshots for auditing/restoration
+// ─────────────────────────────────────────────────────────────────────────────
+
+@collection
+class DeletedAnnotation {
+  Id id = Isar.autoIncrement;
+
+  @Index()
+  late String originalId; // The ID of the comment/highlight
+
+  @Index()
+  late String pdfId;
+
+  late String itemType; // 'comment', 'highlight', 'drawing', 'math'
+  late int pageNumber;
+  late String deletedBy; // Username who deleted it
+  late DateTime deletedAt;
+  late String contentSnapshot; // The full JSON representation of the deleted item
+  bool isSynced = false;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'originalId': originalId,
+      'pdfId': pdfId,
+      'itemType': itemType,
+      'pageNumber': pageNumber,
+      'deletedBy': deletedBy,
+      'deletedAt': deletedAt.millisecondsSinceEpoch,
+      'contentSnapshot': contentSnapshot,
+    };
+  }
+
+  static DeletedAnnotation fromJson(Map<String, dynamic> json) {
+    return DeletedAnnotation()
+      ..originalId = json['originalId'] ?? ''
+      ..pdfId = json['pdfId'] ?? ''
+      ..itemType = json['itemType'] ?? ''
+      ..pageNumber = json['pageNumber'] ?? 0
+      ..deletedBy = json['deletedBy'] ?? ''
+      ..deletedAt = DateTime.fromMillisecondsSinceEpoch(json['deletedAt'] ?? 0)
+      ..contentSnapshot = json['contentSnapshot'] ?? ''
+      ..isSynced = true;
+  }
+}
+
 @collection
 class StudyTask {
   Id id = Isar.autoIncrement;

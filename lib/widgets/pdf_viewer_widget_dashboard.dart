@@ -570,28 +570,32 @@ Widget _buildHeroSection(BuildContext context, AppProvider app) {
       Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'مرحبًا بك مجددًا 👋',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.5,
-                  color: isDarkMode ? Colors.white : const Color(0xFF0F172A),
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'مرحبًا بك مجددًا 👋',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.5,
+                    color: isDarkMode ? Colors.white : const Color(0xFF0F172A),
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-              Text(
-                'ماذا تريد أن تتعلم اليوم؟',
-                style: TextStyle(
-                  fontSize: 15,
-                  color: isDarkMode
-                      ? const Color(0xFF94A3B8)
-                      : const Color(0xFF64748B),
+                Text(
+                  'ماذا تريد أن تتعلم اليوم؟',
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: isDarkMode
+                        ? const Color(0xFF94A3B8)
+                        : const Color(0xFF64748B),
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           _buildQuickStatChip(app),
         ],
@@ -690,7 +694,7 @@ class _JoinSessionBarState extends State<JoinSessionBar> {
               backgroundColor: const Color(0xFF3B82F6),
               foregroundColor: Colors.white,
               elevation: 0,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
               ),
@@ -1235,12 +1239,15 @@ Widget _buildQuickActionChips(BuildContext context, bool isDarkMode) {
                 color: color[isDarkMode ? 400 : 600],
               ),
               const SizedBox(width: 8),
-              Text(
-                a['label'] as String,
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                  color: isDarkMode ? Colors.white : color[900],
+              Flexible(
+                child: Text(
+                  a['label'] as String,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    color: isDarkMode ? Colors.white : color[900],
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
@@ -1394,7 +1401,7 @@ Widget _buildRealFolderGrid(bool isDarkMode) {
                         padding: const EdgeInsets.all(16),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
                               LucideIcons.folder,

@@ -19,6 +19,7 @@ import '../../services/sync_service.dart';
 import '../../utils/responsive_utils.dart';
 import 'mini_calculator_widget.dart';
 import 'session_cards.dart';
+import '../../models/isar_models.dart' hide PdfDocument;
 
 /// Which color slot the picker is editing.
 enum _ColorTarget { stroke, bg, border }
@@ -116,9 +117,10 @@ class StudyFlowRightPanel extends StatelessWidget {
     // Resolve Effective Styles (Editing > Default)
     // We use 'num' for fontSize to strictly handle int/double safety
     final effectiveFontSize =
-        (isTextEditing && editingStyles?['fontSize'] != null)
-        ? (editingStyles!['fontSize'] as num).toDouble()
-        : fontSize;
+        ((isTextEditing && editingStyles?['fontSize'] != null)
+            ? (editingStyles!['fontSize'] as num).toDouble()
+            : fontSize)
+        .clamp(10.0, 48.0);
 
     final effectiveFontFamily =
         (isTextEditing && editingStyles?['fontFamily'] != null)
@@ -723,6 +725,15 @@ class StudyFlowRightPanel extends StatelessWidget {
                                     ],
                                   ),
                                 ),
+                                if (activePdf != null)
+                                  _buildFileTrashSection(
+                                    context.read<AppProvider>(),
+                                    activePdf!,
+                                    surfaceAlt,
+                                    panelBorder,
+                                    textPrimary,
+                                    textMuted,
+                                  ),
                                 const SizedBox(height: 16),
                               ],
 
@@ -1589,6 +1600,132 @@ class StudyFlowRightPanel extends StatelessWidget {
       ),
     );
   }
+
+  Widget _buildFileTrashSection(
+    AppProvider app,
+    PdfItem activePdf,
+    Color surfaceAlt,
+    Color panelBorder,
+    Color textPrimary,
+    Color textMuted,
+  ) {
+    return FutureBuilder<List<DeletedAnnotation>>(
+      future: app.fileManager.getDeletedAnnotations(),
+      builder: (context, snapshot) {
+        final allItems = snapshot.data ?? [];
+        final items = allItems.where((i) => i.pdfId == activePdf.id).toList();
+
+        if (items.isEmpty) return const SizedBox.shrink();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Icon(LucideIcons.trash2, size: 14, color: textMuted),
+                const SizedBox(width: 8),
+                Text(
+                  'المحذوفات مؤخراً (هذا الملف)',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: textMuted,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Container(
+              decoration: BoxDecoration(
+                color: surfaceAlt,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: panelBorder),
+              ),
+              child: ListView.separated(
+                shrinkWrap: true,
+                padding: EdgeInsets.zero,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: items.length,
+                separatorBuilder: (_, __) =>
+                    Divider(color: panelBorder, height: 1),
+                itemBuilder: (ctx, i) {
+                  final item = items[i];
+                  final isOwner = app.currentUser?.role == 'lecturer' ||
+                      app.currentUser?.role == 'developer';
+                  final isCreator = item.deletedBy == app.currentUser?.username;
+
+                  // Restore button logic
+                  final bool canRestore = (app.currentSessionCode != null)
+                      ? isOwner
+                      : (isOwner || isCreator);
+
+                  return ListTile(
+                    dense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                    leading: Icon(
+                      _getIconForItemType(item.itemType),
+                      size: 16,
+                      color: textMuted,
+                    ),
+                    title: Text(
+                      _getLabelForItemType(item.itemType),
+                      style: TextStyle(
+                        color: textPrimary,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    subtitle: Text(
+                      'الصفحة ${item.pageNumber} • ${item.deletedBy}',
+                      style: TextStyle(color: textMuted, fontSize: 11),
+                    ),
+                    trailing: canRestore
+                        ? IconButton(
+                            onPressed: () async {
+                              await app.restoreAnnotation(item);
+                            },
+                            icon: const Icon(LucideIcons.undo2, size: 16),
+                            tooltip: 'استعادة',
+                            color: Theme.of(context).primaryColor,
+                          )
+                        : null,
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  IconData _getIconForItemType(String type) {
+    switch (type) {
+      case 'comment':
+        return LucideIcons.messageSquare;
+      case 'math':
+        return LucideIcons.sigma;
+      case 'drawing':
+        return LucideIcons.penTool;
+      default:
+        return LucideIcons.highlighter;
+    }
+  }
+
+  String _getLabelForItemType(String type) {
+    switch (type) {
+      case 'comment':
+        return 'ملاحظة نصية';
+      case 'math':
+        return 'معادلة رياضيّة';
+      case 'drawing':
+        return 'رسم / شكل';
+      default:
+        return 'تظليل نص';
+    }
+  }
 }
 
 class _CursorUtilitiesHub extends StatefulWidget {
@@ -2219,32 +2356,32 @@ class _AiChatWidgetState extends State<_AiChatWidget>
 
   Future<String> _generateAiReply(String prompt) async {
     final app = context.read<AppProvider>();
+    app.resetFallbackAttempts();
 
-    if (app.aiProvider == 'groq') {
-      final model = _groqModels.contains(app.groqModel)
-          ? app.groqModel
-          : _groqModels.first;
-      return _generateGroqReply(prompt, model);
-    }
+    while (true) {
+      final provider = app.aiProvider;
+      final model = provider == 'gemini' ? app.geminiModel : app.groqModel;
 
-    final preferredModel = _geminiModels.contains(app.geminiModel)
-        ? app.geminiModel
-        : _geminiModels.first;
-    final fallbacks = [
-      preferredModel,
-      ..._geminiModels.where((m) => m != preferredModel),
-    ];
-
-    Object? lastError;
-    for (final modelName in fallbacks) {
       try {
-        return await _generateGeminiReply(prompt, modelName);
+        if (provider == 'gemini') {
+          return await _generateGeminiReply(prompt, model);
+        } else {
+          return await _generateGroqReply(prompt, model);
+        }
       } catch (e) {
-        lastError = e;
+        debugPrint('[AI Chat] Failed with $provider ($model): $e');
+        final canRetry = app.triggerAiFallback();
+        if (!canRetry) {
+          // Re-throw so _sendMessage shows the error bubble
+          rethrow;
+        }
+        debugPrint(
+          '[AI Chat] Retrying with ${app.aiProvider} (${app.currentModel})…',
+        );
+        // Small delay so Settings UI has time to reflect the switch
+        await Future.delayed(const Duration(milliseconds: 300));
       }
     }
-
-    throw Exception(lastError?.toString() ?? 'Unknown Gemini API error');
   }
 
   @override
@@ -2438,7 +2575,7 @@ class _AiChatWidgetState extends State<_AiChatWidget>
         children: [
           if (!isUser) ...[
             Container(
-              margin: const EdgeInsets.only(right: 10, bottom: 2),
+              margin: const EdgeInsets.only(bottom: 2),
               padding: const EdgeInsets.all(7),
               decoration: BoxDecoration(
                 color: const Color(0xFF3B82F6).withValues(alpha: 0.15),
@@ -2450,6 +2587,7 @@ class _AiChatWidgetState extends State<_AiChatWidget>
                 color: Color(0xFF3B82F6),
               ),
             ),
+            const SizedBox(width: 12),
           ],
           Flexible(child: bubble),
         ],
@@ -2470,7 +2608,7 @@ class _AiChatWidgetState extends State<_AiChatWidget>
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Container(
-            margin: const EdgeInsets.only(right: 6, bottom: 2),
+            margin: const EdgeInsets.only(bottom: 2),
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
               color: dotColor.withValues(alpha: 0.15),
@@ -2478,6 +2616,7 @@ class _AiChatWidgetState extends State<_AiChatWidget>
             ),
             child: const Icon(LucideIcons.bot, size: 14, color: dotColor),
           ),
+          const SizedBox(width: 12),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(

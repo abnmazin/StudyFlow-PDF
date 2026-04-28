@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
@@ -21,6 +22,10 @@ class DraggableTextWidget extends StatefulWidget {
   final bool enableDrag;
   final bool isEditing;
   final void Function(String text, PointerDownEvent? event) onEditComplete;
+  final VoidCallback? onIncreaseSize;
+  final VoidCallback? onDecreaseSize;
+  final VoidCallback? onToggleBorder;
+  final VoidCallback? onToggleLatex;
 
   const DraggableTextWidget({
     super.key,
@@ -40,6 +45,10 @@ class DraggableTextWidget extends StatefulWidget {
     required this.enableDrag,
     this.isEditing = false,
     required this.onEditComplete,
+    this.onIncreaseSize,
+    this.onDecreaseSize,
+    this.onToggleBorder,
+    this.onToggleLatex,
   });
 
   @override
@@ -209,7 +218,7 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
     }
   }
 
-  void _insertAtCursor(String code) {
+  void _insertAtCursor(String code, {int? cursorOffset}) {
     final ctrl = _textController;
     final selection = ctrl.selection;
 
@@ -223,9 +232,13 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
 
     final newText = ctrl.text.replaceRange(base, extent, code);
 
+    final finalOffset = cursorOffset != null 
+        ? base + cursorOffset 
+        : base + code.length;
+
     ctrl.value = TextEditingValue(
       text: newText,
-      selection: TextSelection.collapsed(offset: base + code.length),
+      selection: TextSelection.collapsed(offset: finalOffset),
     );
   }
 
@@ -238,10 +251,15 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
       builder: (context) {
         return _MathOverlayWidget(
           textController: _textController,
-          onInsert: (code) {
-            _insertAtCursor(code);
+          onInsert: (code, [cursorOffset]) {
+            _insertAtCursor(code, cursorOffset: cursorOffset);
             _focusNode.requestFocus();
           },
+          onIncreaseSize: widget.onIncreaseSize,
+          onDecreaseSize: widget.onDecreaseSize,
+          onToggleBorder: widget.onToggleBorder,
+          onToggleLatex: widget.onToggleLatex,
+          showBorder: widget.showBorder,
         );
       },
     );
@@ -298,6 +316,22 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
           _textController.text = widget.content;
         }
       });
+    }
+
+    if (widget.isEditing && oldWidget.isEditing) {
+      if (widget.isLatex && !oldWidget.isLatex) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _showOverlay();
+        });
+      } else if (!widget.isLatex && oldWidget.isLatex) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _removeOverlay();
+        });
+      } else if (widget.isLatex) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _overlayEntry?.markNeedsBuild();
+        });
+      }
     }
   }
 
@@ -358,25 +392,6 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
             maxWidth: MediaQuery.of(context).size.width * 0.85,
           ),
           child: IntrinsicWidth(
-            child: Focus(
-            onKeyEvent: (node, event) {
-              if (event.logicalKey == LogicalKeyboardKey.space) {
-                return KeyEventResult.skipRemainingHandlers;
-              }
-
-              // Keep arrow keys inside the text editor and stop viewer-level
-              // handlers from hijacking navigation.
-              if (event.logicalKey == LogicalKeyboardKey.arrowLeft ||
-                  event.logicalKey == LogicalKeyboardKey.arrowRight ||
-                  event.logicalKey == LogicalKeyboardKey.arrowUp ||
-                  event.logicalKey == LogicalKeyboardKey.arrowDown ||
-                  event.logicalKey == LogicalKeyboardKey.home ||
-                  event.logicalKey == LogicalKeyboardKey.end) {
-                return KeyEventResult.skipRemainingHandlers;
-              }
-
-              return KeyEventResult.ignored;
-            },
             child: TextField(
               controller: _textController,
               focusNode: _focusNode,
@@ -401,7 +416,6 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
               onSubmitted: (value) {
                 widget.onEditComplete(value, null);
               },
-            ),
             ),
           ),
         ),
@@ -508,198 +522,225 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
   }
 }
 
-class _MathSymbol {
-  final String label;
-  final String code;
-  final String? tooltip;
-  const _MathSymbol({required this.label, required this.code, this.tooltip});
-}
-
-const _basicSymbols = [
-  _MathSymbol(label: 'x/y', code: r'\frac{x}{y}', tooltip: 'كسر'),
-  _MathSymbol(label: '√x', code: r'\sqrt{x}', tooltip: 'جذر تربيعي'),
-  _MathSymbol(label: 'ⁿ√x', code: r'\sqrt[n]{x}', tooltip: 'جذر n'),
-  _MathSymbol(label: '( )', code: r'\left(  \right)', tooltip: 'أقواس'),
-  _MathSymbol(label: '∑', code: r'\sum_{i=1}^{n}', tooltip: 'مجموع'),
-  _MathSymbol(label: '∞', code: r'\infty', tooltip: 'مالانهاية'),
-];
-
-class _MathToolbar extends StatelessWidget {
-  final void Function(String code) onInsert;
-
-  const _MathToolbar({required this.onInsert});
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final tabBg = isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9);
-    final tabBorder = isDark
-        ? const Color(0xFF334155)
-        : const Color(0xFFCBD5E1);
-    final chipBg = isDark ? const Color(0xFF0F172A) : Colors.white;
-
-    return Container(
-      margin: const EdgeInsets.only(top: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-      decoration: BoxDecoration(
-        color: tabBg,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: tabBorder),
-      ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        child: Row(
-          children: _basicSymbols.map((sym) {
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Tooltip(
-                message: sym.tooltip ?? sym.code,
-                child: Material(
-                  color: chipBg,
-                  borderRadius: BorderRadius.circular(8),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(8),
-                    onTap: () => onInsert(sym.code),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: tabBorder),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Directionality(
-                        textDirection: TextDirection.ltr,
-                        child: Math.tex(
-                          sym.label,
-                          textStyle: TextStyle(
-                            fontSize: 16,
-                            color: isDark ? Colors.white : Colors.black87,
-                          ),
-                          onErrorFallback: (_) => Text(
-                            sym.label,
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: isDark ? Colors.white : Colors.black87,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            );
-          }).toList(),
-        ),
-      ),
-    );
-  }
-}
-
 class _MathOverlayWidget extends StatelessWidget {
   final TextEditingController textController;
-  final void Function(String code) onInsert;
+  final void Function(String code, [int? cursorOffset]) onInsert;
+  final VoidCallback? onIncreaseSize;
+  final VoidCallback? onDecreaseSize;
+  final VoidCallback? onToggleBorder;
+  final VoidCallback? onToggleLatex;
+  final bool showBorder;
 
   const _MathOverlayWidget({
     required this.textController,
     required this.onInsert,
+    this.onIncreaseSize,
+    this.onDecreaseSize,
+    this.onToggleBorder,
+    this.onToggleLatex,
+    required this.showBorder,
   });
+
+  Widget _buildMathButton(BuildContext context, String tooltip, String label, VoidCallback onTap) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: Tooltip(
+        message: tooltip,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.04),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: isDark ? Colors.white12 : Colors.black12),
+              ),
+              child: Center(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFormatButton(IconData icon, VoidCallback? onPressed, String tooltip, Color color) {
+    if (onPressed == null) return const SizedBox.shrink();
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+            child: Icon(icon, size: 20, color: color),
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Positioned(
-      bottom: MediaQuery.of(context).viewInsets.bottom + 80, // Float above main toolbar or keyboard
-      left: 0,
-      right: 0,
+      bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+      left: 16,
+      right: 16,
       child: SafeArea(
         child: TapRegion(
           groupId: 'text_editing_region',
-          child: Material(
-            type: MaterialType.transparency,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                ValueListenableBuilder<TextEditingValue>(
-                  valueListenable: textController,
-                  builder: (context, value, child) {
-                    if (value.text.trim().isEmpty) return const SizedBox.shrink();
-
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: isDark
-                              ? [
-                                  const Color(0xFF1E293B).withValues(alpha: 0.9),
-                                  const Color(0xFF0F172A).withValues(alpha: 0.95),
-                                ]
-                              : [
-                                  const Color(0xFFF8FAFC),
-                                  const Color(0xFFFFFFFF),
-                                ],
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: const Color(0xFF3B82F6).withValues(alpha: 0.4),
-                          width: 1.5,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.15),
-                            blurRadius: 15,
-                            offset: const Offset(0, 6),
-                          ),
-                          BoxShadow(
-                            color: const Color(0xFF3B82F6).withValues(alpha: 0.1),
-                            blurRadius: 4,
-                            spreadRadius: -2,
-                          ),
-                        ],
+          child: Center(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                child: Container(
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.of(context).size.width * 0.85,
+                    maxHeight: 220, // HARD CAP — prevents vertical explosion no matter what Math.tex does
+                  ),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.black.withOpacity(0.65) : Colors.white.withOpacity(0.85),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: isDark ? Colors.white.withOpacity(0.15) : Colors.black.withOpacity(0.08),
+                      width: 1,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.15),
+                        blurRadius: 24,
+                        offset: const Offset(0, 8),
                       ),
-                      child: Directionality(
-                        textDirection: TextDirection.ltr,
-                        child: Math.tex(
-                          value.text,
-                          textStyle: TextStyle(
-                            fontSize: 20,
-                            color: isDark ? const Color(0xFFF1F5F9) : const Color(0xFF1E293B),
-                            fontWeight: FontWeight.w500,
-                          ),
-                          onErrorFallback: (err) => Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(
-                                LucideIcons.alertCircle,
-                                color: Color(0xFFEF4444),
-                                size: 14,
-                              ),
-                              const SizedBox(width: 8),
-                              const Text(
-                                'خطأ في الكود',
-                                style: TextStyle(
-                                  color: Color(0xFFEF4444),
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // ─── 1. LIVE PREVIEW AREA (Top Section) ───
+                      ValueListenableBuilder<TextEditingValue>(
+                        valueListenable: textController,
+                        builder: (context, value, child) {
+                          if (value.text.trim().isEmpty) return const SizedBox.shrink();
+                          return Container(
+                            constraints: const BoxConstraints(
+                              minWidth: 150,
+                              maxHeight: 80, // 🛡️ Absolute vertical cap. No explosions allowed.
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03),
+                              border: Border(
+                                bottom: BorderSide(
+                                  color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05),
                                 ),
                               ),
-                            ],
-                          ),
+                            ),
+                            alignment: Alignment.center,
+                            child: FittedBox( // 🪄 Prevents infinite constraint crashes & scales down long equations
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.center,
+                              child: Directionality(
+                                textDirection: TextDirection.ltr,
+                                child: Math.tex(
+                                  value.text,
+                                  textStyle: TextStyle(
+                                    fontSize: 28,
+                                    color: isDark ? Colors.white : Colors.black87,
+                                  ),
+                                  onErrorFallback: (err) => Text(
+                                    value.text,
+                                    style: TextStyle(
+                                      color: Colors.redAccent.withOpacity(0.8),
+                                      fontSize: 20,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+
+                      // ─── 2. BOTTOM AREA (Formatting + Math Tools) ───
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min, // SHRINK-WRAP THE ROW
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            // COMPACT 2x2 FORMATTING GRID
+                            Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(icon: const Icon(LucideIcons.zoomIn, size: 18), onPressed: onIncreaseSize, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32), color: Colors.blueAccent),
+                                    IconButton(icon: const Icon(LucideIcons.zoomOut, size: 18), onPressed: onDecreaseSize, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32), color: Colors.blueAccent),
+                                  ],
+                                ),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(icon: Icon(showBorder ? LucideIcons.checkSquare : LucideIcons.square, size: 18), onPressed: onToggleBorder, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32), color: showBorder ? const Color(0xFF10B981) : Colors.blueAccent),
+                                    IconButton(icon: const Icon(LucideIcons.messageSquare, size: 18), onPressed: onToggleLatex, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32), color: const Color(0xFFEF4444)),
+                                  ],
+                                ),
+                              ],
+                            ),
+                            
+                            // SEPARATOR
+                            Container(
+                              width: 1,
+                              height: 40,
+                              color: isDark ? Colors.white24 : Colors.black12,
+                              margin: const EdgeInsets.symmetric(horizontal: 12),
+                            ),
+
+                            // MATH BUTTONS
+                            Flexible( // Allows scrolling only if it overflows
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                physics: const BouncingScrollPhysics(),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min, // SHRINK-WRAP THE MATH BUTTONS
+                                  children: [
+                                    _buildMathButton(context, 'مالانهاية', '∞', () => onInsert('\\infty ', 7)),
+                                    _buildMathButton(context, 'قوسين', '( )', () => onInsert('\\left(  \\right)', 7)),
+                                    _buildMathButton(context, 'مجموع', '∑', () => onInsert('\\sum_{}^{} ', 6)),
+                                    _buildMathButton(context, 'تكامل', '∫', () => onInsert('\\int_{}^{} ', 6)),
+                                    _buildMathButton(context, 'أساس', 'x₂', () => onInsert('_{ }', 2)),
+                                    _buildMathButton(context, 'أس', 'x²', () => onInsert('^{ }', 2)),
+                                    _buildMathButton(context, 'جذر', '√', () => onInsert('\\sqrt{ }', 6)),
+                                    _buildMathButton(context, 'كسر', 'x/y', () => onInsert('\\frac{ }{ }', 6)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    );
-                  },
+                    ],
+                  ),
                 ),
-                _MathToolbar(onInsert: onInsert),
-              ],
+              ),
             ),
           ),
         ),

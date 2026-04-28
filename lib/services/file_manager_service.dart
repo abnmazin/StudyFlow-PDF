@@ -86,6 +86,7 @@ class FileManagerService extends ChangeNotifier {
         IsarHighlightSchema,
         IsarCommentSchema,
         IsarBookmarkSchema,
+        DeletedAnnotationSchema,
       ], directory: dbDir.path);
 
       _isInitialized = true;
@@ -1306,6 +1307,58 @@ class FileManagerService extends ChangeNotifier {
     if (!_isInitialized) await init();
     await _isar.writeTxn(() async {
       await _isar.studyTasks.filter().uuidEqualTo(uuid).deleteFirst();
+    });
+    _notify();
+  }
+
+  // ── 12. Deleted Annotations (Trash) ────────────────────────────────────────
+
+  Future<void> saveDeletedAnnotation(DeletedAnnotation deleted) async {
+    if (!_isInitialized) await init();
+    await _isar.writeTxn(() async {
+      await _isar.deletedAnnotations.put(deleted);
+    });
+    _notify();
+  }
+
+  Future<List<DeletedAnnotation>> getDeletedAnnotations() async {
+    if (!_isInitialized) await init();
+    return _isar.deletedAnnotations.where().sortByDeletedAtDesc().findAll();
+  }
+
+  Future<List<DeletedAnnotation>> getUnsyncedDeletedAnnotations() async {
+    if (!_isInitialized) await init();
+    return _isar.deletedAnnotations.filter().isSyncedEqualTo(false).findAll();
+  }
+
+  Future<void> markDeletedAnnotationsAsSynced(List<int> ids) async {
+    if (!_isInitialized) await init();
+    await _isar.writeTxn(() async {
+      for (final id in ids) {
+        final item = await _isar.deletedAnnotations.get(id);
+        if (item != null) {
+          item.isSynced = true;
+          await _isar.deletedAnnotations.put(item);
+        }
+      }
+    });
+  }
+
+  Future<void> saveRemoteDeletedAnnotations(
+    List<DeletedAnnotation> items,
+  ) async {
+    if (!_isInitialized) await init();
+    await _isar.writeTxn(() async {
+      for (final item in items) {
+        // Check if we already have it
+        final existing = await _isar.deletedAnnotations
+            .filter()
+            .originalIdEqualTo(item.originalId)
+            .findFirst();
+        if (existing == null) {
+          await _isar.deletedAnnotations.put(item);
+        }
+      }
     });
     _notify();
   }

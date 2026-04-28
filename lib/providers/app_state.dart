@@ -177,6 +177,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   DrawingSyncStrategy get drawingSyncStrategy => _drawingSyncStrategy;
   DevSettings get devSettings => _devSettings;
+  FileManagerService get fileManager => FileManagerService();
 
   void setDrawingSyncStrategy(DrawingSyncStrategy strategy) {
     _drawingSyncStrategy = strategy;
@@ -184,11 +185,22 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   // AI & Models
+  static const List<String> geminiModelsList = [
+    'gemini-2.5-flash',
+    'gemini-2.0-flash',
+  ];
+  static const List<String> groqModelsList = [
+    'llama-3.3-70b-versatile',
+    'llama-3.1-8b-instant',
+    'mixtral-8x7b-32768',
+  ];
+
   String _aiProvider = 'groq';
   String _geminiModel = 'gemini-2.5-flash';
   String _groqModel = 'llama-3.3-70b-versatile';
   String _geminiApiKey = '';
   String _groqApiKey = '';
+  int _fallbackAttempts = 0;
 
   // Concurrency & Flow
   bool _isSaving = false;
@@ -370,6 +382,36 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
           debugPrint('📥 Downloaded comment: ${c.id}');
         } catch (e) {
           debugPrint('❌ Error parsing comment from server: $e');
+        }
+      }
+
+      // ── Collaborative Trash Sync ──────────────────────────────────────────
+      if (currentSessionCode != null) {
+        try {
+          final unsyncedTrash =
+              await _fileManager.getUnsyncedDeletedAnnotations();
+          final remoteTrashJson = await _syncService.syncDeletedAnnotations(
+            sessionCode: currentSessionCode!,
+            localUnsynced: unsyncedTrash.map((e) => e.toJson()).toList(),
+          );
+
+          // Mark local as synced
+          if (unsyncedTrash.isNotEmpty) {
+            await _fileManager.markDeletedAnnotationsAsSynced(
+              unsyncedTrash.map((e) => e.id).toList(),
+            );
+          }
+
+          // Save remote to local
+          if (remoteTrashJson.isNotEmpty) {
+            final remoteModels =
+                remoteTrashJson
+                    .map((e) => DeletedAnnotation.fromJson(e))
+                    .toList();
+            await _fileManager.saveRemoteDeletedAnnotations(remoteModels);
+          }
+        } catch (trashError) {
+          debugPrint('⚠️ Collaborative Trash Sync failed: $trashError');
         }
       }
 
@@ -612,6 +654,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   String get groqModel => _groqModel;
   String get geminiApiKey => _geminiApiKey;
   String get groqApiKey => _groqApiKey;
+  /// The currently-active model name (whichever provider is selected).
+  String get currentModel =>
+      _aiProvider == 'gemini' ? _geminiModel : _groqModel;
 
   // Session / User getters
   AppUser? get currentUser => _currentUser;
@@ -1739,6 +1784,66 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     });
   }
 
+  // ─── AI FALLBACK & HIGH AVAILABILITY ───────────────────────────────────────
+
+  /// Call once at the start of each user-initiated AI request.
+  void resetFallbackAttempts() => _fallbackAttempts = 0;
+
+  /// Rotates to the next available model / provider.
+  /// Returns [true] if a fallback was applied and the caller should retry.
+  /// Returns [false] if all options are exhausted.
+  bool triggerAiFallback() {
+    // Hard cap: max 5 total rotations per single request chain.
+    if (_fallbackAttempts >= 5) {
+      debugPrint('[AI Fallback] Hard cap reached. Giving up.');
+      return false;
+    }
+    _fallbackAttempts++;
+
+    if (_aiProvider == 'gemini') {
+      final idx = geminiModelsList.indexOf(_geminiModel);
+      if (idx != -1 && idx < geminiModelsList.length - 1) {
+        // Rotate to next Gemini model
+        final next = geminiModelsList[idx + 1];
+        debugPrint('[AI Fallback] Gemini: $_geminiModel → $next');
+        setGeminiModel(next);
+        return true;
+      }
+      // All Gemini models exhausted → try Groq
+      final groqKey = _groqApiKey.isNotEmpty
+          ? _groqApiKey
+          : (const String.fromEnvironment('GROQ_API_KEY'));
+      if (groqKey.isNotEmpty) {
+        debugPrint('[AI Fallback] Gemini exhausted → switching to Groq');
+        setAiProvider('groq');
+        setGroqModel(groqModelsList.first);
+        return true;
+      }
+    } else if (_aiProvider == 'groq') {
+      final idx = groqModelsList.indexOf(_groqModel);
+      if (idx != -1 && idx < groqModelsList.length - 1) {
+        // Rotate to next Groq model
+        final next = groqModelsList[idx + 1];
+        debugPrint('[AI Fallback] Groq: $_groqModel → $next');
+        setGroqModel(next);
+        return true;
+      }
+      // All Groq models exhausted → try Gemini
+      final geminiKey = _geminiApiKey.isNotEmpty
+          ? _geminiApiKey
+          : (const String.fromEnvironment('GEMINI_API_KEY'));
+      if (geminiKey.isNotEmpty) {
+        debugPrint('[AI Fallback] Groq exhausted → switching to Gemini');
+        setAiProvider('gemini');
+        setGeminiModel(geminiModelsList.first);
+        return true;
+      }
+    }
+
+    debugPrint('[AI Fallback] No more options available.');
+    return false;
+  }
+
   void setActiveClass(String id) {
     _activeClassId = id;
 
@@ -2150,6 +2255,24 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       pdf.highlights.remove(highlight);
       _clearLockedLocalOnlyHighlight(pdf.fileHash, highlight.id);
 
+      // NEW: SOFT DELETE (TRASH)
+      final type = highlight.type;
+      final itemType = (type == HighlightType.pen ||
+              type == HighlightType.arrow ||
+              type == HighlightType.rectangle ||
+              type == HighlightType.circle)
+          ? 'drawing'
+          : 'highlight';
+
+      FileManagerService().saveDeletedAnnotation(DeletedAnnotation()
+        ..originalId = highlight.id
+        ..pdfId = pdfId
+        ..itemType = itemType
+        ..pageNumber = highlight.page
+        ..deletedBy = _currentUser?.username ?? 'user'
+        ..deletedAt = DateTime.now()
+        ..contentSnapshot = jsonEncode(highlight.toJson()));
+
       // Track deletion for Sync Reconciliation (Anti-Resurrection)
       if (pdf.fileHash != null) {
         _locallyDeletedIds
@@ -2178,7 +2301,55 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
       pdf.highlights.removeWhere((h) => h.id == highlightId);
       _notify();
-      _markPdfDirty(pdfId);
+      triggerSync();
+      return;
+    }
+  }
+
+  Future<void> restoreAnnotation(DeletedAnnotation deleted) async {
+    for (var cls in _classes) {
+      var pdf = cls.pdfs.firstWhere(
+        (p) => p.id == deleted.pdfId,
+        orElse: () => PdfItem(id: '', name: '', path: ''),
+      );
+      if (pdf.id.isEmpty) continue;
+
+      final data = jsonDecode(deleted.contentSnapshot);
+
+      if (deleted.itemType == 'comment' || deleted.itemType == 'math') {
+        final comment = PdfComment.fromJson(data);
+        pdf.comments.add(comment);
+      } else {
+        final highlight = Highlight.fromJson(data);
+        pdf.highlights.add(highlight);
+      }
+
+      // Remove from Trash
+      await FileManagerService().isar.writeTxn(() async {
+        await FileManagerService().isar.deletedAnnotations.delete(deleted.id);
+      });
+
+      // Collaborative Restore: Remove from remote trash
+      if (currentSessionCode != null) {
+        try {
+          await _syncService.removeAnnotationFromRemoteTrash(
+            currentSessionCode!,
+            deleted.originalId,
+          );
+        } catch (e) {
+          debugPrint('⚠️ Failed to remove from remote trash: $e');
+        }
+      }
+
+      // Clear from locallyDeletedIds so it doesn't get re-deleted on next sync
+      if (pdf.fileHash != null) {
+        _locallyDeletedIds[pdf.fileHash!]?.remove(deleted.originalId);
+      }
+
+      _notify();
+      _markPdfDirty(deleted.pdfId);
+      _markUnsavedChanges();
+      triggerSync(); // Trigger immediate sync to propagate the restoration
       return;
     }
   }
@@ -2269,6 +2440,16 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       if (pdf.id.isEmpty) continue;
 
       pdf.comments.removeWhere((c) => c.id == comment.id);
+
+      // NEW: SOFT DELETE (TRASH)
+      FileManagerService().saveDeletedAnnotation(DeletedAnnotation()
+        ..originalId = comment.id
+        ..pdfId = pdfId
+        ..itemType = comment.isLatex ? 'math' : 'comment'
+        ..pageNumber = comment.page
+        ..deletedBy = _currentUser?.username ?? 'user'
+        ..deletedAt = DateTime.now()
+        ..contentSnapshot = jsonEncode(comment.toJson()));
 
       // Track deletion for Sync Reconciliation
       if (pdf.fileHash != null) {

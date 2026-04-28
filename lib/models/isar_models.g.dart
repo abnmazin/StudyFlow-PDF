@@ -14330,6 +14330,1591 @@ extension IsarBookmarkQueryProperty
 // coverage:ignore-file
 // ignore_for_file: duplicate_ignore, non_constant_identifier_names, constant_identifier_names, invalid_use_of_protected_member, unnecessary_cast, prefer_const_constructors, lines_longer_than_80_chars, require_trailing_commas, inference_failure_on_function_invocation, unnecessary_parenthesis, unnecessary_raw_strings, unnecessary_null_checks, join_return_with_assignment, prefer_final_locals, avoid_js_rounded_ints, avoid_positional_boolean_parameters, always_specify_types
 
+extension GetDeletedAnnotationCollection on Isar {
+  IsarCollection<DeletedAnnotation> get deletedAnnotations => this.collection();
+}
+
+const DeletedAnnotationSchema = CollectionSchema(
+  name: r'DeletedAnnotation',
+  id: -1986755323929151792,
+  properties: {
+    r'contentSnapshot': PropertySchema(
+      id: 0,
+      name: r'contentSnapshot',
+      type: IsarType.string,
+    ),
+    r'deletedAt': PropertySchema(
+      id: 1,
+      name: r'deletedAt',
+      type: IsarType.dateTime,
+    ),
+    r'deletedBy': PropertySchema(
+      id: 2,
+      name: r'deletedBy',
+      type: IsarType.string,
+    ),
+    r'isSynced': PropertySchema(
+      id: 3,
+      name: r'isSynced',
+      type: IsarType.bool,
+    ),
+    r'itemType': PropertySchema(
+      id: 4,
+      name: r'itemType',
+      type: IsarType.string,
+    ),
+    r'originalId': PropertySchema(
+      id: 5,
+      name: r'originalId',
+      type: IsarType.string,
+    ),
+    r'pageNumber': PropertySchema(
+      id: 6,
+      name: r'pageNumber',
+      type: IsarType.long,
+    ),
+    r'pdfId': PropertySchema(
+      id: 7,
+      name: r'pdfId',
+      type: IsarType.string,
+    )
+  },
+  estimateSize: _deletedAnnotationEstimateSize,
+  serialize: _deletedAnnotationSerialize,
+  deserialize: _deletedAnnotationDeserialize,
+  deserializeProp: _deletedAnnotationDeserializeProp,
+  idName: r'id',
+  indexes: {
+    r'originalId': IndexSchema(
+      id: -8365773424467627071,
+      name: r'originalId',
+      unique: false,
+      replace: false,
+      properties: [
+        IndexPropertySchema(
+          name: r'originalId',
+          type: IndexType.hash,
+          caseSensitive: true,
+        )
+      ],
+    ),
+    r'pdfId': IndexSchema(
+      id: 5397193447447963901,
+      name: r'pdfId',
+      unique: false,
+      replace: false,
+      properties: [
+        IndexPropertySchema(
+          name: r'pdfId',
+          type: IndexType.hash,
+          caseSensitive: true,
+        )
+      ],
+    )
+  },
+  links: {},
+  embeddedSchemas: {},
+  getId: _deletedAnnotationGetId,
+  getLinks: _deletedAnnotationGetLinks,
+  attach: _deletedAnnotationAttach,
+  version: '3.1.0+1',
+);
+
+int _deletedAnnotationEstimateSize(
+  DeletedAnnotation object,
+  List<int> offsets,
+  Map<Type, List<int>> allOffsets,
+) {
+  var bytesCount = offsets.last;
+  bytesCount += 3 + object.contentSnapshot.length * 3;
+  bytesCount += 3 + object.deletedBy.length * 3;
+  bytesCount += 3 + object.itemType.length * 3;
+  bytesCount += 3 + object.originalId.length * 3;
+  bytesCount += 3 + object.pdfId.length * 3;
+  return bytesCount;
+}
+
+void _deletedAnnotationSerialize(
+  DeletedAnnotation object,
+  IsarWriter writer,
+  List<int> offsets,
+  Map<Type, List<int>> allOffsets,
+) {
+  writer.writeString(offsets[0], object.contentSnapshot);
+  writer.writeDateTime(offsets[1], object.deletedAt);
+  writer.writeString(offsets[2], object.deletedBy);
+  writer.writeBool(offsets[3], object.isSynced);
+  writer.writeString(offsets[4], object.itemType);
+  writer.writeString(offsets[5], object.originalId);
+  writer.writeLong(offsets[6], object.pageNumber);
+  writer.writeString(offsets[7], object.pdfId);
+}
+
+DeletedAnnotation _deletedAnnotationDeserialize(
+  Id id,
+  IsarReader reader,
+  List<int> offsets,
+  Map<Type, List<int>> allOffsets,
+) {
+  final object = DeletedAnnotation();
+  object.contentSnapshot = reader.readString(offsets[0]);
+  object.deletedAt = reader.readDateTime(offsets[1]);
+  object.deletedBy = reader.readString(offsets[2]);
+  object.id = id;
+  object.isSynced = reader.readBool(offsets[3]);
+  object.itemType = reader.readString(offsets[4]);
+  object.originalId = reader.readString(offsets[5]);
+  object.pageNumber = reader.readLong(offsets[6]);
+  object.pdfId = reader.readString(offsets[7]);
+  return object;
+}
+
+P _deletedAnnotationDeserializeProp<P>(
+  IsarReader reader,
+  int propertyId,
+  int offset,
+  Map<Type, List<int>> allOffsets,
+) {
+  switch (propertyId) {
+    case 0:
+      return (reader.readString(offset)) as P;
+    case 1:
+      return (reader.readDateTime(offset)) as P;
+    case 2:
+      return (reader.readString(offset)) as P;
+    case 3:
+      return (reader.readBool(offset)) as P;
+    case 4:
+      return (reader.readString(offset)) as P;
+    case 5:
+      return (reader.readString(offset)) as P;
+    case 6:
+      return (reader.readLong(offset)) as P;
+    case 7:
+      return (reader.readString(offset)) as P;
+    default:
+      throw IsarError('Unknown property with id $propertyId');
+  }
+}
+
+Id _deletedAnnotationGetId(DeletedAnnotation object) {
+  return object.id;
+}
+
+List<IsarLinkBase<dynamic>> _deletedAnnotationGetLinks(
+    DeletedAnnotation object) {
+  return [];
+}
+
+void _deletedAnnotationAttach(
+    IsarCollection<dynamic> col, Id id, DeletedAnnotation object) {
+  object.id = id;
+}
+
+extension DeletedAnnotationQueryWhereSort
+    on QueryBuilder<DeletedAnnotation, DeletedAnnotation, QWhere> {
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterWhere> anyId() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(const IdWhereClause.any());
+    });
+  }
+}
+
+extension DeletedAnnotationQueryWhere
+    on QueryBuilder<DeletedAnnotation, DeletedAnnotation, QWhereClause> {
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterWhereClause>
+      idEqualTo(Id id) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IdWhereClause.between(
+        lower: id,
+        upper: id,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterWhereClause>
+      idNotEqualTo(Id id) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(
+              IdWhereClause.lessThan(upper: id, includeUpper: false),
+            )
+            .addWhereClause(
+              IdWhereClause.greaterThan(lower: id, includeLower: false),
+            );
+      } else {
+        return query
+            .addWhereClause(
+              IdWhereClause.greaterThan(lower: id, includeLower: false),
+            )
+            .addWhereClause(
+              IdWhereClause.lessThan(upper: id, includeUpper: false),
+            );
+      }
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterWhereClause>
+      idGreaterThan(Id id, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(
+        IdWhereClause.greaterThan(lower: id, includeLower: include),
+      );
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterWhereClause>
+      idLessThan(Id id, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(
+        IdWhereClause.lessThan(upper: id, includeUpper: include),
+      );
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterWhereClause>
+      idBetween(
+    Id lowerId,
+    Id upperId, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IdWhereClause.between(
+        lower: lowerId,
+        includeLower: includeLower,
+        upper: upperId,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterWhereClause>
+      originalIdEqualTo(String originalId) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'originalId',
+        value: [originalId],
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterWhereClause>
+      originalIdNotEqualTo(String originalId) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'originalId',
+              lower: [],
+              upper: [originalId],
+              includeUpper: false,
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'originalId',
+              lower: [originalId],
+              includeLower: false,
+              upper: [],
+            ));
+      } else {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'originalId',
+              lower: [originalId],
+              includeLower: false,
+              upper: [],
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'originalId',
+              lower: [],
+              upper: [originalId],
+              includeUpper: false,
+            ));
+      }
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterWhereClause>
+      pdfIdEqualTo(String pdfId) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'pdfId',
+        value: [pdfId],
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterWhereClause>
+      pdfIdNotEqualTo(String pdfId) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'pdfId',
+              lower: [],
+              upper: [pdfId],
+              includeUpper: false,
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'pdfId',
+              lower: [pdfId],
+              includeLower: false,
+              upper: [],
+            ));
+      } else {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'pdfId',
+              lower: [pdfId],
+              includeLower: false,
+              upper: [],
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'pdfId',
+              lower: [],
+              upper: [pdfId],
+              includeUpper: false,
+            ));
+      }
+    });
+  }
+}
+
+extension DeletedAnnotationQueryFilter
+    on QueryBuilder<DeletedAnnotation, DeletedAnnotation, QFilterCondition> {
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      contentSnapshotEqualTo(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'contentSnapshot',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      contentSnapshotGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'contentSnapshot',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      contentSnapshotLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'contentSnapshot',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      contentSnapshotBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'contentSnapshot',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      contentSnapshotStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'contentSnapshot',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      contentSnapshotEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'contentSnapshot',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      contentSnapshotContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'contentSnapshot',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      contentSnapshotMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'contentSnapshot',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      contentSnapshotIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'contentSnapshot',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      contentSnapshotIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'contentSnapshot',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      deletedAtEqualTo(DateTime value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'deletedAt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      deletedAtGreaterThan(
+    DateTime value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'deletedAt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      deletedAtLessThan(
+    DateTime value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'deletedAt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      deletedAtBetween(
+    DateTime lower,
+    DateTime upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'deletedAt',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      deletedByEqualTo(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'deletedBy',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      deletedByGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'deletedBy',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      deletedByLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'deletedBy',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      deletedByBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'deletedBy',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      deletedByStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'deletedBy',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      deletedByEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'deletedBy',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      deletedByContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'deletedBy',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      deletedByMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'deletedBy',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      deletedByIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'deletedBy',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      deletedByIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'deletedBy',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      idEqualTo(Id value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'id',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      idGreaterThan(
+    Id value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'id',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      idLessThan(
+    Id value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'id',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      idBetween(
+    Id lower,
+    Id upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'id',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      isSyncedEqualTo(bool value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'isSynced',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      itemTypeEqualTo(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'itemType',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      itemTypeGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'itemType',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      itemTypeLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'itemType',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      itemTypeBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'itemType',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      itemTypeStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'itemType',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      itemTypeEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'itemType',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      itemTypeContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'itemType',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      itemTypeMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'itemType',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      itemTypeIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'itemType',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      itemTypeIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'itemType',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      originalIdEqualTo(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'originalId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      originalIdGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'originalId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      originalIdLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'originalId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      originalIdBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'originalId',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      originalIdStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'originalId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      originalIdEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'originalId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      originalIdContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'originalId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      originalIdMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'originalId',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      originalIdIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'originalId',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      originalIdIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'originalId',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      pageNumberEqualTo(int value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'pageNumber',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      pageNumberGreaterThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'pageNumber',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      pageNumberLessThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'pageNumber',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      pageNumberBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'pageNumber',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      pdfIdEqualTo(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'pdfId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      pdfIdGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'pdfId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      pdfIdLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'pdfId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      pdfIdBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'pdfId',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      pdfIdStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'pdfId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      pdfIdEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'pdfId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      pdfIdContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'pdfId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      pdfIdMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'pdfId',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      pdfIdIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'pdfId',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterFilterCondition>
+      pdfIdIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'pdfId',
+        value: '',
+      ));
+    });
+  }
+}
+
+extension DeletedAnnotationQueryObject
+    on QueryBuilder<DeletedAnnotation, DeletedAnnotation, QFilterCondition> {}
+
+extension DeletedAnnotationQueryLinks
+    on QueryBuilder<DeletedAnnotation, DeletedAnnotation, QFilterCondition> {}
+
+extension DeletedAnnotationQuerySortBy
+    on QueryBuilder<DeletedAnnotation, DeletedAnnotation, QSortBy> {
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      sortByContentSnapshot() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'contentSnapshot', Sort.asc);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      sortByContentSnapshotDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'contentSnapshot', Sort.desc);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      sortByDeletedAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'deletedAt', Sort.asc);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      sortByDeletedAtDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'deletedAt', Sort.desc);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      sortByDeletedBy() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'deletedBy', Sort.asc);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      sortByDeletedByDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'deletedBy', Sort.desc);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      sortByIsSynced() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isSynced', Sort.asc);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      sortByIsSyncedDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isSynced', Sort.desc);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      sortByItemType() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'itemType', Sort.asc);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      sortByItemTypeDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'itemType', Sort.desc);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      sortByOriginalId() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'originalId', Sort.asc);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      sortByOriginalIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'originalId', Sort.desc);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      sortByPageNumber() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'pageNumber', Sort.asc);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      sortByPageNumberDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'pageNumber', Sort.desc);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      sortByPdfId() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'pdfId', Sort.asc);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      sortByPdfIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'pdfId', Sort.desc);
+    });
+  }
+}
+
+extension DeletedAnnotationQuerySortThenBy
+    on QueryBuilder<DeletedAnnotation, DeletedAnnotation, QSortThenBy> {
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      thenByContentSnapshot() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'contentSnapshot', Sort.asc);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      thenByContentSnapshotDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'contentSnapshot', Sort.desc);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      thenByDeletedAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'deletedAt', Sort.asc);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      thenByDeletedAtDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'deletedAt', Sort.desc);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      thenByDeletedBy() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'deletedBy', Sort.asc);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      thenByDeletedByDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'deletedBy', Sort.desc);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy> thenById() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'id', Sort.asc);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      thenByIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'id', Sort.desc);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      thenByIsSynced() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isSynced', Sort.asc);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      thenByIsSyncedDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isSynced', Sort.desc);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      thenByItemType() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'itemType', Sort.asc);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      thenByItemTypeDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'itemType', Sort.desc);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      thenByOriginalId() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'originalId', Sort.asc);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      thenByOriginalIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'originalId', Sort.desc);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      thenByPageNumber() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'pageNumber', Sort.asc);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      thenByPageNumberDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'pageNumber', Sort.desc);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      thenByPdfId() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'pdfId', Sort.asc);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QAfterSortBy>
+      thenByPdfIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'pdfId', Sort.desc);
+    });
+  }
+}
+
+extension DeletedAnnotationQueryWhereDistinct
+    on QueryBuilder<DeletedAnnotation, DeletedAnnotation, QDistinct> {
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QDistinct>
+      distinctByContentSnapshot({bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'contentSnapshot',
+          caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QDistinct>
+      distinctByDeletedAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'deletedAt');
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QDistinct>
+      distinctByDeletedBy({bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'deletedBy', caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QDistinct>
+      distinctByIsSynced() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'isSynced');
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QDistinct>
+      distinctByItemType({bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'itemType', caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QDistinct>
+      distinctByOriginalId({bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'originalId', caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QDistinct>
+      distinctByPageNumber() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'pageNumber');
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DeletedAnnotation, QDistinct> distinctByPdfId(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'pdfId', caseSensitive: caseSensitive);
+    });
+  }
+}
+
+extension DeletedAnnotationQueryProperty
+    on QueryBuilder<DeletedAnnotation, DeletedAnnotation, QQueryProperty> {
+  QueryBuilder<DeletedAnnotation, int, QQueryOperations> idProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'id');
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, String, QQueryOperations>
+      contentSnapshotProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'contentSnapshot');
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, DateTime, QQueryOperations>
+      deletedAtProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'deletedAt');
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, String, QQueryOperations>
+      deletedByProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'deletedBy');
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, bool, QQueryOperations> isSyncedProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'isSynced');
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, String, QQueryOperations> itemTypeProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'itemType');
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, String, QQueryOperations>
+      originalIdProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'originalId');
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, int, QQueryOperations> pageNumberProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'pageNumber');
+    });
+  }
+
+  QueryBuilder<DeletedAnnotation, String, QQueryOperations> pdfIdProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'pdfId');
+    });
+  }
+}
+
+// coverage:ignore-file
+// ignore_for_file: duplicate_ignore, non_constant_identifier_names, constant_identifier_names, invalid_use_of_protected_member, unnecessary_cast, prefer_const_constructors, lines_longer_than_80_chars, require_trailing_commas, inference_failure_on_function_invocation, unnecessary_parenthesis, unnecessary_raw_strings, unnecessary_null_checks, join_return_with_assignment, prefer_final_locals, avoid_js_rounded_ints, avoid_positional_boolean_parameters, always_specify_types
+
 extension GetStudyTaskCollection on Isar {
   IsarCollection<StudyTask> get studyTasks => this.collection();
 }

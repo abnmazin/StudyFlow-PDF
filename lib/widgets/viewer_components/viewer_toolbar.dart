@@ -287,38 +287,41 @@ Widget _buildEditableChip({
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             // ─── LEFT: Sidebar + Page Counter + Zoom ───────────────
-            Row(
-              children: [
+            Flexible(
+              fit: FlexFit.loose,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                 
-                const SizedBox(width: 2),
-                if (isMobile)
+                  const SizedBox(width: 2),
+                  if (isMobile)
+                    _buildToolButton(
+                      icon: LucideIcons.menu,
+                      isActive: false,
+                      onTap: () => app.toggleMobile(),
+                      iconMuted: iconMuted,
+                    )
+                  else if (app.isSidebarCollapsed)
+                    _buildToolButton(
+                      icon: LucideIcons.panelLeftOpen,
+                      isActive: false,
+                      onTap: () => app.toggleSidebar(),
+                      tooltip: 'إظهار/إخفاء القائمة الجانبية (Ctrl+L)',
+                      iconMuted: iconMuted,
+                    ),
+                  if (isMobile || app.isSidebarCollapsed)
+                    const SizedBox(width: 8),
+
                   _buildToolButton(
-                    icon: LucideIcons.menu,
+                    icon: LucideIcons.x,
                     isActive: false,
-                    onTap: () => app.toggleMobile(),
-                    iconMuted: iconMuted,
-                  )
-                else if (app.isSidebarCollapsed)
-                  _buildToolButton(
-                    icon: LucideIcons.panelLeftOpen,
-                    isActive: false,
-                    onTap: () => app.toggleSidebar(),
-                    tooltip: 'إظهار/إخفاء القائمة الجانبية (Ctrl+L)',
+                    onTap: () => app.closeActivePdf(),
+                    tooltip: 'إغلاق الملف',
                     iconMuted: iconMuted,
                   ),
-                if (isMobile || app.isSidebarCollapsed)
-                  const SizedBox(width: 8),
-
-                _buildToolButton(
-                  icon: LucideIcons.x,
-                  isActive: false,
-                  onTap: () => app.closeActivePdf(),
-                  tooltip: 'إغلاق الملف',
-                  iconMuted: iconMuted,
-                ),
-                const SizedBox(width: 4),
-                // Page Counter
-                if (pdf != null)
+                  const SizedBox(width: 4),
+                  // Page Counter
+                  if (pdf != null)
   _buildEditableChip(
     isEditing: _isEditingPage,
     width: 60,
@@ -382,6 +385,7 @@ Widget _buildEditableChip({
   ),
 
   ],
+            ),
             ),
 
             Expanded(
@@ -606,113 +610,116 @@ Widget _buildEditableChip({
             ),
 
             // ─── RIGHT: Utility Buttons ─────────────────────────────
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Zoom controls (without outer box)
-                _buildToolButton(
-                  icon: LucideIcons.zoomOut,
-                  isActive: false,
-                  onTap: () => _stepZoom(false),
-                  tooltip: 'تصغير',
-                  iconMuted: iconMuted,
-                ),
-                const SizedBox(width: 4),
-                _buildEditableChip(
-                  isEditing: _isEditingZoom,
-                  width: 70,
-                  height: 34,
-                  backgroundColor: chipBg,
-                  borderColor: inputBorder,
-                  onTap: () {
-                    setState(() {
-                      _isEditingZoom = true;
-                      _zoomInputController.text =
-                          (_currentZoomRatio() * 100).toStringAsFixed(0);
-                    });
-                  },
-                  displayBuilder: (_) => Center(
-                    child: Text(
-                      _currentZoomLabel(),
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: textPrimary,
-                      ),
-                    ),
+            Flexible(
+              fit: FlexFit.loose,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Zoom controls (without outer box)
+                  _buildToolButton(
+                    icon: LucideIcons.zoomOut,
+                    isActive: false,
+                    onTap: () => _stepZoom(false),
+                    tooltip: 'تصغير',
+                    iconMuted: iconMuted,
                   ),
-                  editBuilder: (_) => Center(
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: TextField(
-                        key: const ValueKey('zoomField'),
-                        controller: _zoomInputController,
-                        autofocus: true,
-                        keyboardType:
-                            const TextInputType.numberWithOptions(decimal: true),
-                        textAlign: TextAlign.center,
+                  const SizedBox(width: 4),
+                  _buildEditableChip(
+                    isEditing: _isEditingZoom,
+                    width: 70,
+                    height: 34,
+                    backgroundColor: chipBg,
+                    borderColor: inputBorder,
+                    onTap: () {
+                      setState(() {
+                        _isEditingZoom = true;
+                        _zoomInputController.text =
+                            (_currentZoomRatio() * 100).toStringAsFixed(0);
+                      });
+                    },
+                    displayBuilder: (_) => Center(
+                      child: Text(
+                        _currentZoomLabel(),
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
                           color: textPrimary,
                         ),
-                        decoration: const InputDecoration(
-                          border: InputBorder.none,
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 7,
+                      ),
+                    ),
+                    editBuilder: (_) => Center(
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: TextField(
+                          key: const ValueKey('zoomField'),
+                          controller: _zoomInputController,
+                          autofocus: true,
+                          keyboardType:
+                              const TextInputType.numberWithOptions(decimal: true),
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: textPrimary,
                           ),
+                          decoration: const InputDecoration(
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 7,
+                            ),
+                          ),
+                          onSubmitted: _submitZoomText,
+                          onTapOutside: (_) =>
+                              _submitZoomText(_zoomInputController.text),
                         ),
-                        onSubmitted: _submitZoomText,
-                        onTapOutside: (_) =>
-                            _submitZoomText(_zoomInputController.text),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 4),
-                _buildToolButton(
-                  icon: LucideIcons.zoomIn,
-                  isActive: false,
-                  onTap: () => _stepZoom(true),
-                  tooltip: 'تكبير',
-                  iconMuted: iconMuted,
-                ),
-
-                const SizedBox(width: 8),
-
-                if (app.currentSessionCode != null) ...[
+                  const SizedBox(width: 4),
+                  _buildToolButton(
+                    icon: LucideIcons.zoomIn,
+                    isActive: false,
+                    onTap: () => _stepZoom(true),
+                    tooltip: 'تكبير',
+                    iconMuted: iconMuted,
+                  ),
+            
                   const SizedBox(width: 8),
-                  IconButton(
-                    tooltip: 'مزامنة (Ctrl+S)',
-                    onPressed: widget.isSyncing ? null : widget.onSyncPressed,
-                    icon: widget.isSyncing
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Icon(LucideIcons.refreshCw, color: iconMuted, size: 20),
+            
+                  if (app.currentSessionCode != null) ...[
+                    const SizedBox(width: 8),
+                    IconButton(
+                      tooltip: 'مزامنة (Ctrl+S)',
+                      onPressed: widget.isSyncing ? null : widget.onSyncPressed,
+                      icon: widget.isSyncing
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Icon(LucideIcons.refreshCw, color: iconMuted, size: 20),
+                    ),
+                  ],
+            
+                  const SizedBox(width: 8),
+                  Container(width: 1, height: 28, color: separatorColor),
+                  const SizedBox(width: 8),
+            
+                  // Close + right panel toggle (anchored to the far right)
+            
+                  _buildToolButton(
+                    icon: widget.isRightPanelOpen
+                        ? LucideIcons.panelRightClose
+                        : LucideIcons.panelRightOpen,
+                    isActive: widget.isRightPanelOpen,
+                    onTap: widget.onToggleRightPanel,
+                    tooltip: 'إظهار/إخفاء لوحة الخصائص (Ctrl+R)',
+                    iconMuted: iconMuted,
                   ),
                 ],
-
-                const SizedBox(width: 8),
-                Container(width: 1, height: 28, color: separatorColor),
-                const SizedBox(width: 8),
-
-                // Close + right panel toggle (anchored to the far right)
-
-                _buildToolButton(
-                  icon: widget.isRightPanelOpen
-                      ? LucideIcons.panelRightClose
-                      : LucideIcons.panelRightOpen,
-                  isActive: widget.isRightPanelOpen,
-                  onTap: widget.onToggleRightPanel,
-                  tooltip: 'إظهار/إخفاء لوحة الخصائص (Ctrl+R)',
-                  iconMuted: iconMuted,
-                ),
-              ],
+              ),
             ),
           ],
         ),

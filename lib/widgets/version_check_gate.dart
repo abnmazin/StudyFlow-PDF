@@ -151,9 +151,25 @@ class _VersionCheckGateState extends State<VersionCheckGate> {
           // Soft update: show app normally, trigger dialog once
           if (result.status == VersionStatus.softUpdate && !_dialogShown) {
             _dialogShown = true;
-            WidgetsBinding.instance.addPostFrameCallback((_) async {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
               if (!mounted) return;
-              await _showSoftUpdateDialog(result);
+              // Guard: only show the dialog if MaterialLocalizations is in the tree.
+              // VersionCheckGate sits above MaterialApp, so we need to wait one
+              // additional frame for the MaterialApp subtree to be fully mounted.
+              WidgetsBinding.instance.addPostFrameCallback((_) async {
+                if (!mounted) return;
+                // Verify that MaterialLocalizations are accessible via the
+                // context before calling showDialog (avoids the crash when this
+                // widget lives above MaterialApp in the widget tree).
+                final hasLocalization =
+                    Localizations.of<MaterialLocalizations>(
+                          context,
+                          MaterialLocalizations,
+                        ) !=
+                        null;
+                if (!hasLocalization) return;
+                await _showSoftUpdateDialog(result);
+              });
             });
           }
 
