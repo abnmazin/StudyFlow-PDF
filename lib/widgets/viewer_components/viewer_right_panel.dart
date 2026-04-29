@@ -17,7 +17,7 @@ import '../../models/models.dart';
 import '../../providers/app_state.dart';
 import '../../services/sync_service.dart';
 import '../../utils/responsive_utils.dart';
-import 'mini_calculator_widget.dart';
+import '../mini_apps_menu.dart';
 import 'session_cards.dart';
 import '../../models/isar_models.dart' hide PdfDocument;
 
@@ -1798,8 +1798,8 @@ class _CursorUtilitiesHubState extends State<_CursorUtilitiesHub> {
                 ),
                 Tab(
                   icon: Tooltip(
-                    message: 'حاسبة',
-                    child: Icon(LucideIcons.calculator, size: 20),
+                    message: 'التطبيقات المصغرة',
+                    child: Icon(Icons.grid_view_outlined, size: 20),
                   ),
                 ),
                 Tab(
@@ -1834,10 +1834,10 @@ class _CursorUtilitiesHubState extends State<_CursorUtilitiesHub> {
                   ),
                 ),
 
-                // Calculator Tab
+                // Mini Apps Tab
                 Padding(
                   padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                  child: const MiniCalculatorWidget(),
+                  child: const MiniAppsTabWidget(),
                 ),
 
                 // Bookmarks Tab
@@ -2047,15 +2047,6 @@ class _AiChatWidgetState extends State<_AiChatWidget>
     with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
-  static const List<String> _geminiModels = [
-    'gemini-2.5-flash',
-    'gemini-2.0-flash',
-  ];
-  static const List<String> _groqModels = [
-    'llama-3.3-70b-versatile',
-    'llama-3.1-8b-instant',
-    'mixtral-8x7b-32768',
-  ];
 
   final List<Map<String, String>> _messages = [
     {

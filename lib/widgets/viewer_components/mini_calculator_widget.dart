@@ -19,8 +19,6 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
   String _history = '';
   final List<String> _undoStack = [];
   double _yValue = 0.0;
-  bool _isEditingY = false;
-  String _yInput = '0';
   bool _isDegreeMode = true;
   bool _isShiftMode = false;
   bool _showCommonFractions = true;
@@ -510,6 +508,8 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
         _insertAtCursor('pi');
       } else if (buttonText == 'e') {
         _insertAtCursor('2.718281828459045');
+      } else if (buttonText == 'x') {
+        _insertAtCursor('x');
       } else if (buttonText == 'y') {
         _insertAtCursor('y');
       } else if (buttonText == 'ans') {
@@ -710,11 +710,13 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
     Color? textColor,
     bool isPrimary = false,
     required bool isDark,
+    int flex = 1,
   }) {
     final defaultBg = isDark ? const Color(0xFF334155) : Colors.white;
     final defaultText = isDark ? Colors.white : const Color(0xFF1E293B);
 
     return Expanded(
+      flex: flex,
       child: Container(
         margin: const EdgeInsets.all(4.0),
         child: Material(
@@ -788,73 +790,7 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
             color: isDark ? const Color(0xFF0B1120) : const Color(0xFFF8FAFC),
             child: Column(
               children: [
-                // Y Variable Input
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              child: Row(
-                children: [
-                  Text(
-                    'y =',
-                    style: TextStyle(
-                      color: isDark ? Colors.grey[400] : Colors.grey[600],
-                      fontSize: 14,
-                      fontFamily: 'Courier',
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextField(
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                        signed: true,
-                      ),
-                      style: TextStyle(
-                        color: isDark ? Colors.white : Colors.black87,
-                        fontSize: 14,
-                        fontFamily: 'Courier',
-                      ),
-                      decoration: InputDecoration(
-                        isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 6,
-                        ),
-                        filled: true,
-                        fillColor: isDark
-                            ? const Color(0xFF1E293B)
-                            : const Color(0xFFE2E8F0),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(6),
-                          borderSide: BorderSide.none,
-                        ),
-                        hintText: '0',
-                        hintStyle: TextStyle(
-                          color: isDark ? Colors.grey[600] : Colors.grey[400],
-                        ),
-                      ),
-                      onTap: () {
-                        setState(() {
-                          _isEditingY = true;
-                        });
-                      },
-                      onChanged: (val) {
-                        _yInput = val;
-                        final parsed = double.tryParse(val);
-                        if (parsed != null) {
-                          setState(() => _yValue = parsed);
-                        }
-                      },
-                      onEditingComplete: () {
-                        setState(() {
-                          _isEditingY = false;
-                        });
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Container(
+                Container(
               height: 140,
               width: double.infinity,
               margin: const EdgeInsets.all(12),
@@ -937,7 +873,7 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
                                         _getLatexExpression(_expression),
                                         mathStyle: MathStyle.display,
                                         textStyle: TextStyle(
-                                          fontSize: 36,
+                                          fontSize: 28,
                                           color: isDark
                                               ? Colors.white
                                               : Colors.black87,
@@ -951,7 +887,7 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
                                                 : _expression,
                                             textAlign: TextAlign.left,
                                             style: TextStyle(
-                                              fontSize: 36,
+                                              fontSize: 28,
                                               color: isDark
                                                   ? Colors.white
                                                   : Colors.black87,
@@ -962,22 +898,6 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
                                     ),
                                   ),
                                 ),
-                              ),
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.only(left: 8.0),
-                            child: Text(
-                              _expressionWithCaret(),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontFamily: 'Courier',
-                                color: isDark
-                                    ? const Color(0xFF93C5FD)
-                                    : const Color(0xFF1D4ED8),
-                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
@@ -996,194 +916,74 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
                 ),
                 child: Column(
                   children: [
-                    // صف 1: SHIFT, asin/log, acos/d/dx, atan/∫, AC
+                    // Row 1: Settings & Clear
                     _buildKeyRow([
-                      _buildButton(
-                        'SHIFT',
-                        bgColor: _isShiftMode
-                            ? const Color(0xFF8B5CF6)
-                            : scientificBg,
-                        textColor: _isShiftMode ? Colors.white : scientificText,
-                        isPrimary: _isShiftMode,
-                        isDark: isDark,
-                      ),
-                      _buildButton(
-                        _isShiftMode ? 'log' : 'asin',
-                        bgColor: scientificBg,
-                        textColor: scientificText,
-                        isDark: isDark,
-                      ),
-                      _buildButton(
-                        _isShiftMode ? 'd/dx' : 'acos',
-                        bgColor: scientificBg,
-                        textColor: scientificText,
-                        isDark: isDark,
-                      ),
-                      _buildButton(
-                        _isShiftMode ? '∫' : 'atan',
-                        bgColor: scientificBg,
-                        textColor: scientificText,
-                        isDark: isDark,
-                      ),
-                      _buildButton(
-                        'AC',
-                        bgColor: dangerColor,
-                        textColor: Colors.white,
-                        isPrimary: true,
-                        isDark: isDark,
-                      ),
+                      _buildButton('SHIFT', bgColor: _isShiftMode ? const Color(0xFF8B5CF6) : scientificBg, textColor: _isShiftMode ? Colors.white : scientificText, isPrimary: _isShiftMode, isDark: isDark),
+                      _buildButton('DEG\nRAD', bgColor: _isDegreeMode ? const Color(0xFF10B981) : actionBg, textColor: _isDegreeMode ? Colors.white : scientificText, isDark: isDark),
+                      _buildButton(_showCommonFractions ? 'Frac✓' : 'Frac', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
+                      _buildButton('UNDO', bgColor: scientificBg, textColor: warningColor, isDark: isDark),
+                      _buildButton('AC', bgColor: dangerColor, textColor: Colors.white, isPrimary: true, isDark: isDark),
                     ]),
-                    // صف 2: sin, cos, tan, xʸ/x², DEL
+                    // Row 2: Basic Trig
                     _buildKeyRow([
-                      _buildButton(
-                        'sin',
-                        bgColor: scientificBg,
-                        textColor: scientificText,
-                        isDark: isDark,
-                      ),
-                      _buildButton(
-                        'cos',
-                        bgColor: scientificBg,
-                        textColor: scientificText,
-                        isDark: isDark,
-                      ),
-                      _buildButton(
-                        'tan',
-                        bgColor: scientificBg,
-                        textColor: scientificText,
-                        isDark: isDark,
-                      ),
-                      _buildButton(
-                        _isShiftMode ? 'x²' : 'xʸ',
-                        bgColor: scientificBg,
-                        textColor: scientificText,
-                        isDark: isDark,
-                      ),
-                      _buildButton(
-                        'DEL',
-                        bgColor: warningColor,
-                        textColor: Colors.white,
-                        isPrimary: true,
-                        isDark: isDark,
-                      ),
+                      _buildButton('sin', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
+                      _buildButton('cos', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
+                      _buildButton('tan', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
+                      _buildButton('log', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
+                      _buildButton('DEL', bgColor: warningColor, textColor: Colors.white, isPrimary: true, isDark: isDark),
                     ]),
-                    // صف 3: a/b, √, π, e/ans, UNDO
+                    // Row 3: Inverse Trig & Pi
                     _buildKeyRow([
-                      _buildButton(
-                        _isShiftMode
-                            ? (_showCommonFractions ? 'Frac✓' : 'Frac')
-                            : 'a/b',
-                        bgColor: scientificBg,
-                        textColor: scientificText,
-                        isDark: isDark,
-                      ),
-                      _buildButton(
-                        '√',
-                        bgColor: scientificBg,
-                        textColor: scientificText,
-                        isDark: isDark,
-                      ),
-                      _buildButton(
-                        'π',
-                        bgColor: scientificBg,
-                        textColor: scientificText,
-                        isDark: isDark,
-                      ),
-                      _buildButton(
-                        _isShiftMode ? 'ans' : 'e',
-                        bgColor: scientificBg,
-                        textColor: scientificText,
-                        isDark: isDark,
-                      ),
-                      _buildButton(
-                        'UNDO',
-                        bgColor: scientificBg,
-                        textColor: warningColor,
-                        isDark: isDark,
-                      ),
+                      _buildButton('asin', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
+                      _buildButton('acos', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
+                      _buildButton('atan', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
+                      _buildButton('√', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
+                      _buildButton('π', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
                     ]),
-                    // صف 4: y, (, )
+                    // Row 4: Calculus & Variables (x, y)
                     _buildKeyRow([
-                      _buildButton(
-                        'y',
-                        bgColor: const Color(0xFF0F766E),
-                        textColor: Colors.white,
-                        isDark: isDark,
-                      ),
-                      _buildButton(
-                        '(',
-                        bgColor: scientificBg,
-                        textColor: scientificText,
-                        isDark: isDark,
-                      ),
-                      _buildButton(
-                        ')',
-                        bgColor: scientificBg,
-                        textColor: scientificText,
-                        isDark: isDark,
-                      ),
+                      _buildButton('d/dx', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
+                      _buildButton('∫', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
+                      _buildButton('x', bgColor: const Color(0xFF0F766E), textColor: Colors.white, isDark: isDark),
+                      _buildButton('y', bgColor: const Color(0xFF0F766E), textColor: Colors.white, isDark: isDark),
+                      _buildButton('e', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
                     ]),
+                    // Row 5: Powers & Brackets
+                    _buildKeyRow([
+                      _buildButton('x²', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
+                      _buildButton('xʸ', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
+                      _buildButton('(', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
+                      _buildButton(')', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
+                      _buildButton('a/b', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
+                    ]),
+                    // Row 6: Numbers & Div/Mult
                     _buildKeyRow([
                       _buildButton('7', isDark: isDark),
                       _buildButton('8', isDark: isDark),
                       _buildButton('9', isDark: isDark),
-                      _buildButton(
-                        '/',
-                        bgColor: actionBg,
-                        textColor: primaryColor,
-                        isDark: isDark,
-                      ),
+                      _buildButton('/', bgColor: actionBg, textColor: primaryColor, isDark: isDark),
+                      _buildButton('*', bgColor: actionBg, textColor: primaryColor, isDark: isDark),
                     ]),
+                    // Row 7: Numbers & Sub/Add
                     _buildKeyRow([
                       _buildButton('4', isDark: isDark),
                       _buildButton('5', isDark: isDark),
                       _buildButton('6', isDark: isDark),
-                      _buildButton(
-                        '*',
-                        bgColor: actionBg,
-                        textColor: primaryColor,
-                        isDark: isDark,
-                      ),
+                      _buildButton('-', bgColor: actionBg, textColor: primaryColor, isDark: isDark),
+                      _buildButton('+', bgColor: actionBg, textColor: primaryColor, isDark: isDark),
                     ]),
+                    // Row 8: Numbers & Zero/Dot
                     _buildKeyRow([
                       _buildButton('1', isDark: isDark),
                       _buildButton('2', isDark: isDark),
                       _buildButton('3', isDark: isDark),
-                      _buildButton(
-                        '-',
-                        bgColor: actionBg,
-                        textColor: primaryColor,
-                        isDark: isDark,
-                      ),
-                    ]),
-                    _buildKeyRow([
-                      _buildButton(
-                        'DEG\nRAD',
-                        bgColor: _isDegreeMode
-                            ? const Color(0xFF10B981)
-                            : actionBg,
-                        textColor: _isDegreeMode
-                            ? Colors.white
-                            : scientificText,
-                        isDark: isDark,
-                      ),
                       _buildButton('0', isDark: isDark),
                       _buildButton('.', isDark: isDark),
-                      _buildButton(
-                        '+',
-                        bgColor: actionBg,
-                        textColor: primaryColor,
-                        isDark: isDark,
-                      ),
                     ]),
+                    // Row 9: Ans & Equals
                     _buildKeyRow([
-                      _buildButton(
-                        '=',
-                        bgColor: primaryColor,
-                        textColor: Colors.white,
-                        isPrimary: true,
-                        isDark: isDark,
-                      ),
+                      _buildButton('ans', flex: 1, bgColor: scientificBg, textColor: scientificText, isDark: isDark),
+                      _buildButton('=', flex: 4, bgColor: primaryColor, textColor: Colors.white, isPrimary: true, isDark: isDark),
                     ]),
                   ],
                 ),

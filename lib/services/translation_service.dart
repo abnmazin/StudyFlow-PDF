@@ -37,6 +37,77 @@ class TranslationService {
     }
   }
 
+  /// Fast translation using Google Translate (no API key needed)
+  Future<String> translateFast(String text) async {
+    if (text.trim().isEmpty) return "";
+
+    try {
+      // Detect if text is Arabic or English to determine target language
+      final isArabic = _isArabicText(text);
+      final targetLang = isArabic ? 'en' : 'ar';
+      final sourceLang = isArabic ? 'ar' : 'en';
+
+      // Use Google Translate API (free endpoint)
+      final uri = Uri.parse(
+        'https://translate.googleapis.com/translate_a/element.js'
+        '?cb=googleTranslateElementInit',
+      );
+
+      // Alternative: Use a simpler approach with the translate.google.com endpoint
+      final translateUri = Uri.https(
+        'translate.googleapis.com',
+        '/translate_a/single',
+        {
+          'client': 'gtx',
+          'sl': sourceLang,
+          'tl': targetLang,
+          'dt': 't',
+          'q': text,
+        },
+      );
+
+      final response = await http
+          .get(translateUri)
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        try {
+          // Parse the response from Google Translate
+          final data = jsonDecode(response.body) as List<dynamic>;
+          final translatedText = StringBuffer();
+
+          if (data.isNotEmpty && data[0] is List) {
+            for (var item in (data[0] as List<dynamic>)) {
+              if (item is List && item.isNotEmpty) {
+                translatedText.write(item[0]);
+              }
+            }
+          }
+
+          final result = translatedText.toString().trim();
+          return result.isEmpty ? "لم أتمكن من الترجمة." : result;
+        } catch (e) {
+          debugPrint('[TranslationService] Parse error: $e');
+          return 'خطأ في معالجة الترجمة.';
+        }
+      } else {
+        debugPrint(
+          '[TranslationService] Fast translate HTTP ${response.statusCode}',
+        );
+        return 'فشلت الترجمة السريعة: الخادم غير متاح.';
+      }
+    } catch (e) {
+      debugPrint('[TranslationService] Fast translate error: $e');
+      return 'خطأ في الترجمة السريعة: ${e.toString()}';
+    }
+  }
+
+  /// Check if text is Arabic
+  bool _isArabicText(String text) {
+    final arabicPattern = RegExp(r'[\u0600-\u06FF]');
+    return arabicPattern.hasMatch(text);
+  }
+
   Future<String> _translateGemini(String text, AppProvider app) async {
     final settingsKey = app.geminiApiKey.trim();
     final envKey = (dotenv.env['GEMINI_API_KEY'] ?? '').trim();

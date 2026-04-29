@@ -46,8 +46,11 @@ class PDFViewerWidget extends StatefulWidget {
 
 class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   late PdfViewerController _pdfController;
+  late PdfViewerController _secondaryPdfController;
   int? _lastModified;
+  int? _secondaryLastModified;
   String? _currentPdfId;
+  String? _secondaryCurrentPdfId;
   // Hard isolation mode: fully unmount PdfViewer during print pipeline.
   bool _isPrintingMode = false;
 
@@ -239,6 +242,8 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     super.initState();
     _pdfController = PdfViewerController();
     _pdfController.addListener(_onControllerChanged);
+    _secondaryPdfController = PdfViewerController();
+    _secondaryPdfController.addListener(_onControllerChanged);
 
     // Phase 11: Real-time Session Status Listener
     _app = context.read<AppProvider>();
@@ -374,10 +379,49 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     // AnimatedBuilder or ValueListenableBuilder tied directly to the controller.
   }
 
+  PdfViewerController _syncViewerController({
+    required PdfViewerController controller,
+    required PdfItem? pdf,
+    required bool isSecondary,
+  }) {
+    if (pdf == null) return controller;
+
+    final currentPdfId = isSecondary ? _secondaryCurrentPdfId : _currentPdfId;
+    final lastModified = isSecondary ? _secondaryLastModified : _lastModified;
+
+    if (currentPdfId == null ||
+        currentPdfId != pdf.id ||
+        lastModified != pdf.lastModified) {
+      controller.removeListener(_onControllerChanged);
+      final nextController = PdfViewerController();
+      nextController.addListener(_onControllerChanged);
+
+      if (isSecondary) {
+        _secondaryPdfController = nextController;
+        _secondaryCurrentPdfId = pdf.id;
+        _secondaryLastModified = pdf.lastModified;
+      } else {
+        _pdfController = nextController;
+        _currentPdfId = pdf.id;
+        _lastModified = pdf.lastModified;
+        _isProcessing = false;
+        _textSearcher = null;
+        _isSearchVisible = false;
+        _textSelection = null;
+        _isTextSelectionMenuVisible = false;
+      }
+
+      return nextController;
+    }
+
+    return controller;
+  }
+
   @override
   void dispose() {
     _app.removeListener(_onAppStatusChanged);
     _pdfController.removeListener(_onControllerChanged);
+    _secondaryPdfController.removeListener(_onControllerChanged);
     _scrollDebounce?.cancel();
     _scrollMaintenanceDebounce?.cancel();
     _autoFitDebounce?.cancel();
@@ -618,19 +662,44 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   @override
   Widget build(BuildContext context) {
     // PERFORMANCE: Use read instead of watch to prevent full rebuilds
-    // Only rebuild when activePdf changes using Selector
-    final (pdf: pdf, currentTool: _, isDarkMode: isDarkMode) = context
+    // Only rebuild when the active PDFs or split mode changes using Selector.
+    final (
+      pdf: pdf,
+      secondaryPdf: secondaryPdf,
+      isSplitMode: isSplitMode,
+      currentTool: _,
+      isDarkMode: isDarkMode,
+    ) = context
         .select<
           AppProvider,
-          ({PdfItem? pdf, ToolType currentTool, bool isDarkMode})
+          ({
+            PdfItem? pdf,
+            PdfItem? secondaryPdf,
+            bool isSplitMode,
+            ToolType currentTool,
+            bool isDarkMode,
+          })
         >(
           (app) => (
             pdf: app.activePdf,
+            secondaryPdf: app.secondaryPdf,
+            isSplitMode: app.isSplitMode,
             currentTool: app.currentTool,
             isDarkMode: app.isDarkMode,
           ),
         );
     final app = context.read<AppProvider>();
+
+    final primaryController = _syncViewerController(
+      controller: _pdfController,
+      pdf: pdf,
+      isSecondary: false,
+    );
+    final secondaryController = _syncViewerController(
+      controller: _secondaryPdfController,
+      pdf: secondaryPdf,
+      isSecondary: true,
+    );
 
     final selectedAnnotationTool = _selectedAnnotationTool(pdf);
     final selectedShapeAuthor = _selectedShapeAuthor(pdf, app);
@@ -782,12 +851,13 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                   selectedShapeAuthor: selectedShapeAuthor,
                   selectedCommentAuthor: selectedCommentAuthor,
                   isRightPanelOpen: _isRightPanelOpen,
+                  isSplitMode: isSplitMode,
                   isShapesPaletteVisible: _isShapesPaletteVisible,
                   isDarkMode: isDarkMode,
                   isSearchVisible: _isSearchVisible,
                   isSyncing: app.isSyncing,
                   activePdf: pdf,
-                  pdfController: _pdfController,
+                  pdfController: primaryController,
                   onToggleShapesPalette: () {
                     setState(() {
                       _isShapesPaletteVisible = !_isShapesPaletteVisible;
@@ -803,6 +873,10 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                         _isPointerOverAiChat = false;
                       }
                     });
+                    _forcePdfRelayout();
+                  },
+                  onToggleSplitMode: () {
+                    app.toggleSplitMode();
                     _forcePdfRelayout();
                   },
                   onToggleSettings: () {
@@ -847,7 +921,36 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                       color: const Color(0xFFE2E8F0),
                                       child: pdf == null
                                           ? _buildNoFilePlaceholder()
-                                          : _buildPdfViewerCore(pdf),
+                                          : isSplitMode && secondaryPdf != null
+                                          ? Row(
+                                              children: [
+                                                Expanded(
+                                                  child: _buildPdfViewerCore(
+                                                    pdf,
+                                                    primaryController,
+                                                    showOverlays: true,
+                                                  ),
+                                                ),
+                                                Container(
+                                                  width: 1,
+                                                  color: isDarkMode
+                                                      ? const Color(0xFF334155)
+                                                      : const Color(0xFFE2E8F0),
+                                                ),
+                                                Expanded(
+                                                  child: _buildPdfViewerCore(
+                                                    secondaryPdf,
+                                                    secondaryController,
+                                                    showOverlays: false,
+                                                  ),
+                                                ),
+                                              ],
+                                            )
+                                          : _buildPdfViewerCore(
+                                              pdf,
+                                              primaryController,
+                                              showOverlays: true,
+                                            ),
                                     ),
 
                                     // Search Bar Overlay
@@ -1266,8 +1369,8 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                       ),
 
                                     // Vertical Slider
-                                    if (_pdfController.isReady &&
-                                        _pdfController.pages.length > 1)
+                                    if (primaryController.isReady &&
+                                        primaryController.pages.length > 1)
                                       Positioned(
                                         right: 12,
                                         top: 100,
@@ -1307,10 +1410,10 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                                 ),
                                               ),
                                               child: ListenableBuilder(
-                                                listenable: _pdfController,
+                                                listenable: primaryController,
                                                 builder: (context, _) {
                                                   final int pageCount =
-                                                      _pdfController
+                                                      primaryController
                                                           .pages
                                                           .length;
                                                   if (pageCount < 1)
@@ -1330,7 +1433,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                                   return StatefulBuilder(
                                                     builder: (context, setLocalState) {
                                                       final int currentPage =
-                                                          _pdfController
+                                                          primaryController
                                                               .pageNumber ??
                                                           1;
                                                       final double
@@ -1374,7 +1477,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                                                   );
                                                           if (page !=
                                                               currentPage) {
-                                                            _pdfController
+                                                            primaryController
                                                                 .goToPage(
                                                                   pageNumber:
                                                                       page,
@@ -1394,7 +1497,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                                                     1,
                                                                     pageCount,
                                                                   );
-                                                          _pdfController
+                                                          primaryController
                                                               .goToPage(
                                                                 pageNumber:
                                                                     page,
@@ -1411,8 +1514,8 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                       ),
 
                                     // Text Formatting Toolbar (Shows when editing or adding text)
-                                    if (_tool == ToolType.text ||
-                                        _editingCommentId != null)
+                                    if ((_tool == ToolType.text ||
+                                        _editingCommentId != null))
                                       Positioned(
                                         bottom: 32,
                                         left: 0,
@@ -1479,7 +1582,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                           activeTabIndex: _rightPanelTabIndex,
                           isDarkMode: isDarkMode,
                           activePdf: pdf,
-                          pdfController: _pdfController,
+                          pdfController: primaryController,
                           selectedHighlightId: _selectedHighlightId,
                           onToolChanged: (t) => _activateTool(t),
                           onColorChanged: _onColorChanged,
@@ -1550,13 +1653,17 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     );
   }
 
-  Widget _buildPdfViewerCore(PdfItem pdf) {
+  Widget _buildPdfViewerCore(
+    PdfItem pdf,
+    PdfViewerController controller, {
+    required bool showOverlays,
+  }) {
     final app = context.read<AppProvider>();
     return Listener(
       // Auto-switch to Hand tool when the user scrolls while a drawing tool
       // is active, so pdfrx handles navigation naturally.
       onPointerSignal: (pointerSignal) {
-        if (_isPointerOverAiChat) return;
+        if (!showOverlays || _isPointerOverAiChat) return;
         if (pointerSignal is PointerScrollEvent && _tool != ToolType.cursor) {
           _activateTool(ToolType.cursor);
         }
@@ -1564,13 +1671,13 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
       // Windows/macOS touchpads emit pan/zoom pointer events for two-finger
       // scrolling. Handle them the same way as mouse wheel scrolling.
       onPointerPanZoomStart: (_) {
-        if (_isPointerOverAiChat) return;
+        if (!showOverlays || _isPointerOverAiChat) return;
         if (_tool != ToolType.cursor) {
           _activateTool(ToolType.cursor);
         }
       },
       onPointerPanZoomUpdate: (_) {
-        if (_isPointerOverAiChat) return;
+        if (!showOverlays || _isPointerOverAiChat) return;
         if (_tool != ToolType.cursor) {
           _activateTool(ToolType.cursor);
         }
@@ -1578,9 +1685,9 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
       child: PdfViewer.file(
         pdf.path,
         key: ValueKey(
-          '${pdf.path}_${_needsReload ? DateTime.now().millisecondsSinceEpoch : 'stable'}',
+          '${pdf.path}_${controller.hashCode}_${_needsReload ? DateTime.now().millisecondsSinceEpoch : 'stable'}',
         ),
-        controller: _pdfController,
+        controller: controller,
         params: PdfViewerParams(
           maxImageBytesCachedOnMemory: 100 * 1024 * 1024,
           maxScale: 4.0,
@@ -1596,33 +1703,42 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
           loadingBannerBuilder: (context, bytesDownloaded, totalBytes) =>
               const SizedBox.shrink(),
           enableKeyboardNavigation:
-              _editingCommentId == null && !_isSearchVisible,
-          textSelectionParams: PdfTextSelectionParams(
-            onTextSelectionChange: (selection) {
-              _handleTextSelectionChange(selection);
-            },
-          ),
-          onInteractionStart: (details) {
-            app.cancelDebouncedSync();
-          },
-          onInteractionUpdate: (details) {
-            // Auto-switch to Hand tool during multi-touch gestures
-            if (_tool != ToolType.cursor &&
-                (details.scale != 1.0 || details.pointerCount > 1)) {
-              _activateTool(ToolType.cursor);
-            }
-          },
-          onInteractionEnd: (details) {
-            // Trigger bidirectional sync after pan/zoom ends (with debounce in AppProvider)
-            if (_tool == ToolType.cursor && app.currentSessionCode != null) {
-              app.triggerDebouncedSync(silent: true);
-            }
-          },
-          onViewerReady: (document, controller) {
-            if (mounted) {
+              showOverlays && _editingCommentId == null && !_isSearchVisible,
+          textSelectionParams: showOverlays
+              ? PdfTextSelectionParams(
+                  onTextSelectionChange: (selection) {
+                    _handleTextSelectionChange(selection);
+                  },
+                )
+              : null,
+          onInteractionStart: showOverlays
+              ? (details) {
+                  app.cancelDebouncedSync();
+                }
+              : null,
+          onInteractionUpdate: showOverlays
+              ? (details) {
+                  // Auto-switch to Hand tool during multi-touch gestures
+                  if (_tool != ToolType.cursor &&
+                      (details.scale != 1.0 || details.pointerCount > 1)) {
+                    _activateTool(ToolType.cursor);
+                  }
+                }
+              : null,
+          onInteractionEnd: showOverlays
+              ? (details) {
+                  // Trigger bidirectional sync after pan/zoom ends (with debounce in AppProvider)
+                  if (_tool == ToolType.cursor &&
+                      app.currentSessionCode != null) {
+                    app.triggerDebouncedSync(silent: true);
+                  }
+                }
+              : null,
+          onViewerReady: (document, viewerController) {
+            if (mounted && showOverlays) {
               setState(() {
                 _isProcessing = false;
-                _textSearcher ??= PdfTextSearcher(_pdfController)
+                _textSearcher ??= PdfTextSearcher(viewerController)
                   ..addListener(_onControllerChanged);
               });
               _requestAutoFit(

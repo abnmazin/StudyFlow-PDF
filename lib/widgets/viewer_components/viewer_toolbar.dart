@@ -12,6 +12,7 @@ class StudyFlowToolbar extends StatefulWidget {
   final String? selectedShapeAuthor;
   final String? selectedCommentAuthor;
   final bool isRightPanelOpen;
+  final bool isSplitMode;
   final bool isShapesPaletteVisible;
   final bool isDarkMode;
   final bool isSearchVisible;
@@ -20,6 +21,7 @@ class StudyFlowToolbar extends StatefulWidget {
   final ValueChanged<ToolType> onToolChanged;
   final VoidCallback onToggleShapesPalette;
   final VoidCallback onToggleRightPanel;
+  final VoidCallback onToggleSplitMode;
   final VoidCallback onToggleSettings;
   final VoidCallback onToggleSearch;
   final VoidCallback onSyncPressed;
@@ -33,6 +35,7 @@ class StudyFlowToolbar extends StatefulWidget {
     this.selectedShapeAuthor,
     this.selectedCommentAuthor,
     required this.isRightPanelOpen,
+    required this.isSplitMode,
     required this.isShapesPaletteVisible,
     required this.isDarkMode,
     required this.isSearchVisible,
@@ -41,6 +44,7 @@ class StudyFlowToolbar extends StatefulWidget {
     required this.onToolChanged,
     required this.onToggleShapesPalette,
     required this.onToggleRightPanel,
+    required this.onToggleSplitMode,
     required this.onToggleSettings,
     required this.onToggleSearch,
     required this.onSyncPressed,
@@ -166,46 +170,47 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
       setState(() => _isEditingZoom = false);
     }
   }
-Widget _buildEditableChip({
-  required bool isEditing,
-  required VoidCallback onTap,
-  required WidgetBuilder displayBuilder,
-  required WidgetBuilder editBuilder,
-  required Color backgroundColor,
-  required Color borderColor,
-  double width = 84,
-  double height = 40,
-}) {
-  return AnimatedContainer(
-    duration: const Duration(milliseconds: 180),
-    curve: Curves.easeOut,
-    width: width,
-    height: height,
-    decoration: BoxDecoration(
-      // Keep dimensions/tap area but remove the outer box visuals.
-      color: backgroundColor.withOpacity(0),
-      borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: borderColor.withOpacity(0), width: 0),
 
-    ),
-    child: AnimatedSwitcher(
-      duration: const Duration(milliseconds: 160),
-      switchInCurve: Curves.easeOut,
-      switchOutCurve: Curves.easeIn,
-      child: isEditing
-          ? editBuilder(context)
-          : Material(
-              key: const ValueKey('display'),
-              color: Colors.transparent,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(10),
-                onTap: onTap,
-                child: displayBuilder(context),
+  Widget _buildEditableChip({
+    required bool isEditing,
+    required VoidCallback onTap,
+    required WidgetBuilder displayBuilder,
+    required WidgetBuilder editBuilder,
+    required Color backgroundColor,
+    required Color borderColor,
+    double width = 84,
+    double height = 40,
+  }) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        // Keep dimensions/tap area but remove the outer box visuals.
+        color: backgroundColor.withOpacity(0),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: borderColor.withOpacity(0), width: 0),
+      ),
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 160),
+        switchInCurve: Curves.easeOut,
+        switchOutCurve: Curves.easeIn,
+        child: isEditing
+            ? editBuilder(context)
+            : Material(
+                key: const ValueKey('display'),
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: onTap,
+                  child: displayBuilder(context),
+                ),
               ),
-            ),
-    ),
-  );
-}
+      ),
+    );
+  }
+
   // ─── UNIFIED BUTTON BUILDER ───────────────────────────────────────
   Widget _buildToolButton({
     required IconData icon,
@@ -292,7 +297,6 @@ Widget _buildEditableChip({
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                
                   const SizedBox(width: 2),
                   if (isMobile)
                     _buildToolButton(
@@ -320,72 +324,86 @@ Widget _buildEditableChip({
                     iconMuted: iconMuted,
                   ),
                   const SizedBox(width: 4),
+
+                  _buildToolButton(
+                    icon: Icons.view_column,
+                    isActive: widget.isSplitMode,
+                    onTap: widget.onToggleSplitMode,
+                    tooltip: 'عرض مقسم (Side-by-Side)',
+                    iconMuted: iconMuted,
+                  ),
+
+                  const SizedBox(width: 4),
+
                   // Page Counter
                   if (pdf != null)
-  _buildEditableChip(
-    isEditing: _isEditingPage,
-    width: 60,
-    height: 40,
-    backgroundColor: chipBg,
-    borderColor: inputBorder,
-    onTap: () {
-      setState(() {
-        _isEditingPage = true;
-        _pageInputController.text =
-            (widget.pdfController.pageNumber ?? 1).toString();
-      });
-    },
-    displayBuilder: (_) => Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        child: Text(
-          widget.pdfController.isReady
-              ? '${widget.pdfController.pageNumber} / ${widget.pdfController.pages.length}'
-              : '...',
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: textPrimary,
-          ),
-        ),
-      ),
-    ),
-    editBuilder: (_) => Center(
-      child: SizedBox(
-        width: double.infinity,
-        child: TextField(
-          key: const ValueKey('pageField'),
-          controller: _pageInputController,
-          autofocus: true,
-          keyboardType: TextInputType.number,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            color: textPrimary,
-          ),
-          decoration: const InputDecoration(
-            border: InputBorder.none,
-            isDense: true,
-            contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-          ),
-          onSubmitted: (val) {
-            final int? page = int.tryParse(val);
-            if (page != null &&
-                page >= 1 &&
-                page <= widget.pdfController.pages.length) {
-              widget.pdfController.goToPage(pageNumber: page);
-            }
-            setState(() => _isEditingPage = false);
-          },
-          onTapOutside: (_) => setState(() => _isEditingPage = false),
-        ),
-      ),
-    ),
-  ),
-
-  ],
-            ),
+                    _buildEditableChip(
+                      isEditing: _isEditingPage,
+                      width: 60,
+                      height: 40,
+                      backgroundColor: chipBg,
+                      borderColor: inputBorder,
+                      onTap: () {
+                        setState(() {
+                          _isEditingPage = true;
+                          _pageInputController.text =
+                              (widget.pdfController.pageNumber ?? 1).toString();
+                        });
+                      },
+                      displayBuilder: (_) => Center(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          child: Text(
+                            widget.pdfController.isReady
+                                ? '${widget.pdfController.pageNumber} / ${widget.pdfController.pages.length}'
+                                : '...',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: textPrimary,
+                            ),
+                          ),
+                        ),
+                      ),
+                      editBuilder: (_) => Center(
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: TextField(
+                            key: const ValueKey('pageField'),
+                            controller: _pageInputController,
+                            autofocus: true,
+                            keyboardType: TextInputType.number,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: textPrimary,
+                            ),
+                            decoration: const InputDecoration(
+                              border: InputBorder.none,
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 10,
+                              ),
+                            ),
+                            onSubmitted: (val) {
+                              final int? page = int.tryParse(val);
+                              if (page != null &&
+                                  page >= 1 &&
+                                  page <= widget.pdfController.pages.length) {
+                                widget.pdfController.goToPage(pageNumber: page);
+                              }
+                              setState(() => _isEditingPage = false);
+                            },
+                            onTapOutside: (_) =>
+                                setState(() => _isEditingPage = false),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
 
             Expanded(
@@ -571,7 +589,8 @@ Widget _buildEditableChip({
                             _buildToolButton(
                               icon: LucideIcons.eraser,
                               isActive: widget.activeTool == ToolType.eraser,
-                              onTap: () => widget.onToolChanged(ToolType.eraser),
+                              onTap: () =>
+                                  widget.onToolChanged(ToolType.eraser),
                               tooltip: 'ممحاة (E)',
                               activeColor: const Color(0xFFEF4444),
                               iconMuted: iconMuted,
@@ -589,11 +608,15 @@ Widget _buildEditableChip({
                         icon: LucideIcons.bookmark,
                         isActive: false,
                         onTap: () {
-                          if (widget.activePdf != null && widget.pdfController.isReady) {
+                          if (widget.activePdf != null &&
+                              widget.pdfController.isReady) {
                             widget.onAddBookmark(widget.activePdf!);
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
-                                content: Text('تم حفظ الصفحة كعلامة مرجعية 📑', style: TextStyle(fontFamily: 'Cairo')),
+                                content: Text(
+                                  'تم حفظ الصفحة كعلامة مرجعية 📑',
+                                  style: TextStyle(fontFamily: 'Cairo'),
+                                ),
                                 duration: Duration(seconds: 2),
                                 backgroundColor: Color(0xFF3B82F6),
                               ),
@@ -633,8 +656,8 @@ Widget _buildEditableChip({
                     onTap: () {
                       setState(() {
                         _isEditingZoom = true;
-                        _zoomInputController.text =
-                            (_currentZoomRatio() * 100).toStringAsFixed(0);
+                        _zoomInputController.text = (_currentZoomRatio() * 100)
+                            .toStringAsFixed(0);
                       });
                     },
                     displayBuilder: (_) => Center(
@@ -654,8 +677,9 @@ Widget _buildEditableChip({
                           key: const ValueKey('zoomField'),
                           controller: _zoomInputController,
                           autofocus: true,
-                          keyboardType:
-                              const TextInputType.numberWithOptions(decimal: true),
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 12,
@@ -685,9 +709,9 @@ Widget _buildEditableChip({
                     tooltip: 'تكبير',
                     iconMuted: iconMuted,
                   ),
-            
+
                   const SizedBox(width: 8),
-            
+
                   if (app.currentSessionCode != null) ...[
                     const SizedBox(width: 8),
                     IconButton(
@@ -699,16 +723,19 @@ Widget _buildEditableChip({
                               height: 16,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : Icon(LucideIcons.refreshCw, color: iconMuted, size: 20),
+                          : Icon(
+                              LucideIcons.refreshCw,
+                              color: iconMuted,
+                              size: 20,
+                            ),
                     ),
                   ],
-            
+
                   const SizedBox(width: 8),
                   Container(width: 1, height: 28, color: separatorColor),
                   const SizedBox(width: 8),
-            
+
                   // Close + right panel toggle (anchored to the far right)
-            
                   _buildToolButton(
                     icon: widget.isRightPanelOpen
                         ? LucideIcons.panelRightClose

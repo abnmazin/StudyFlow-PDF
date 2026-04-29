@@ -345,7 +345,6 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
     final effectiveShowBorder = widget.showBorder;
 
     // تحديد الـ TextStyle المشترك
-    final editingIsArabic = _containsArabic(_textController.text);
     final displayIsArabic = _containsArabic(widget.content);
     final editingDirection = widget.isLatex
         ? TextDirection.ltr
@@ -570,24 +569,6 @@ class _MathOverlayWidget extends StatelessWidget {
                 ),
               ),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFormatButton(IconData icon, VoidCallback? onPressed, String tooltip, Color color) {
-    if (onPressed == null) return const SizedBox.shrink();
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(8),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
-            child: Icon(icon, size: 20, color: color),
           ),
         ),
       ),

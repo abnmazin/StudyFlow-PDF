@@ -1,0 +1,369 @@
+# StudyFlow — Full Project Analysis
+
+## 1. Project Identity
+
+| Property | Value |
+|---|---|
+| **App Name** | StudyFlow (package: `pdfreader`) |
+| **Version** | 1.0.0+1 |
+| **SDK** | dart ^3.10.7 |
+| **Platform** | Windows-first (file associations, wmic, registry hardware ID) |
+| **Architecture** | Provider + Isar + Firestore |
+| **Locale** | Arabic ([ar](file:///d:/Programing/flutter/app/lib.rar)) primary, English fallback |
+
+---
+
+## 2. Directory Structure
+
+```
+app/
+├── lib/
+│   ├── main.dart                  # Entry point, single-instance server, RootWrapper
+│   ├── firebase_options.dart      # Firebase config
+│   ├── models/
+│   │   ├── annotations.dart       # Highlight, PdfComment, PdfBookmark
+│   │   ├── app_user.dart          # AppUser (uid, username, role, hardwareId)
+│   │   ├── enums.dart             # ToolType, HighlightType
+│   │   ├── isar_models.dart       # ClassFolder, PdfDocument, PdfSnapshot, TrashItem, StudyTask
+│   │   ├── models.dart            # Barrel export
+│   │   ├── print_settings.dart
+│   │   └── structure.dart         # PdfItem, ClassItem (in-memory runtime models)
+│   ├── providers/
+│   │   └── app_state.dart         # AppProvider (2681 lines — central state machine)
+│   ├── services/
+│   │   ├── auth_service.dart      # loginAndBind (Firestore-based, device-bound)
+│   │   ├── file_hash_service.dart # SHA-256 file hashing
+│   │   ├── file_manager_service.dart  # Isar DB wrapper (folders, PDFs, tasks)
+│   │   ├── hardware_service.dart  # Windows device UUID (wmic/CIM/registry)
+│   │   ├── pdf_tools_service.dart # PDF merge/split utilities (Syncfusion)
+│   │   ├── print_service.dart     # Print pipeline
+│   │   └── sync_service.dart      # Firestore real-time sync (671 lines)
+│   ├── screens/
+│   │   ├── admin/dev_dashboard.dart   # Developer/Admin control panel
+│   │   └── auth/login_screen.dart     # Username + device-bound login UI
+│   ├── widgets/
+│   │   ├── sidebar_w.dart             # Left navigation sidebar
+│   │   ├── pdf_viewer_widget_w.dart   # Main PDF viewer (51KB)
+│   │   ├── pdf_viewer_widget_gestures.dart
+│   │   ├── pdf_viewer_widget_actions.dart
+│   │   ├── pdf_viewer_widget_overlay.dart
+│   │   ├── pdf_viewer_widget_print.dart
+│   │   ├── pdf_viewer_widget_style.dart
+│   │   ├── pdf_viewer_widget_dashboard.dart  # Dashboard home screen
+│   │   ├── draggable_text_widget.dart
+│   │   ├── developer_modal_w.dart
+│   │   ├── global_settings_modal.dart
+│   │   ├── dialogs/
+│   │   │   ├── images_to_pdf_dialog.dart
+│   │   │   └── merge_pdf_dialog.dart
+│   │   └── viewer_components/
+│   │       ├── viewer_toolbar.dart    # Top toolbar (tools, undo, page nav)
+│   │       ├── viewer_right_panel.dart  # Annotation properties panel (97KB)
+│   │       ├── session_cards.dart     # Session/Sync UI cards
+│   │       ├── print_dialog.dart
+│   │       ├── mini_calculator_widget.dart
+│   │       └── join_master_modal.dart
+│   ├── painters/
+│   │   └── highlight_painter.dart    # CustomPainter for all annotations
+│   └── utils/
+│       └── print_utils.dart
+├── pubspec.yaml
+├── firestore.rules
+└── windows/                          # Windows platform target
+```
+
+---
+
+## 3. Key Dependencies
+
+| Package | Purpose |
+|---|---|
+| `provider ^6.1.5` | State management |
+| `pdfrx ^2.2.24` | PDF rendering |
+| `isar ^3.1.0` | Local embedded database |
+| `cloud_firestore ^5.0.0` | Real-time sync backend |
+| `firebase_core ^3.0.0` | Firebase init |
+| `syncfusion_flutter_pdf ^32.2.4` | PDF manipulation (edit, merge, pages) |
+| `printing ^5.13.2` | Print pipeline |
+| `file_picker ^10.3.10` | File open dialog |
+| `desktop_drop ^0.7.0` | Drag & drop PDF support |
+| `shared_preferences ^2.5.4` | Persistent settings & session |
+| `google_generative_ai ^0.4.6` | Gemini AI integration |
+| `http ^1.3.0` | Groq AI API calls |
+| `flutter_math_fork ^0.7.4` | LaTeX rendering in comments |
+| `uuid ^4.5.2` | UUID generation |
+| `crypto ^3.0.3` | SHA-256 file hashing |
+| `flutter_dotenv ^5.1.0` | [.env](file:///d:/Programing/flutter/app/.env) API key loading |
+
+---
+
+## 4. Data Models
+
+### 4.1 In-Memory Runtime Models ([structure.dart](file:///d:/Programing/flutter/app/lib/models/structure.dart))
+
+**[PdfItem](file:///d:/Programing/flutter/app/lib/models/structure.dart#3-102)** — One open PDF document:
+- [id](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#60-2677), `name`, `path` (working copy), `originalPath`
+- `fileHash` (SHA-256), `pageCount`
+- `highlights: List<Highlight>`, `comments: List<PdfComment>`, `bookmarks: List<PdfBookmark>`
+- `scrollTop`, `lastPage`, `lastModified`
+- Full JSON serialization for `SharedPreferences` persistence
+
+**[ClassItem](file:///d:/Programing/flutter/app/lib/models/structure.dart#103-132)** — A named folder of PDFs:
+- [id](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#60-2677), `name`, `pdfs: List<PdfItem>`, `lastActivePdfId`
+
+### 4.2 Annotation Models ([annotations.dart](file:///d:/Programing/flutter/app/lib/models/annotations.dart))
+
+**[Highlight](file:///d:/Programing/flutter/app/lib/models/annotations.dart#4-109)** — Drawing, pen stroke, shape, or text highlight:
+- [id](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#60-2677), `path: List<Offset>`, `color`, `page`, `strokeWidth`
+- `type: HighlightType` (highlight/pen/text/arrow/rectangle/circle/select)
+- `rects: List<Rect>?` (for text selection highlights)
+- `backgroundColor` (int, fill color for shapes)
+- `isSynced: bool`, `updatedAt` (timestamp for Last-Writer-Wins)
+- Cached [Path](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1230-1299) object for fast paint
+
+**[PdfComment](file:///d:/Programing/flutter/app/lib/models/annotations.dart#110-221)** — Draggable sticky note / text box:
+- [id](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#60-2677), `page`, `position: Offset`, `content`, [date](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#416-437)
+- `color`, `fontSize`, `isBold`, `isLatex`, `fontFamily`
+- `showBorder`, `borderColor`, `bgColor`
+- `isSynced`, `updatedAt`
+
+**[PdfBookmark](file:///d:/Programing/flutter/app/lib/models/annotations.dart#222-235)** — Page bookmark: [id](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#60-2677), `page`, `name`
+
+### 4.3 Isar Persistent Models ([isar_models.dart](file:///d:/Programing/flutter/app/lib/models/isar_models.dart))
+
+| Collection | Purpose |
+|---|---|
+| [ClassFolder](file:///d:/Programing/flutter/app/lib/models/isar_models.dart#10-46) | Mirrors ClassItem in the local DB. Holds `uuid`, `name`, `icon`, `color`, `orderIndex`, `pdfIds[]` |
+| [PdfDocument](file:///d:/Programing/flutter/app/lib/models/isar_models.dart#51-134) | Tracks imported PDFs with working copy, page, zoom, scroll, annotation counts |
+| [PdfSnapshot](file:///d:/Programing/flutter/app/lib/models/isar_models.dart#139-181) | Point-in-time versioned copies for undo history |
+| [TrashItem](file:///d:/Programing/flutter/app/lib/models/isar_models.dart#186-236) | Soft-deleted PDFs retained 30 days |
+| [StudyTask](file:///d:/Programing/flutter/app/lib/models/isar_models.dart#241-268) | Daily to-do items: `uuid`, `title`, `isDone`, `createdAt` |
+
+### 4.4 User Model ([app_user.dart](file:///d:/Programing/flutter/app/lib/models/app_user.dart))
+
+```dart
+AppUser { uid, username, role, hardwareId }
+```
+- `role` values: `developer`, `lecturer`, `member`
+- `developer` bypasses device binding; all others are strictly bound to one device
+
+---
+
+## 5. Enums ([enums.dart](file:///d:/Programing/flutter/app/lib/models/enums.dart))
+
+```dart
+enum ToolType { cursor, select, highlight, pen, text, eraser, arrow, rectangle, circle }
+enum HighlightType { highlight, pen, text, comment, arrow, rectangle, circle, select }
+```
+
+Extensions provide `.isDrawingTool()`, `.isSelectionTool()`, `.isHandTool()`, `.isDrawing`, `.isTapOnly`, `.isHand`.
+
+---
+
+## 6. AppProvider — Central State Machine ([providers/app_state.dart](file:///d:/Programing/flutter/app/lib/providers/app_state.dart), 2681 lines)
+
+### 6.1 Core State Fields
+- `_classes: List<ClassItem>` — all folders and PDFs
+- `_activeClassId`, `_activePdfId` — current selection
+- `_currentUser: AppUser?` — logged-in user (null → LoginScreen)
+- `_pdfSessionCodes: Map<String, String>` — fileHash → sessionCode mapping
+- `_actionHistory`, `_redoHistory: List<ActionRecord>` — undo/redo stack
+- `_initCompleter` — `Future<void> initialized` for async startup
+
+### 6.2 Initialization Flow
+1. [_loadState()](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#824-928) — loads from `SharedPreferences` (user, classes, active IDs, session codes, AI settings)
+2. [_syncFoldersWithIsar()](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1314-1381) — mirrors [ClassItem](file:///d:/Programing/flutter/app/lib/models/structure.dart#103-132) list to Isar [ClassFolder](file:///d:/Programing/flutter/app/lib/models/isar_models.dart#10-46) table
+3. [_loadTasks()](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#2631-2640) — loads [StudyTask](file:///d:/Programing/flutter/app/lib/models/isar_models.dart#241-268) list from Isar
+4. Startup Security Guard — verifies `_currentUser.uid` still exists in Firestore; force-logout if not
+5. [_startUserMonitor()](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#519-527) — attaches a Firestore snapshot listener to detect account deletion in real time
+6. `_initCompleter.complete()` — signals [RootWrapper](file:///d:/Programing/flutter/app/lib/main.dart#213-265) to show either [MainLayout](file:///d:/Programing/flutter/app/lib/main.dart#266-274) or [LoginScreen](file:///d:/Programing/flutter/app/lib/screens/auth/login_screen.dart#11-17)
+
+### 6.3 Persistence
+- **`SharedPreferences`**: classes, active class, session codes, user JSON, AI settings, dark mode
+- **[Isar](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1314-1381)**: [ClassFolder](file:///d:/Programing/flutter/app/lib/models/isar_models.dart#10-46), [StudyTask](file:///d:/Programing/flutter/app/lib/models/isar_models.dart#241-268) (via `FileManagerService`)
+- [_saveState()](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#973-1013) is debounced (500ms) with a write-lock guard (`_isSaving`, `_needsSave`)
+- [_cleanupTempFiles()](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#929-972) runs on startup to delete orphaned `_studyflow_temp_*.pdf` files
+
+### 6.4 Key Actions
+| Method | Description |
+|---|---|
+| [setActiveClass(id)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1079-1101) | Switch class, auto-open last active PDF |
+| [setActivePdf(id)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1102-1155) | Open PDF, trigger auto-join if lecturer/student |
+| [loadPdfFromPath(path)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1230-1299) | Windows file association — opens via CLI arg |
+| [uploadPdf(classId)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1399-1435) | File picker → add PDF to class |
+| [addClass(name)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1300-1313) / [deleteClass](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#2488-2499) | Class CRUD |
+| [deletePdf(classId, pdfId)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#2500-2537) | Removes from disk + state |
+| [movePdf(...)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#2567-2602) | Move PDF between classes |
+| [addHighlight(pdfId, h)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1436-1462) | Adds annotation, records to undo history, triggers sync |
+| [removeHighlight(...)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1481-1512) | Removes, anti-resurrection server delete |
+| [addComment(...)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1531-1563) / [removeComment()](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1564-1595) | Same pattern as highlight |
+| [updateComment(...)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1750-1810) / [updateHighlight(...)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#370-415) | In-place update, records undo state |
+| [undoLastAction()](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1812-1974) / [redoLastAction()](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1975-2120) | Full undo/redo for all annotation types |
+| [clearAllAnnotations(pdfId)](file:///d:/Programing/flutter/app/lib/services/sync_service.dart#181-188) | Wipes all highlights + comments locally + on Firestore |
+| [deletePage(pdfId, pageIndex)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#2287-2354) | Isolate-based page removal with annotation shift |
+| [addPage(pdfId)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#2355-2425) | Isolate-based page insertion |
+| [addTask(title)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#2641-2647) / [toggleTask(uuid)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#2648-2656) / [deleteTask(uuid)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#2657-2662) | StudyTask CRUD via Isar |
+| [joinSession(code)](file:///d:/Programing/flutter/app/lib/services/sync_service.dart#545-595) | Student joins a sync session by code |
+| [linkMasterBundle(bundle)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#567-608) | Links multiple PDFs → session codes via master bundle |
+| [logout()](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#609-619) | Clears user, session codes, stops listeners |
+
+### 6.5 Sync Strategy ([DrawingSyncStrategy](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#90-94))
+- `disabled` — no live sync
+- `immediate` — every annotation triggers an upload
+- `buffered` — batches uploads every 5 seconds
+- `isolate` — serialization runs in a Dart Isolate before upload
+
+### 6.6 Security System
+- [_startKickListener(code)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#632-692) — watches Firestore session doc for:
+  - Session deletion → force logout
+  - `kicked_uids` match → kick
+  - `isLocked` toggle → clear unsynced annotations, switch to cursor tool
+  - Student removed from `participants` → kick
+- [_startUserMonitor(uid)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#519-527) — Firestore stream to detect account deletion
+- [_handleForceLogout(reason)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#698-735) — wipes session data, triggers UI redirect
+
+---
+
+## 7. Services
+
+### [SyncService](file:///d:/Programing/flutter/app/lib/services/sync_service.dart#14-671) ([sync_service.dart](file:///d:/Programing/flutter/app/lib/services/sync_service.dart), 671 lines)
+Firestore schema: `sync_sessions/{code}` with sub-collection `annotations/{fileHash}`.
+
+| Method | Description |
+|---|---|
+| [generateSessionCode(...)](file:///d:/Programing/flutter/app/lib/services/sync_service.dart#78-113) | Creates a new 6-char session, idempotent |
+| [findExistingSession(user, hash)](file:///d:/Programing/flutter/app/lib/services/sync_service.dart#61-77) | Lecturer auto-join: finds their existing session |
+| [joinSession(...)](file:///d:/Programing/flutter/app/lib/services/sync_service.dart#545-595) | Student enrollment with file hash + page count validation |
+| [watchSessionSecurity(code)](file:///d:/Programing/flutter/app/lib/services/sync_service.dart#128-144) | Real-time stream of kicks, locks, participants |
+| [syncExistingAnnotations(...)](file:///d:/Programing/flutter/app/lib/services/sync_service.dart#381-539) | Full 5-phase bidirectional reconciliation (LWW) |
+| [uploadDelta(...)](file:///d:/Programing/flutter/app/lib/services/sync_service.dart#600-616) | Simple immediate upload (all annotations) |
+| [kickParticipant(code, username)](file:///d:/Programing/flutter/app/lib/services/sync_service.dart#292-318) | Ban + remove from participants |
+| [deleteAnnotation(code, hash, id)](file:///d:/Programing/flutter/app/lib/services/sync_service.dart#361-380) | Surgical single annotation server delete |
+| [deleteSession(code)](file:///d:/Programing/flutter/app/lib/services/sync_service.dart#200-219) | Deletes session + all annotation sub-docs |
+| [watchAllMasterBundles()](file:///d:/Programing/flutter/app/lib/services/sync_service.dart#23-29) | Stream for dev dashboard |
+| [createMasterBundle(owner, bundle)](file:///d:/Programing/flutter/app/lib/services/sync_service.dart#30-43) | 8-char master code linking multiple sessions |
+| [isDeviceBlacklisted(hardwareId)](file:///d:/Programing/flutter/app/lib/services/sync_service.dart#171-180) | Checks `blacklisted_devices` collection |
+| [checkUserExists(uid)](file:///d:/Programing/flutter/app/lib/services/sync_service.dart#161-170) | One-shot user existence check |
+
+### [AuthService](file:///d:/Programing/flutter/app/lib/services/auth_service.dart#6-61) ([auth_service.dart](file:///d:/Programing/flutter/app/lib/services/auth_service.dart))
+- [loginAndBind(username)](file:///d:/Programing/flutter/app/lib/services/auth_service.dart#14-60):
+  1. Device blacklist check
+  2. Username lookup in `users` Firestore collection
+  3. `developer` role → no device binding
+  4. First login → binds `hardwareId` to account
+  5. Subsequent login → strict device match
+
+### [HardwareService](file:///d:/Programing/flutter/app/lib/services/hardware_service.dart#3-97) ([hardware_service.dart](file:///d:/Programing/flutter/app/lib/services/hardware_service.dart))
+Gets a stable device UUID on Windows via (in order of priority):
+1. `wmic csproduct get uuid`
+2. PowerShell `Get-CimInstance Win32_ComputerSystemProduct`
+3. Registry `HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid`
+
+### `FileManagerService` ([file_manager_service.dart](file:///d:/Programing/flutter/app/lib/services/file_manager_service.dart))
+- Isar DB wrapper (`ChangeNotifier`)
+- Manages [ClassFolder](file:///d:/Programing/flutter/app/lib/models/isar_models.dart#10-46), [PdfDocument](file:///d:/Programing/flutter/app/lib/models/isar_models.dart#51-134), [PdfSnapshot](file:///d:/Programing/flutter/app/lib/models/isar_models.dart#139-181), [TrashItem](file:///d:/Programing/flutter/app/lib/models/isar_models.dart#186-236), [StudyTask](file:///d:/Programing/flutter/app/lib/models/isar_models.dart#241-268)
+- `getAllTasks()`, `saveTask(task)`, `deleteTaskByUuid(uuid)`
+- `isInitialized` guard + [init()](file:///d:/Programing/flutter/app/lib/main.dart#296-319) method
+
+### `FileHashService` ([file_hash_service.dart](file:///d:/Programing/flutter/app/lib/services/file_hash_service.dart))
+- `calculateFileHash(path)` → SHA-256 hex string
+
+---
+
+## 8. UI Screens & Widgets
+
+### [main.dart](file:///d:/Programing/flutter/app/lib/main.dart) — App Entry
+- **Single-instance server** on port `45678`: if a second instance launches with a PDF path, it forwards the path to the running instance via TCP socket and exits.
+- [RootWrapper](file:///d:/Programing/flutter/app/lib/main.dart#213-265) → `FutureBuilder` on `app.initialized`:
+  - `currentUser != null` → [MainLayout](file:///d:/Programing/flutter/app/lib/main.dart#266-274)
+  - otherwise → [LoginScreen](file:///d:/Programing/flutter/app/lib/screens/auth/login_screen.dart#11-17)
+- [MainLayout](file:///d:/Programing/flutter/app/lib/main.dart#266-274) — Scaffold with `DropTarget` (drag-and-drop PDF), [Sidebar](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1025-1029) (desktop), `PDFViewerWidget`, `DeveloperModal`, `GlobalSettingsModal`. Has [_securityListener](file:///d:/Programing/flutter/app/lib/main.dart#327-363) for real-time kick/force-logout UI handling.
+
+### [LoginScreen](file:///d:/Programing/flutter/app/lib/screens/auth/login_screen.dart#11-17) ([screens/auth/login_screen.dart](file:///d:/Programing/flutter/app/lib/screens/auth/login_screen.dart))
+- Username text field + device ID display
+- Calls `AuthService.loginAndBind()`, then `AppProvider.setCurrentUser()`
+- Dark card UI on [Color(0xFF1E1E1E)](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#2135-2139)
+
+### [Sidebar](file:///d:/Programing/flutter/app/lib/providers/app_state.dart#1025-1029) ([widgets/sidebar_w.dart](file:///d:/Programing/flutter/app/lib/widgets/sidebar_w.dart))
+- Class/folder list, PDF list, add/delete/reorder operations
+- Shows session sync status badges
+
+### `PDFViewerWidget` ([widgets/pdf_viewer_widget_w.dart](file:///d:/Programing/flutter/app/lib/widgets/pdf_viewer_widget_w.dart), 51KB)
+- Main viewer using `pdfrx` package
+- Hosts the dashboard view (when no PDF is open) and the full viewer
+- **Dashboard** ([pdf_viewer_widget_dashboard.dart](file:///d:/Programing/flutter/app/lib/widgets/pdf_viewer_widget_dashboard.dart)): Stats cards, recent PDFs, Daily To-Do list
+
+### Viewer Sub-Widgets
+| File | Responsibility |
+|---|---|
+| [viewer_toolbar.dart](file:///d:/Programing/flutter/app/lib/widgets/viewer_components/viewer_toolbar.dart) | Tool buttons, undo/redo, page counter, zoom |
+| [viewer_right_panel.dart](file:///d:/Programing/flutter/app/lib/widgets/viewer_components/viewer_right_panel.dart) | Annotation properties (color, stroke, font, LaTeX) — 97KB |
+| [session_cards.dart](file:///d:/Programing/flutter/app/lib/widgets/viewer_components/session_cards.dart) | Lecturer: generate code, lock/unlock. Student: join session, sync status |
+| [pdf_viewer_widget_overlay.dart](file:///d:/Programing/flutter/app/lib/widgets/pdf_viewer_widget_overlay.dart) | Annotation rendering overlay |
+| [pdf_viewer_widget_gestures.dart](file:///d:/Programing/flutter/app/lib/widgets/pdf_viewer_widget_gestures.dart) | Gesture handling for drawing/selecting |
+| [pdf_viewer_widget_actions.dart](file:///d:/Programing/flutter/app/lib/widgets/pdf_viewer_widget_actions.dart) | Context menu actions |
+| [pdf_viewer_widget_print.dart](file:///d:/Programing/flutter/app/lib/widgets/pdf_viewer_widget_print.dart) | Print integration |
+| [pdf_viewer_widget_style.dart](file:///d:/Programing/flutter/app/lib/widgets/pdf_viewer_widget_style.dart) | Styling constants |
+| [draggable_text_widget.dart](file:///d:/Programing/flutter/app/lib/widgets/draggable_text_widget.dart) | Movable comment sticky note |
+| [mini_calculator_widget.dart](file:///d:/Programing/flutter/app/lib/widgets/viewer_components/mini_calculator_widget.dart) | In-app calculator |
+| [join_master_modal.dart](file:///d:/Programing/flutter/app/lib/widgets/viewer_components/join_master_modal.dart) | Student master bundle join UI |
+| [print_dialog.dart](file:///d:/Programing/flutter/app/lib/widgets/viewer_components/print_dialog.dart) | Print configuration |
+
+### `DevDashboard` ([screens/admin/dev_dashboard.dart](file:///d:/Programing/flutter/app/lib/screens/admin/dev_dashboard.dart))
+- Developer/Admin panel: user management, device blacklisting, session management, master bundles, global stats
+
+---
+
+## 9. Feature Summary
+
+### PDF Annotation
+- **Tools**: Highlight, Pen, Arrow, Rectangle, Circle (vector shapes), Text/Comment, Eraser, Select/Move
+- **Highlights**: path-based freehand + rect-based text, with optional fill color
+- **Comments**: Draggable sticky notes with LaTeX, bold, custom fonts, border/bg colors
+- **Bookmarks**: Named page markers
+- **Undo/Redo**: Full action history for add/update/delete on all annotation types
+
+### Real-Time Sync (Lecturer–Student)
+- Lecturer generates a 6-char session code tied to `SHA-256(fileHash)` + `pageCount`
+- Students join with the code; file hash + page count **must** match exactly
+- Bidirectional reconciliation: Last-Writer-Wins via `updatedAt` timestamps
+- Anti-resurrection: deleted annotations tracked in `locallyDeletedIds`, immediate server delete
+- 4 sync strategies selectable at runtime
+
+### Master Bundle (Phase 13)
+- Lecturer packages multiple `{hash, sessionCode, name}` entries into one 8-char master code
+- Students scan master code → links all PDFs in their library automatically
+
+### Security
+- Device blacklist (`blacklisted_devices` Firestore collection)
+- Strict hardware binding (one account ↔ one device UUID)
+- Startup account existence check
+- Real-time account deletion monitoring
+- Session-level kick, lock, join-lock mechanisms
+
+### Study Tasks (Daily To-Do)
+- [StudyTask](file:///d:/Programing/flutter/app/lib/models/isar_models.dart#241-268) Isar model with `title`, `isDone`, `createdAt`
+- Shown on the dashboard; add/toggle/delete with full Isar persistence
+
+### PDF Editing
+- Delete/add pages via Dart Isolate (non-blocking)
+- Annotations shift correctly after page deletion
+- Merge PDFs, images-to-PDF dialogs
+- Print pipeline with Syncfusion + `printing` package
+
+### AI Integration
+- Supports **Gemini** (google_generative_ai) and **Groq** (http + REST)
+- Model and API keys configurable via `GlobalSettingsModal`
+- Keys stored in `SharedPreferences`
+
+---
+
+## 10. Firestore Collections
+
+| Collection | Purpose |
+|---|---|
+| `users/{uid}` | User records: `username`, `role`, `hardwareId` |
+| `blacklisted_devices/{hardwareId}` | Banned device registry |
+| `sync_sessions/{code}` | Session docs: `createdBy`, `fileHash`, `pageCount`, `isLocked`, `joinLocked`, `kicked_uids`, `participants` |
+| `sync_sessions/{code}/annotations/{fileHash}` | Annotation data array |
+| `master_sessions/{code}` | Master bundle: `ownerName`, `bundle[]`, `isLocked`, `bannedUsernames`, `activators` |

@@ -129,6 +129,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   List<ClassItem> _classes = [];
   String? _activeClassId;
   String? _activePdfId;
+  String? _secondaryPdfId;
+  bool _isSplitMode = false;
   AppUser? _currentUser;
   Map<String, String> _pdfSessionCodes =
       {}; // Key: fileHash, Value: sessionCode
@@ -388,8 +390,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       // ── Collaborative Trash Sync ──────────────────────────────────────────
       if (currentSessionCode != null) {
         try {
-          final unsyncedTrash =
-              await _fileManager.getUnsyncedDeletedAnnotations();
+          final unsyncedTrash = await _fileManager
+              .getUnsyncedDeletedAnnotations();
           final remoteTrashJson = await _syncService.syncDeletedAnnotations(
             sessionCode: currentSessionCode!,
             localUnsynced: unsyncedTrash.map((e) => e.toJson()).toList(),
@@ -404,10 +406,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
           // Save remote to local
           if (remoteTrashJson.isNotEmpty) {
-            final remoteModels =
-                remoteTrashJson
-                    .map((e) => DeletedAnnotation.fromJson(e))
-                    .toList();
+            final remoteModels = remoteTrashJson
+                .map((e) => DeletedAnnotation.fromJson(e))
+                .toList();
             await _fileManager.saveRemoteDeletedAnnotations(remoteModels);
           }
         } catch (trashError) {
@@ -654,6 +655,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   String get groqModel => _groqModel;
   String get geminiApiKey => _geminiApiKey;
   String get groqApiKey => _groqApiKey;
+
   /// The currently-active model name (whichever provider is selected).
   String get currentModel =>
       _aiProvider == 'gemini' ? _geminiModel : _groqModel;
@@ -679,7 +681,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   void _markLockedLocalOnlyHighlight(String? fileHash, String highlightId) {
     if (fileHash == null) return;
-    _lockedLocalOnlyHighlightIds.putIfAbsent(fileHash, () => <String>{}).add(highlightId);
+    _lockedLocalOnlyHighlightIds
+        .putIfAbsent(fileHash, () => <String>{})
+        .add(highlightId);
   }
 
   void _clearLockedLocalOnlyHighlight(String? fileHash, String highlightId) {
@@ -699,8 +703,12 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     if (ids == null || ids.isEmpty) return;
 
     pdf.highlights.removeWhere((h) => ids.contains(h.id));
-    _actionHistory.removeWhere((a) => a.pdfId == pdf.id && ids.contains(a.itemId));
-    _redoHistory.removeWhere((a) => a.pdfId == pdf.id && ids.contains(a.itemId));
+    _actionHistory.removeWhere(
+      (a) => a.pdfId == pdf.id && ids.contains(a.itemId),
+    );
+    _redoHistory.removeWhere(
+      (a) => a.pdfId == pdf.id && ids.contains(a.itemId),
+    );
     _locallyDeletedIds[fileHash]?.removeAll(ids);
     _lockedLocalOnlyHighlightIds.remove(fileHash);
   }
@@ -1075,7 +1083,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
               if (id != null && _intentionallyDeletedIds.contains(id)) {
                 continue;
               }
-              
+
               if (kind == 'highlight' && id != null) {
                 final highlight = Highlight.fromJson(data);
                 // MERGE + UPDATE: Always assign (add new OR update existing)
@@ -1141,13 +1149,100 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   PdfItem? get activePdf {
-    if (_activeClassId == null || _activePdfId == null) return null;
+    final cls = _activeClass();
+    if (cls == null || _activePdfId == null) return null;
+    for (final pdf in cls.pdfs) {
+      if (pdf.id == _activePdfId) return pdf;
+    }
+    return null;
+  }
+
+  PdfItem? get secondaryPdf {
+    if (!_isSplitMode || _secondaryPdfId == null) return null;
+    if (_secondaryPdfId == _activePdfId) return null;
+    return _findPdfById(_secondaryPdfId!);
+  }
+
+  bool get isSplitMode => _isSplitMode;
+
+  ClassItem? _activeClass() {
+    if (_activeClassId == null) return null;
     try {
-      final cls = _classes.firstWhere((c) => c.id == _activeClassId);
-      return cls.pdfs.firstWhere((p) => p.id == _activePdfId);
+      return _classes.firstWhere((c) => c.id == _activeClassId);
     } catch (_) {
       return null;
     }
+  }
+
+  String? _fallbackSecondaryPdfId({String? primaryPdfId}) {
+    final cls = _activeClass();
+    if (cls == null) return null;
+    for (final pdf in cls.pdfs) {
+      if (pdf.id != primaryPdfId) return pdf.id;
+    }
+    return null;
+  }
+
+  void _normalizeSplitSelection() {
+    if (!_isSplitMode) {
+      _secondaryPdfId = null;
+      return;
+    }
+
+    final primaryId = _activePdfId;
+    if (primaryId == null) {
+      _secondaryPdfId = null;
+      _isSplitMode = false;
+      return;
+    }
+
+    if (_secondaryPdfId == null || _secondaryPdfId == primaryId) {
+      _secondaryPdfId = _fallbackSecondaryPdfId(primaryPdfId: primaryId);
+    } else {
+      final secondary = _findPdfById(_secondaryPdfId!);
+      if (secondary == null || secondary.id == primaryId) {
+        _secondaryPdfId = _fallbackSecondaryPdfId(primaryPdfId: primaryId);
+      }
+    }
+
+    if (_secondaryPdfId == null) {
+      _isSplitMode = false;
+    }
+  }
+
+  void toggleSplitMode() {
+    if (_isSplitMode) {
+      _isSplitMode = false;
+      _secondaryPdfId = null;
+    } else {
+      _isSplitMode = true;
+      _secondaryPdfId = _fallbackSecondaryPdfId(primaryPdfId: _activePdfId);
+      if (_secondaryPdfId == null) {
+        _isSplitMode = false;
+      }
+    }
+
+    _saveState();
+    _notify();
+  }
+
+  void setSecondaryPdf(String? pdfId) {
+    if (pdfId == null) {
+      _secondaryPdfId = null;
+      _isSplitMode = false;
+      _saveState();
+      _notify();
+      return;
+    }
+
+    final resolved = _findPdfById(pdfId);
+    if (resolved == null || resolved.id == _activePdfId) return;
+
+    _secondaryPdfId = resolved.id;
+    _isSplitMode = true;
+    _normalizeSplitSelection();
+    _saveState();
+    _notify();
   }
 
   // Constants for SharedPreferences
@@ -1166,6 +1261,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       'annotations_blob_migrated_v1';
   static const String _prefsKeyLibraryMigrated =
       'studyflowpdf_library_migrated_v2';
+  static const String _prefsKeySplitMode = 'studyflowpdf_split_mode';
+  static const String _prefsKeySecondaryPdf = 'studyflowpdf_secondary_pdf';
 
   Future<void> _loadState() async {
     try {
@@ -1238,6 +1335,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
       _activeClassId = prefs.getString(_prefsKeyActiveClass);
       _activePdfId = null; // Reset on load, hydration will restore if needed
+      _secondaryPdfId = prefs.getString(_prefsKeySecondaryPdf);
+      _isSplitMode = prefs.getBool(_prefsKeySplitMode) ?? false;
 
       // Load dark mode preference
       _isDarkMode = prefs.getBool(_prefsKeyDarkMode) ?? true;
@@ -1666,6 +1765,18 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         await prefs.remove(_prefsKeyActiveClass);
       }
 
+      if (_isSplitMode) {
+        await prefs.setBool(_prefsKeySplitMode, true);
+      } else {
+        await prefs.remove(_prefsKeySplitMode);
+      }
+
+      if (_secondaryPdfId != null) {
+        await prefs.setString(_prefsKeySecondaryPdf, _secondaryPdfId!);
+      } else {
+        await prefs.remove(_prefsKeySecondaryPdf);
+      }
+
       await prefs.setString(
         _prefsKeyPdfSessionCodes,
         jsonEncode(_pdfSessionCodes),
@@ -1865,6 +1976,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       _activePdfId = null;
     }
 
+    _normalizeSplitSelection();
+
     _saveState();
     _updateImageCacheGovernance();
     _notify();
@@ -1873,6 +1986,15 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   void setActivePdf(String id) {
     _activePdfId = id;
     _isMobileOpen = false;
+
+    if (_isSplitMode) {
+      if (_secondaryPdfId == id) {
+        _secondaryPdfId = null;
+      }
+      _normalizeSplitSelection();
+    } else {
+      _secondaryPdfId = null;
+    }
 
     // Update last active PDF for the class
     if (_activeClassId != null) {
@@ -1993,8 +2115,10 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
       // 3. If exact hash not found, try fallback: match by filename + size
       if (matchingPdf == null) {
-        debugPrint('⚠️ [AppProvider] Exact hash not found in local PDFs. Trying fallback matching...');
-        
+        debugPrint(
+          '⚠️ [AppProvider] Exact hash not found in local PDFs. Trying fallback matching...',
+        );
+
         // Extract expected filename and size from the remote session
         // (The fileHash is based on filename_size, so we need to find it locally)
         // For now, we'll search by comparing file size and name similarity
@@ -2003,12 +2127,16 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
             try {
               final localFile = File(p.path);
               if (await localFile.exists()) {
-                final localMetadata = await FileHashService.getFileMetadata(p.path);
-                
+                final localMetadata = await FileHashService.getFileMetadata(
+                  p.path,
+                );
+
                 // Try to match based on metadata similarity
                 // Note: This is a heuristic; exact matching would require storing metadata in DB
-                debugPrint('   - Checking local PDF: ${p.name} (Size: ${localMetadata['size']})');
-                
+                debugPrint(
+                  '   - Checking local PDF: ${p.name} (Size: ${localMetadata['size']})',
+                );
+
                 // For now, accept the first matching PDF by name similarity or wait for better metadata
                 // TODO: Ideally, store filename+size in the PDF document for reliable fallback matching
               }
@@ -2029,9 +2157,11 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
       // 5. Use local page count (more reliable than server value which might differ)
       final localPageCount = matchingPdf.pageCount ?? serverPageCount ?? 0;
-      
+
       if (localPageCount == 0) {
-        debugPrint('⚠️ [AppProvider] Warning: Could not determine page count for matched PDF');
+        debugPrint(
+          '⚠️ [AppProvider] Warning: Could not determine page count for matched PDF',
+        );
       }
 
       // 6. Perform the actual join with local page count
@@ -2257,21 +2387,24 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
       // NEW: SOFT DELETE (TRASH)
       final type = highlight.type;
-      final itemType = (type == HighlightType.pen ||
+      final itemType =
+          (type == HighlightType.pen ||
               type == HighlightType.arrow ||
               type == HighlightType.rectangle ||
               type == HighlightType.circle)
           ? 'drawing'
           : 'highlight';
 
-      FileManagerService().saveDeletedAnnotation(DeletedAnnotation()
-        ..originalId = highlight.id
-        ..pdfId = pdfId
-        ..itemType = itemType
-        ..pageNumber = highlight.page
-        ..deletedBy = _currentUser?.username ?? 'user'
-        ..deletedAt = DateTime.now()
-        ..contentSnapshot = jsonEncode(highlight.toJson()));
+      FileManagerService().saveDeletedAnnotation(
+        DeletedAnnotation()
+          ..originalId = highlight.id
+          ..pdfId = pdfId
+          ..itemType = itemType
+          ..pageNumber = highlight.page
+          ..deletedBy = _currentUser?.username ?? 'user'
+          ..deletedAt = DateTime.now()
+          ..contentSnapshot = jsonEncode(highlight.toJson()),
+      );
 
       // Track deletion for Sync Reconciliation (Anti-Resurrection)
       if (pdf.fileHash != null) {
@@ -2362,7 +2495,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       );
       if (pdf.id.isEmpty) continue;
 
-      final normalizedUsername = _currentUser?.username?.trim();
+      final normalizedUsername = _currentUser?.username.trim();
       final effectiveAuthor =
           (normalizedUsername != null && normalizedUsername.isNotEmpty)
           ? normalizedUsername
@@ -2442,14 +2575,16 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       pdf.comments.removeWhere((c) => c.id == comment.id);
 
       // NEW: SOFT DELETE (TRASH)
-      FileManagerService().saveDeletedAnnotation(DeletedAnnotation()
-        ..originalId = comment.id
-        ..pdfId = pdfId
-        ..itemType = comment.isLatex ? 'math' : 'comment'
-        ..pageNumber = comment.page
-        ..deletedBy = _currentUser?.username ?? 'user'
-        ..deletedAt = DateTime.now()
-        ..contentSnapshot = jsonEncode(comment.toJson()));
+      FileManagerService().saveDeletedAnnotation(
+        DeletedAnnotation()
+          ..originalId = comment.id
+          ..pdfId = pdfId
+          ..itemType = comment.isLatex ? 'math' : 'comment'
+          ..pageNumber = comment.page
+          ..deletedBy = _currentUser?.username ?? 'user'
+          ..deletedAt = DateTime.now()
+          ..contentSnapshot = jsonEncode(comment.toJson()),
+      );
 
       // Track deletion for Sync Reconciliation
       if (pdf.fileHash != null) {
@@ -2510,10 +2645,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       _markUnsavedChanges();
       triggerDebouncedSync(silent: true);
       if (currentSessionCode != null && activePdf?.fileHash != null) {
-        _syncService.clearAnnotationsForHash(
-          currentSessionCode!,
-          activePdf!.fileHash!,
-        ).then((_) => clearDeletionIntent(pdfId));
+        _syncService
+            .clearAnnotationsForHash(currentSessionCode!, activePdf!.fileHash!)
+            .then((_) => clearDeletionIntent(pdfId));
       }
       return;
     }
@@ -2564,10 +2698,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       _markUnsavedChanges();
       triggerDebouncedSync(silent: true);
       if (currentSessionCode != null && activePdf?.fileHash != null) {
-        _syncService.clearAnnotationsForHash(
-          currentSessionCode!,
-          activePdf!.fileHash!,
-        ).then((_) => clearDeletionIntent(pdfId));
+        _syncService
+            .clearAnnotationsForHash(currentSessionCode!, activePdf!.fileHash!)
+            .then((_) => clearDeletionIntent(pdfId));
       }
       return;
     }
@@ -2610,10 +2743,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       _markUnsavedChanges();
       triggerDebouncedSync(silent: true);
       if (currentSessionCode != null && activePdf?.fileHash != null) {
-        _syncService.clearAnnotationsForHash(
-          currentSessionCode!,
-          activePdf!.fileHash!,
-        ).then((_) => clearDeletionIntent(pdfId));
+        _syncService
+            .clearAnnotationsForHash(currentSessionCode!, activePdf!.fileHash!)
+            .then((_) => clearDeletionIntent(pdfId));
       }
       return;
     }
@@ -2655,10 +2787,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       _markUnsavedChanges();
       triggerDebouncedSync(silent: true);
       if (currentSessionCode != null && activePdf?.fileHash != null) {
-        _syncService.clearAnnotationsForHash(
-          currentSessionCode!,
-          activePdf!.fileHash!,
-        ).then((_) => clearDeletionIntent(pdfId));
+        _syncService
+            .clearAnnotationsForHash(currentSessionCode!, activePdf!.fileHash!)
+            .then((_) => clearDeletionIntent(pdfId));
       }
       return;
     }
@@ -3468,6 +3599,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   // Management Methods
   void closeActivePdf() {
     _activePdfId = null;
+    _secondaryPdfId = null;
+    _isSplitMode = false;
     if (_activeClassId != null) {
       final clsIndex = _classes.indexWhere((c) => c.id == _activeClassId);
       if (clsIndex != -1) {
@@ -3488,6 +3621,13 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     if (_activeClassId == classId) {
       _activeClassId = _classes.isNotEmpty ? _classes.first.id : null;
       _activePdfId = null;
+      _secondaryPdfId = null;
+      _isSplitMode = false;
+    }
+
+    if (_secondaryPdfId != null && _findPdfById(_secondaryPdfId!) == null) {
+      _secondaryPdfId = null;
+      _isSplitMode = false;
     }
 
     _notify();
@@ -3502,6 +3642,11 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
     if (_activePdfId == pdfId) {
       _activePdfId = null;
+    }
+
+    if (_secondaryPdfId == pdfId) {
+      _secondaryPdfId = null;
+      _isSplitMode = false;
     }
 
     _notify();
@@ -3546,7 +3691,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     final sourceIndex = _classes.indexWhere((c) => c.id == sourceClassId);
     final targetIndex = _classes.indexWhere((c) => c.id == targetClassId);
     if (sourceIndex != -1 && targetIndex != -1) {
-      final pdfIndex = _classes[sourceIndex].pdfs.indexWhere((p) => p.id == pdfId);
+      final pdfIndex = _classes[sourceIndex].pdfs.indexWhere(
+        (p) => p.id == pdfId,
+      );
       if (pdfIndex != -1) {
         final movedPdf = _classes[sourceIndex].pdfs.removeAt(pdfIndex);
         _classes[targetIndex].pdfs.add(movedPdf);

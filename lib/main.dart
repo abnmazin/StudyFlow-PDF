@@ -11,6 +11,7 @@ import 'package:desktop_drop/desktop_drop.dart';
 import 'package:cross_file/cross_file.dart';
 import 'providers/app_state.dart';
 import 'services/file_manager_service.dart';
+import 'widgets/floating_window_manager.dart';
 import 'widgets/sidebar_w.dart';
 import 'widgets/pdf_viewer_widget_w.dart';
 import 'widgets/developer_modal_w.dart';
@@ -192,7 +193,6 @@ Future<void> _bootstrapApp(List<String> args) async {
     );
   }
 }
-
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   await _bootstrapApp(args);
@@ -209,6 +209,7 @@ class MyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => fileManager),
         ChangeNotifierProvider(create: (_) => AppProvider()),
+        ChangeNotifierProvider(create: (_) => WindowManagerProvider()),
       ],
       child: Builder(
         builder: (context) {
@@ -537,7 +538,15 @@ class _MainLayoutState extends State<MainLayout> {
                 if (!isMobile && !isSidebarCollapsed) const Sidebar(),
 
                 // Main Content
-                Expanded(child: RepaintBoundary(child: PDFViewerWidget())),
+                Expanded(
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      RepaintBoundary(child: PDFViewerWidget()),
+                      const Positioned.fill(child: FloatingWindowLayer()),
+                    ],
+                  ),
+                ),
               ],
             ),
 

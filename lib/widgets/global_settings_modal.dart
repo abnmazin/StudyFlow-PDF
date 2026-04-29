@@ -7,7 +7,6 @@ import '../providers/app_state.dart';
 import '../screens/auth/login_screen.dart';
 import '../utils/sync_naming_utils.dart';
 import 'developer_dashboard_v.dart';
-import '../models/isar_models.dart' hide PdfDocument;
 
 class GlobalSettingsModal extends StatefulWidget {
   const GlobalSettingsModal({super.key});
