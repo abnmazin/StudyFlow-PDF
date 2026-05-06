@@ -1154,6 +1154,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     for (final pdf in cls.pdfs) {
       if (pdf.id == _activePdfId) return pdf;
     }
+    if (_isSplitMode) {
+      return _findPdfById(_activePdfId!);
+    }
     return null;
   }
 
@@ -1542,6 +1545,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
                 page: ic.page,
                 position: Offset(ic.position?.dx ?? 0, ic.position?.dy ?? 0),
                 content: ic.content,
+                attachedMediaUrl: ic.attachedMediaUrl.isEmpty
+                    ? null
+                    : ic.attachedMediaUrl,
                 date: ic.date,
                 createdBy: ic.createdBy.isEmpty ? null : ic.createdBy,
                 color: Color(ic.color),
@@ -1958,7 +1964,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   void setActiveClass(String id) {
     _activeClassId = id;
 
-    // Auto-open last active PDF when switching class
+    // In split mode, preserve the current primary PDF and only refresh the secondary pane.
     final cls = _classes.firstWhere(
       (c) => c.id == id,
       orElse: () => _classes.isNotEmpty
@@ -1966,7 +1972,18 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
           : ClassItem(id: '', name: '', pdfs: []),
     );
 
-    if (cls.id == id && cls.lastActivePdfId != null) {
+    if (_isSplitMode && _activePdfId != null) {
+      final hasPrimaryInClass = cls.pdfs.any((p) => p.id == _activePdfId);
+      if (!hasPrimaryInClass) {
+        _secondaryPdfId = cls.lastActivePdfId;
+        if (_secondaryPdfId == null ||
+            !cls.pdfs.any((p) => p.id == _secondaryPdfId)) {
+          _secondaryPdfId = _fallbackSecondaryPdfId(
+            primaryPdfId: _activePdfId,
+          );
+        }
+      }
+    } else if (cls.id == id && cls.lastActivePdfId != null) {
       if (cls.pdfs.any((p) => p.id == cls.lastActivePdfId)) {
         _activePdfId = cls.lastActivePdfId;
       } else {
@@ -2822,6 +2839,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
           notify: false, // PATCH 3: Avoid double notify
           oldState: {
             'content': oldComment.content,
+            if (oldComment.attachedMediaUrl != null)
+              'attachedMediaUrl': oldComment.attachedMediaUrl,
             'color': oldComment.color.value,
             'fontSize': oldComment.fontSize,
             'isBold': oldComment.isBold,
@@ -2837,6 +2856,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
           },
           newState: {
             'content': newComment.content,
+            if (newComment.attachedMediaUrl != null)
+              'attachedMediaUrl': newComment.attachedMediaUrl,
             'color': newComment.color.value,
             'fontSize': newComment.fontSize,
             'isBold': newComment.isBold,

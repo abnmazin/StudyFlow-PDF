@@ -459,160 +459,99 @@ class _MatrixCalculatorWidgetState extends State<MatrixCalculatorWidget> {
                 ],
               ),
               const SizedBox(height: 12),
+              // Matrix Grid with CSS-style brackets (NO STACK)
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 8,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: isDark
-                        ? Colors.white.withOpacity(0.12)
-                        : Colors.blueGrey.withOpacity(0.16),
-                    width: 1.1,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border(
+                    left: BorderSide(
+                      color: isDark ? Colors.white30 : Colors.black26,
+                      width: 2.5,
+                    ),
+                    right: BorderSide(
+                      color: isDark ? Colors.white30 : Colors.black26,
+                      width: 2.5,
+                    ),
                   ),
                 ),
-                child: Stack(
-                  children: [
-                    Positioned(
-                      left: 2,
-                      top: 8,
-                      bottom: 8,
-                      child: Container(
-                        width: 2,
-                        decoration: BoxDecoration(
-                          color: isDark
-                              ? Colors.white.withOpacity(0.14)
-                              : Colors.blueGrey.withOpacity(0.16),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      right: 2,
-                      top: 8,
-                      bottom: 8,
-                      child: Container(
-                        width: 2,
-                        decoration: BoxDecoration(
-                          color: isDark
-                              ? Colors.white.withOpacity(0.14)
-                              : Colors.blueGrey.withOpacity(0.16),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Column(
-                        children: List.generate(rows, (i) {
-                          return Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: List.generate(cols, (j) {
-                              int focusIndex = i * cols + j;
-                              FocusNode focusNode = isMatrixB
-                                  ? _focusNodesB[focusIndex]
-                                  : _focusNodesA[focusIndex];
-                              return Container(
-                                width: 45,
-                                height: 45,
-                                margin: const EdgeInsets.all(2),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: BackdropFilter(
-                                    filter: ImageFilter.blur(
-                                      sigmaX: 10,
-                                      sigmaY: 10,
-                                    ),
-                                    child: TextField(
-                                      controller: matrix[i][j],
-                                      focusNode: focusNode,
-                                      keyboardType:
-                                          const TextInputType.numberWithOptions(
-                                            signed: true,
-                                            decimal: true,
-                                          ),
-                                      textInputAction: TextInputAction.next,
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        color: isDark
-                                            ? Colors.white
-                                            : const Color(0xFF0F172A),
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                      decoration: InputDecoration(
-                                        filled: true,
-                                        fillColor: Colors.white.withOpacity(
-                                          0.05,
-                                        ),
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            8,
-                                          ),
-                                          borderSide: BorderSide(
-                                            color: Colors.white.withOpacity(
-                                              0.12,
-                                            ),
-                                          ),
-                                        ),
-                                        enabledBorder: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            8,
-                                          ),
-                                          borderSide: BorderSide(
-                                            color: Colors.white.withOpacity(
-                                              0.12,
-                                            ),
-                                          ),
-                                        ),
-                                        focusedBorder: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            8,
-                                          ),
-                                          borderSide: BorderSide(
-                                            color: Colors.cyanAccent
-                                                .withOpacity(0.9),
-                                            width: 1.3,
-                                          ),
-                                        ),
-                                        contentPadding:
-                                            const EdgeInsets.symmetric(
-                                              horizontal: 4,
-                                              vertical: 4,
-                                            ),
-                                        isDense: true,
-                                      ),
-                                      onSubmitted: (_) {
-                                        if (j < cols - 1) {
-                                          if (isMatrixB) {
-                                            _focusNodesB[i * cols + j + 1]
-                                                .requestFocus();
-                                          } else {
-                                            _focusNodesA[i * cols + j + 1]
-                                                .requestFocus();
-                                          }
-                                        } else if (i < rows - 1) {
-                                          if (isMatrixB) {
-                                            _focusNodesB[(i + 1) * cols]
-                                                .requestFocus();
-                                          } else {
-                                            _focusNodesA[(i + 1) * cols]
-                                                .requestFocus();
-                                          }
-                                        }
-                                      },
-                                    ),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Column(
+                    children: List.generate(rows, (i) {
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: List.generate(cols, (j) {
+                          int focusIndex = i * cols + j;
+                          FocusNode focusNode = isMatrixB
+                              ? _focusNodesB[focusIndex]
+                              : _focusNodesA[focusIndex];
+                          return Container(
+                            width: 50,
+                            height: 38,
+                            margin: const EdgeInsets.all(3),
+                            child: TextField(
+                              controller: matrix[i][j],
+                              focusNode: focusNode,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    signed: true,
+                                    decimal: true,
+                                  ),
+                              textInputAction: TextInputAction.next,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: isDark
+                                    ? Colors.white
+                                    : const Color(0xFF0F172A),
+                                fontWeight: FontWeight.w600,
+                              ),
+                              decoration: InputDecoration(
+                                filled: true,
+                                fillColor: isDark
+                                    ? Colors.white.withOpacity(0.08)
+                                    : Colors.black.withOpacity(0.05),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(6),
+                                  borderSide: BorderSide.none,
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(6),
+                                  borderSide: const BorderSide(
+                                    color: Colors.blueAccent,
+                                    width: 1.5,
                                   ),
                                 ),
-                              );
-                            }),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                  vertical: 0,
+                                ),
+                                isDense: true,
+                              ),
+                              onSubmitted: (_) {
+                                if (j < cols - 1) {
+                                  if (isMatrixB) {
+                                    _focusNodesB[i * cols + j + 1]
+                                        .requestFocus();
+                                  } else {
+                                    _focusNodesA[i * cols + j + 1]
+                                        .requestFocus();
+                                  }
+                                } else if (i < rows - 1) {
+                                  if (isMatrixB) {
+                                    _focusNodesB[(i + 1) * cols].requestFocus();
+                                  } else {
+                                    _focusNodesA[(i + 1) * cols].requestFocus();
+                                  }
+                                }
+                              },
+                            ),
                           );
                         }),
-                      ),
-                    ),
-                  ],
+                      );
+                    }),
+                  ),
                 ),
               ),
             ],

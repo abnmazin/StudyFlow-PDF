@@ -20,6 +20,7 @@ class MiniAppsTabWidget extends StatelessWidget {
       crossAxisCount: 2,
       crossAxisSpacing: 16,
       mainAxisSpacing: 16,
+      childAspectRatio: 0.88,
       children: [
         _buildAppCard(
           context,
@@ -101,35 +102,57 @@ class MiniAppsTabWidget extends StatelessWidget {
               : const Color(0xFFF8FAFC),
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: isDark ? Colors.white12 : Colors.black12,
+            color: isDark
+                ? Colors.white.withOpacity(0.08)
+                : Colors.black.withOpacity(0.05),
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.16 : 0.06),
-              blurRadius: 18,
-              offset: const Offset(0, 8),
+              color: Colors.blueAccent.withOpacity(isDark ? 0.05 : 0.02),
+              blurRadius: 10,
+              spreadRadius: 1,
             ),
           ],
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 46, color: const Color(0xFF3B82F6)),
-            const SizedBox(height: 12),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: Text(
-                title,
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: isDark ? Colors.white : const Color(0xFF0F172A),
-                ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxHeight < 105;
+            final iconSize = compact ? 38.0 : 46.0;
+            final topPad = compact ? 12.0 : 20.0;
+            final gap = compact ? 8.0 : 14.0;
+            final textSize = compact ? 12.5 : 14.0;
+
+            return Padding(
+              padding: EdgeInsets.only(top: topPad),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Icon(icon, size: iconSize, color: const Color(0xFF3B82F6)),
+                  SizedBox(height: gap),
+                  Expanded(
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                        child: Text(
+                          title,
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: textSize,
+                            height: 1.2,
+                            color: isDark ? Colors.white : const Color(0xFF0F172A),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ],
+            );
+          },
         ),
       ),
     );

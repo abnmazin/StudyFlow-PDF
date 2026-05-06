@@ -248,7 +248,7 @@ class _DeveloperModalState extends State<DeveloperModal>
                 mainAxisSize: MainAxisSize.min,
                 children: const [
                   Text(
-                    'تطبيق مصمم خصيصاً للبيت',
+                    'تطبيق مصمم خصيصاً لطلبة الكلية التقنية الهندسية',
                     style: TextStyle(
                       fontSize: 12,
                       color: Color(0xFFE2E8F0),
@@ -256,7 +256,7 @@ class _DeveloperModalState extends State<DeveloperModal>
                     ),
                   ),
                   SizedBox(width: 8),
-                  Icon(LucideIcons.heart, size: 14, color: Color(0xFF38BDF8)),
+                  Icon(LucideIcons.heartHandshake, size: 14, color: Color(0xFF38BDF8)),
                 ],
               ),
             ),

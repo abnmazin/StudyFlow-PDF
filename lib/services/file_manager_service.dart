@@ -1184,6 +1184,7 @@ class FileManagerService extends ChangeNotifier {
       ..createdBy = c.createdBy ?? ''
       ..page = c.page
       ..content = c.content
+      ..attachedMediaUrl = c.attachedMediaUrl ?? ''
       ..date = c.date
       ..color = c.color.value
       ..fontSize = c.fontSize
@@ -1238,6 +1239,10 @@ class FileManagerService extends ChangeNotifier {
       ..createdBy = (json['createdBy'] as String?) ?? ''
       ..page = json['page'] ?? 1
       ..content = json['content'] ?? ''
+      ..attachedMediaUrl =
+          (json['attachedMediaUrl'] as String?) ??
+          (json['mediaUrl'] as String?) ??
+          ''
       ..date = json['date'] != null ? DateTime.parse(json['date']) : DateTime.now()
       ..color = json['color'] ?? 0
       ..fontSize = (json['fontSize'] as num?)?.toDouble() ?? 14.0

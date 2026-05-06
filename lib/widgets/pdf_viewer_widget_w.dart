@@ -654,8 +654,10 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     }
   }
 
-  void _runShortcut(VoidCallback action) {
-    if (_isTypingInTextField()) return;
+  void _runShortcut(VoidCallback action, {bool ignoreTyping = true}) {
+    // By default, run shortcuts even when typing (ignoreTyping=true)
+    // Some single-letter shortcuts (H, E, P, T) should NOT run when typing
+    if (!ignoreTyping && _isTypingInTextField()) return;
     action();
   }
 
@@ -743,30 +745,31 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
       animation: FocusManager.instance,
       builder: (context, _) {
         final isTypingNow = _isTypingInTextField();
-        final shortcutsDisabled =
-            _editingCommentId != null || pdf == null || isTypingNow;
+        // Only disable shortcuts if no PDF or editing comment
+        // Allow shortcuts even when typing - individual shortcuts can override this
+        final shortcutsDisabled = _editingCommentId != null || pdf == null;
 
         return CallbackShortcuts(
           bindings: shortcutsDisabled
               ? <ShortcutActivator, VoidCallback>{}
               : {
                   const SingleActivator(LogicalKeyboardKey.keyH): () =>
-                      _runShortcut(() => _activateTool(ToolType.highlight)),
+                      _runShortcut(() => _activateTool(ToolType.highlight), ignoreTyping: false),
                   const SingleActivator(LogicalKeyboardKey.keyE): () =>
-                      _runShortcut(() => _activateTool(ToolType.eraser)),
+                      _runShortcut(() => _activateTool(ToolType.eraser), ignoreTyping: false),
                   const SingleActivator(LogicalKeyboardKey.keyP): () =>
-                      _runShortcut(() => _activateTool(ToolType.pen)),
+                      _runShortcut(() => _activateTool(ToolType.pen), ignoreTyping: false),
                   const SingleActivator(LogicalKeyboardKey.keyT): () =>
-                      _runShortcut(() => _activateTool(ToolType.text)),
+                      _runShortcut(() => _activateTool(ToolType.text), ignoreTyping: false),
                   const SingleActivator(LogicalKeyboardKey.escape): () =>
-                      _runShortcut(() => _activateTool(ToolType.cursor)),
+                      _runShortcut(() => _activateTool(ToolType.cursor), ignoreTyping: true),
                   const SingleActivator(LogicalKeyboardKey.keyV): () =>
-                      _runShortcut(() => _activateTool(ToolType.cursor)),
+                      _runShortcut(() => _activateTool(ToolType.cursor), ignoreTyping: true),
                   const SingleActivator(
                     LogicalKeyboardKey.keyP,
                     control: true,
                   ): () =>
-                      _runShortcut(() => _showPrintDialog(pdf)),
+                      _runShortcut(() => _showPrintDialog(pdf), ignoreTyping: true),
                   const SingleActivator(
                     LogicalKeyboardKey.keyF,
                     control: true,
@@ -774,39 +777,39 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                     setState(() {
                       if (_textSearcher != null) _isSearchVisible = true;
                     });
-                  }),
+                  }, ignoreTyping: true),
                   const SingleActivator(
                     LogicalKeyboardKey.keyL,
                     control: true,
                   ): () => _runShortcut(() {
                     app.toggleSidebar();
                     _forcePdfRelayout();
-                  }),
+                  }, ignoreTyping: true),
                   const SingleActivator(
                     LogicalKeyboardKey.keyR,
                     control: true,
                   ): () => _runShortcut(() {
                     setState(() => _isRightPanelOpen = !_isRightPanelOpen);
                     _forcePdfRelayout();
-                  }),
+                  }, ignoreTyping: true),
                   // Ctrl+S -> Manual sync
                   const SingleActivator(
                     LogicalKeyboardKey.keyS,
                     control: true,
                   ): () =>
-                      _runShortcut(() => _syncNow()),
+                      _runShortcut(() => _syncNow(), ignoreTyping: true),
                   // Ctrl+= â†’ Zoom in
                   const SingleActivator(
                     LogicalKeyboardKey.equal,
                     control: true,
                   ): () =>
-                      _runShortcut(() => _pdfController.zoomUp()),
+                      _runShortcut(() => _pdfController.zoomUp(), ignoreTyping: true),
                   // Ctrl+- â†’ Zoom out
                   const SingleActivator(
                     LogicalKeyboardKey.minus,
                     control: true,
                   ): () =>
-                      _runShortcut(() => _pdfController.zoomDown()),
+                      _runShortcut(() => _pdfController.zoomDown(), ignoreTyping: true),
                   // Ctrl+Z â†’ Undo (Windows/Linux)
                   const SingleActivator(
                     LogicalKeyboardKey.keyZ,

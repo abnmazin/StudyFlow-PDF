@@ -163,6 +163,7 @@ extension _PDFViewerWidgetStateOverlay on _PDFViewerWidgetState {
               child: DraggableTextWidget(
                 commentId: c.id,
                 content: c.content,
+                attachedMediaUrl: c.attachedMediaUrl,
                 color: effectiveColor,
                 fontSize: effectiveFontSize,
                 isBold: effectiveIsBold,

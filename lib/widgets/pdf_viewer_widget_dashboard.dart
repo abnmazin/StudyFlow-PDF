@@ -1457,7 +1457,14 @@ Widget _buildRecentVerticalList(
     itemBuilder: (context, index) {
       final doc = docs[index];
       return InkWell(
-        onTap: () => context.read<AppProvider>().setActivePdf(doc.uuid),
+        onTap: () {
+          final app = context.read<AppProvider>();
+          if (app.isSplitMode && app.activePdfId != doc.uuid) {
+            app.setSecondaryPdf(doc.uuid);
+          } else {
+            app.setActivePdf(doc.uuid);
+          }
+        },
         borderRadius: BorderRadius.circular(12),
         child: Container(
           padding: const EdgeInsets.all(10),

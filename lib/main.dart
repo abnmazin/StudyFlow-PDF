@@ -6,6 +6,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:cross_file/cross_file.dart';
@@ -27,6 +28,21 @@ final StreamController<String> _incomingPdfPaths =
     StreamController<String>.broadcast();
 ServerSocket? _singleInstanceServer;
 String? _pendingColdStartPath;
+const String _kDefaultSupabaseUrl = 'https://kyuvnoprpeiokkeovmxe.supabase.co';
+const String _kDefaultSupabaseAnonKey =
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt5dXZub3BycGVpb2trZW92bXhlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwMDE0MzgsImV4cCI6MjA5MzU3NzQzOH0.ydL-XfR6Xd-1iGk0nBUDhp-DEC8GEX7HsLEgDLsWSys';
+
+String _readSupabaseValue(String key, String fallback) {
+  final value = dotenv.maybeGet(key)?.trim() ?? '';
+  return value.isEmpty ? fallback : value;
+}
+
+Future<void> _initializeSupabase() async {
+  await Supabase.initialize(
+    url: _readSupabaseValue('SUPABASE_URL', _kDefaultSupabaseUrl),
+    anonKey: _readSupabaseValue('SUPABASE_ANON_KEY', _kDefaultSupabaseAnonKey),
+  );
+}
 
 String? _extractPdfPathFromArgs(List<String> args) {
   for (final raw in args) {
@@ -160,6 +176,8 @@ Future<void> _bootstrapApp(List<String> args) async {
     } catch (e) {
       debugPrint('⚠️ [Boot] .env load skipped: $e');
     }
+
+    await _initializeSupabase();
 
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,

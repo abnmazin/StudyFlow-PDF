@@ -118,6 +118,7 @@ class PdfComment {
   final int page;
   final Offset position;
   final String content;
+  final String? attachedMediaUrl;
   final DateTime date;
   final Color color;
   final String? createdBy;
@@ -136,6 +137,7 @@ class PdfComment {
     required this.page,
     required this.position,
     required this.content,
+    this.attachedMediaUrl,
     required this.date,
     this.createdBy,
     this.color = Colors.black,
@@ -157,6 +159,10 @@ class PdfComment {
     'dy': position.dy,
     'content': content,
     'date': date.toIso8601String(),
+    if (attachedMediaUrl != null && attachedMediaUrl!.isNotEmpty)
+      'attachedMediaUrl': attachedMediaUrl,
+    if (attachedMediaUrl != null && attachedMediaUrl!.isNotEmpty)
+      'mediaUrl': attachedMediaUrl,
     if (createdBy != null && createdBy!.isNotEmpty) 'createdBy': createdBy,
     'color': color.value,
     'fontSize': fontSize,
@@ -189,6 +195,9 @@ class PdfComment {
       isSynced: json['isSynced'] ?? false,
       updatedAt: json['updatedAt'] ?? DateTime.now().millisecondsSinceEpoch,
       createdBy: json['createdBy'] as String?,
+      attachedMediaUrl:
+          (json['attachedMediaUrl'] as String?) ??
+          (json['mediaUrl'] as String?),
     );
   }
 
@@ -209,6 +218,7 @@ class PdfComment {
     bool? isSynced,
     int? updatedAt,
     String? createdBy,
+    String? attachedMediaUrl,
   }) {
     return PdfComment(
       id: id ?? this.id,
@@ -227,6 +237,7 @@ class PdfComment {
       isSynced: isSynced ?? this.isSynced,
       updatedAt: updatedAt ?? this.updatedAt,
       createdBy: createdBy ?? this.createdBy,
+      attachedMediaUrl: attachedMediaUrl ?? this.attachedMediaUrl,
     );
   }
 }

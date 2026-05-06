@@ -294,9 +294,11 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
             // ─── LEFT: Sidebar + Page Counter + Zoom ───────────────
             Flexible(
               fit: FlexFit.loose,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                   const SizedBox(width: 2),
                   if (isMobile)
                     _buildToolButton(
@@ -402,7 +404,8 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                         ),
                       ),
                     ),
-                ],
+                  ],
+                ),
               ),
             ),
 
@@ -635,9 +638,12 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
             // ─── RIGHT: Utility Buttons ─────────────────────────────
             Flexible(
               fit: FlexFit.loose,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                reverse: true,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                   // Zoom controls (without outer box)
                   _buildToolButton(
                     icon: LucideIcons.zoomOut,
@@ -745,7 +751,8 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                     tooltip: 'إظهار/إخفاء لوحة الخصائص (Ctrl+R)',
                     iconMuted: iconMuted,
                   ),
-                ],
+                  ],
+                ),
               ),
             ),
           ],

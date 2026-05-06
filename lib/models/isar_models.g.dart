@@ -10958,89 +10958,94 @@ const IsarCommentSchema = CollectionSchema(
   name: r'IsarComment',
   id: 5834933742650145894,
   properties: {
-    r'bgColor': PropertySchema(
+    r'attachedMediaUrl': PropertySchema(
       id: 0,
+      name: r'attachedMediaUrl',
+      type: IsarType.string,
+    ),
+    r'bgColor': PropertySchema(
+      id: 1,
       name: r'bgColor',
       type: IsarType.long,
     ),
     r'borderColor': PropertySchema(
-      id: 1,
+      id: 2,
       name: r'borderColor',
       type: IsarType.long,
     ),
     r'color': PropertySchema(
-      id: 2,
+      id: 3,
       name: r'color',
       type: IsarType.long,
     ),
     r'content': PropertySchema(
-      id: 3,
+      id: 4,
       name: r'content',
       type: IsarType.string,
     ),
     r'createdBy': PropertySchema(
-      id: 4,
+      id: 5,
       name: r'createdBy',
       type: IsarType.string,
     ),
     r'date': PropertySchema(
-      id: 5,
+      id: 6,
       name: r'date',
       type: IsarType.dateTime,
     ),
     r'fontFamily': PropertySchema(
-      id: 6,
+      id: 7,
       name: r'fontFamily',
       type: IsarType.string,
     ),
     r'fontSize': PropertySchema(
-      id: 7,
+      id: 8,
       name: r'fontSize',
       type: IsarType.double,
     ),
     r'isBold': PropertySchema(
-      id: 8,
+      id: 9,
       name: r'isBold',
       type: IsarType.bool,
     ),
     r'isLatex': PropertySchema(
-      id: 9,
+      id: 10,
       name: r'isLatex',
       type: IsarType.bool,
     ),
     r'isSynced': PropertySchema(
-      id: 10,
+      id: 11,
       name: r'isSynced',
       type: IsarType.bool,
     ),
     r'page': PropertySchema(
-      id: 11,
+      id: 12,
       name: r'page',
       type: IsarType.long,
     ),
     r'pdfUuid': PropertySchema(
-      id: 12,
+      id: 13,
       name: r'pdfUuid',
       type: IsarType.string,
     ),
     r'position': PropertySchema(
-      id: 13,
+      id: 14,
       name: r'position',
       type: IsarType.object,
       target: r'IsarPoint',
     ),
     r'showBorder': PropertySchema(
-      id: 14,
+      id: 15,
       name: r'showBorder',
       type: IsarType.bool,
     ),
     r'updatedAt': PropertySchema(
-      id: 15,
+      id: 16,
       name: r'updatedAt',
       type: IsarType.long,
     ),
     r'uuid': PropertySchema(
-      id: 16,
+      id: 17,
       name: r'uuid',
       type: IsarType.string,
     )
@@ -11092,6 +11097,7 @@ int _isarCommentEstimateSize(
   Map<Type, List<int>> allOffsets,
 ) {
   var bytesCount = offsets.last;
+  bytesCount += 3 + object.attachedMediaUrl.length * 3;
   bytesCount += 3 + object.content.length * 3;
   bytesCount += 3 + object.createdBy.length * 3;
   bytesCount += 3 + object.fontFamily.length * 3;
@@ -11114,28 +11120,29 @@ void _isarCommentSerialize(
   List<int> offsets,
   Map<Type, List<int>> allOffsets,
 ) {
-  writer.writeLong(offsets[0], object.bgColor);
-  writer.writeLong(offsets[1], object.borderColor);
-  writer.writeLong(offsets[2], object.color);
-  writer.writeString(offsets[3], object.content);
-  writer.writeString(offsets[4], object.createdBy);
-  writer.writeDateTime(offsets[5], object.date);
-  writer.writeString(offsets[6], object.fontFamily);
-  writer.writeDouble(offsets[7], object.fontSize);
-  writer.writeBool(offsets[8], object.isBold);
-  writer.writeBool(offsets[9], object.isLatex);
-  writer.writeBool(offsets[10], object.isSynced);
-  writer.writeLong(offsets[11], object.page);
-  writer.writeString(offsets[12], object.pdfUuid);
+  writer.writeString(offsets[0], object.attachedMediaUrl);
+  writer.writeLong(offsets[1], object.bgColor);
+  writer.writeLong(offsets[2], object.borderColor);
+  writer.writeLong(offsets[3], object.color);
+  writer.writeString(offsets[4], object.content);
+  writer.writeString(offsets[5], object.createdBy);
+  writer.writeDateTime(offsets[6], object.date);
+  writer.writeString(offsets[7], object.fontFamily);
+  writer.writeDouble(offsets[8], object.fontSize);
+  writer.writeBool(offsets[9], object.isBold);
+  writer.writeBool(offsets[10], object.isLatex);
+  writer.writeBool(offsets[11], object.isSynced);
+  writer.writeLong(offsets[12], object.page);
+  writer.writeString(offsets[13], object.pdfUuid);
   writer.writeObject<IsarPoint>(
-    offsets[13],
+    offsets[14],
     allOffsets,
     IsarPointSchema.serialize,
     object.position,
   );
-  writer.writeBool(offsets[14], object.showBorder);
-  writer.writeLong(offsets[15], object.updatedAt);
-  writer.writeString(offsets[16], object.uuid);
+  writer.writeBool(offsets[15], object.showBorder);
+  writer.writeLong(offsets[16], object.updatedAt);
+  writer.writeString(offsets[17], object.uuid);
 }
 
 IsarComment _isarCommentDeserialize(
@@ -11145,28 +11152,29 @@ IsarComment _isarCommentDeserialize(
   Map<Type, List<int>> allOffsets,
 ) {
   final object = IsarComment();
-  object.bgColor = reader.readLong(offsets[0]);
-  object.borderColor = reader.readLong(offsets[1]);
-  object.color = reader.readLong(offsets[2]);
-  object.content = reader.readString(offsets[3]);
-  object.createdBy = reader.readString(offsets[4]);
-  object.date = reader.readDateTime(offsets[5]);
-  object.fontFamily = reader.readString(offsets[6]);
-  object.fontSize = reader.readDouble(offsets[7]);
+  object.attachedMediaUrl = reader.readString(offsets[0]);
+  object.bgColor = reader.readLong(offsets[1]);
+  object.borderColor = reader.readLong(offsets[2]);
+  object.color = reader.readLong(offsets[3]);
+  object.content = reader.readString(offsets[4]);
+  object.createdBy = reader.readString(offsets[5]);
+  object.date = reader.readDateTime(offsets[6]);
+  object.fontFamily = reader.readString(offsets[7]);
+  object.fontSize = reader.readDouble(offsets[8]);
   object.id = id;
-  object.isBold = reader.readBool(offsets[8]);
-  object.isLatex = reader.readBool(offsets[9]);
-  object.isSynced = reader.readBool(offsets[10]);
-  object.page = reader.readLong(offsets[11]);
-  object.pdfUuid = reader.readString(offsets[12]);
+  object.isBold = reader.readBool(offsets[9]);
+  object.isLatex = reader.readBool(offsets[10]);
+  object.isSynced = reader.readBool(offsets[11]);
+  object.page = reader.readLong(offsets[12]);
+  object.pdfUuid = reader.readString(offsets[13]);
   object.position = reader.readObjectOrNull<IsarPoint>(
-    offsets[13],
+    offsets[14],
     IsarPointSchema.deserialize,
     allOffsets,
   );
-  object.showBorder = reader.readBool(offsets[14]);
-  object.updatedAt = reader.readLong(offsets[15]);
-  object.uuid = reader.readString(offsets[16]);
+  object.showBorder = reader.readBool(offsets[15]);
+  object.updatedAt = reader.readLong(offsets[16]);
+  object.uuid = reader.readString(offsets[17]);
   return object;
 }
 
@@ -11178,42 +11186,44 @@ P _isarCommentDeserializeProp<P>(
 ) {
   switch (propertyId) {
     case 0:
-      return (reader.readLong(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 1:
       return (reader.readLong(offset)) as P;
     case 2:
       return (reader.readLong(offset)) as P;
     case 3:
-      return (reader.readString(offset)) as P;
+      return (reader.readLong(offset)) as P;
     case 4:
       return (reader.readString(offset)) as P;
     case 5:
-      return (reader.readDateTime(offset)) as P;
-    case 6:
       return (reader.readString(offset)) as P;
+    case 6:
+      return (reader.readDateTime(offset)) as P;
     case 7:
-      return (reader.readDouble(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 8:
-      return (reader.readBool(offset)) as P;
+      return (reader.readDouble(offset)) as P;
     case 9:
       return (reader.readBool(offset)) as P;
     case 10:
       return (reader.readBool(offset)) as P;
     case 11:
-      return (reader.readLong(offset)) as P;
+      return (reader.readBool(offset)) as P;
     case 12:
-      return (reader.readString(offset)) as P;
+      return (reader.readLong(offset)) as P;
     case 13:
+      return (reader.readString(offset)) as P;
+    case 14:
       return (reader.readObjectOrNull<IsarPoint>(
         offset,
         IsarPointSchema.deserialize,
         allOffsets,
       )) as P;
-    case 14:
-      return (reader.readBool(offset)) as P;
     case 15:
-      return (reader.readLong(offset)) as P;
+      return (reader.readBool(offset)) as P;
     case 16:
+      return (reader.readLong(offset)) as P;
+    case 17:
       return (reader.readString(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -11458,6 +11468,142 @@ extension IsarCommentQueryWhere
 
 extension IsarCommentQueryFilter
     on QueryBuilder<IsarComment, IsarComment, QFilterCondition> {
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      attachedMediaUrlEqualTo(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'attachedMediaUrl',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      attachedMediaUrlGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'attachedMediaUrl',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      attachedMediaUrlLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'attachedMediaUrl',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      attachedMediaUrlBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'attachedMediaUrl',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      attachedMediaUrlStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'attachedMediaUrl',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      attachedMediaUrlEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'attachedMediaUrl',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      attachedMediaUrlContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'attachedMediaUrl',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      attachedMediaUrlMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'attachedMediaUrl',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      attachedMediaUrlIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'attachedMediaUrl',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition>
+      attachedMediaUrlIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'attachedMediaUrl',
+        value: '',
+      ));
+    });
+  }
+
   QueryBuilder<IsarComment, IsarComment, QAfterFilterCondition> bgColorEqualTo(
       int value) {
     return QueryBuilder.apply(this, (query) {
@@ -12646,6 +12792,20 @@ extension IsarCommentQueryLinks
 
 extension IsarCommentQuerySortBy
     on QueryBuilder<IsarComment, IsarComment, QSortBy> {
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy>
+      sortByAttachedMediaUrl() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'attachedMediaUrl', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy>
+      sortByAttachedMediaUrlDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'attachedMediaUrl', Sort.desc);
+    });
+  }
+
   QueryBuilder<IsarComment, IsarComment, QAfterSortBy> sortByBgColor() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'bgColor', Sort.asc);
@@ -12841,6 +13001,20 @@ extension IsarCommentQuerySortBy
 
 extension IsarCommentQuerySortThenBy
     on QueryBuilder<IsarComment, IsarComment, QSortThenBy> {
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy>
+      thenByAttachedMediaUrl() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'attachedMediaUrl', Sort.asc);
+    });
+  }
+
+  QueryBuilder<IsarComment, IsarComment, QAfterSortBy>
+      thenByAttachedMediaUrlDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'attachedMediaUrl', Sort.desc);
+    });
+  }
+
   QueryBuilder<IsarComment, IsarComment, QAfterSortBy> thenByBgColor() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'bgColor', Sort.asc);
@@ -13048,6 +13222,14 @@ extension IsarCommentQuerySortThenBy
 
 extension IsarCommentQueryWhereDistinct
     on QueryBuilder<IsarComment, IsarComment, QDistinct> {
+  QueryBuilder<IsarComment, IsarComment, QDistinct> distinctByAttachedMediaUrl(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'attachedMediaUrl',
+          caseSensitive: caseSensitive);
+    });
+  }
+
   QueryBuilder<IsarComment, IsarComment, QDistinct> distinctByBgColor() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'bgColor');
@@ -13155,6 +13337,13 @@ extension IsarCommentQueryProperty
   QueryBuilder<IsarComment, int, QQueryOperations> idProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'id');
+    });
+  }
+
+  QueryBuilder<IsarComment, String, QQueryOperations>
+      attachedMediaUrlProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'attachedMediaUrl');
     });
   }
 

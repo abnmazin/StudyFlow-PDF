@@ -710,7 +710,13 @@ class _SidebarState extends State<Sidebar> {
     final isActive = app.activePdfId == pdf.id;
 
     final child = InkWell(
-      onTap: () => app.setActivePdf(pdf.id),
+      onTap: () {
+        if (app.isSplitMode && !isActive) {
+          app.setSecondaryPdf(pdf.id);
+        } else {
+          app.setActivePdf(pdf.id);
+        }
+      },
       borderRadius: BorderRadius.circular(4),
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 2),

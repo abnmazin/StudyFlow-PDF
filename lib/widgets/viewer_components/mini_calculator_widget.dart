@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:math_expressions/math_expressions.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:provider/provider.dart';
 import '../../providers/app_state.dart';
-import 'dart:math' as math;
+import '../../services/math_engine.dart';
 import 'dart:ui';
 
 class MiniCalculatorWidget extends StatefulWidget {
@@ -17,6 +16,7 @@ class MiniCalculatorWidget extends StatefulWidget {
 class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
   String _expression = '';
   String _history = '';
+  String _lastAns = '0';
   final List<String> _undoStack = [];
   double _yValue = 0.0;
   bool _isDegreeMode = true;
@@ -24,9 +24,20 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
   bool _showCommonFractions = true;
   String _errorType = '';
   int _cursorIndex = 0;
+  final MathEngine _mathEngine = MathEngine();
   final FocusNode _keyboardFocusNode = FocusNode(
     debugLabel: 'mini_calculator_keyboard',
   );
+
+  // ─── Lifecycle ────────────────────────────────────────────────────────────
+
+  @override
+  void dispose() {
+    _keyboardFocusNode.dispose();
+    super.dispose();
+  }
+
+  // ─── Undo ─────────────────────────────────────────────────────────────────
 
   void _pushUndo() {
     if (_expression.isNotEmpty) {
@@ -35,29 +46,15 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
     }
   }
 
-  @override
-  void dispose() {
-    _keyboardFocusNode.dispose();
-    super.dispose();
-  }
+  // ─── Cursor ───────────────────────────────────────────────────────────────
 
   void _clampCursor() {
-    if (_cursorIndex < 0) _cursorIndex = 0;
-    if (_cursorIndex > _expression.length) _cursorIndex = _expression.length;
-  }
-
-  String _expressionWithCaret() {
-    _clampCursor();
-    final raw = _expression;
-    final left = raw.substring(0, _cursorIndex);
-    final right = raw.substring(_cursorIndex);
-    return '$left|$right';
+    _cursorIndex = _cursorIndex.clamp(0, _expression.length);
   }
 
   void _insertAtCursor(String value) {
     _clampCursor();
-    _expression =
-        _expression.substring(0, _cursorIndex) +
+    _expression = _expression.substring(0, _cursorIndex) +
         value +
         _expression.substring(_cursorIndex);
     _cursorIndex += value.length;
@@ -66,8 +63,7 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
   void _deleteBeforeCursor() {
     _clampCursor();
     if (_cursorIndex <= 0 || _expression.isEmpty) return;
-    _expression =
-        _expression.substring(0, _cursorIndex - 1) +
+    _expression = _expression.substring(0, _cursorIndex - 1) +
         _expression.substring(_cursorIndex);
     _cursorIndex -= 1;
   }
@@ -75,621 +71,345 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
   void _deleteAtCursor() {
     _clampCursor();
     if (_cursorIndex >= _expression.length || _expression.isEmpty) return;
-    _expression =
-        _expression.substring(0, _cursorIndex) +
+    _expression = _expression.substring(0, _cursorIndex) +
         _expression.substring(_cursorIndex + 1);
   }
 
+  // ─── Keyboard ─────────────────────────────────────────────────────────────
+
   KeyEventResult _handleKeyboard(KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    final key = event.logicalKey;
 
-    if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-      setState(() {
-        _cursorIndex = (_cursorIndex - 1).clamp(0, _expression.length);
-      });
+    if (key == LogicalKeyboardKey.arrowLeft) {
+      setState(() => _cursorIndex = (_cursorIndex - 1).clamp(0, _expression.length));
       return KeyEventResult.handled;
     }
-
-    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-      setState(() {
-        _cursorIndex = (_cursorIndex + 1).clamp(0, _expression.length);
-      });
+    if (key == LogicalKeyboardKey.arrowRight) {
+      setState(() => _cursorIndex = (_cursorIndex + 1).clamp(0, _expression.length));
       return KeyEventResult.handled;
     }
-
-    if (event.logicalKey == LogicalKeyboardKey.backspace) {
+    if (key == LogicalKeyboardKey.backspace) {
       setState(() => _deleteBeforeCursor());
       return KeyEventResult.handled;
     }
-
-    if (event.logicalKey == LogicalKeyboardKey.delete) {
+    if (key == LogicalKeyboardKey.delete) {
       setState(() => _deleteAtCursor());
       return KeyEventResult.handled;
     }
-
-    if (event.logicalKey == LogicalKeyboardKey.enter ||
-        event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+    if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter) {
       _calculateResult();
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.shiftLeft || key == LogicalKeyboardKey.shiftRight) {
+      setState(() => _isShiftMode = !_isShiftMode);
       return KeyEventResult.handled;
     }
 
     final char = event.character;
-    if (char != null && RegExp(r'^[0-9x+\-*/().^]$').hasMatch(char)) {
+    if (char == null) return KeyEventResult.ignored;
+    if (RegExp(r'^[0-9xy+\-*/().^,!=]$').hasMatch(char)) {
       setState(() => _insertAtCursor(char));
       return KeyEventResult.handled;
     }
-
+    if (char.toLowerCase() == 'p') { setState(() => _insertAtCursor('pi')); return KeyEventResult.handled; }
+    if (char.toLowerCase() == 'e') { setState(() => _insertAtCursor('e')); return KeyEventResult.handled; }
+    if (char.toLowerCase() == 'i') { setState(() => _insertAtCursor('i')); return KeyEventResult.handled; }
     return KeyEventResult.ignored;
   }
 
+  // ─── Number formatting (now delegated to MathEngine) ────────────────────
+
   String _trimNumber(double value) {
-    if (value == value.roundToDouble()) {
-      return value.toInt().toString();
-    }
+    if (value == value.roundToDouble()) return value.toInt().toString();
     return value
         .toStringAsPrecision(10)
         .replaceAll(RegExp(r'0+$'), '')
         .replaceAll(RegExp(r'\.$'), '');
   }
 
-  ({int numerator, int denominator}) _approximateFraction(
-    double value, {
-    int maxDenominator = 16,
-  }) {
-    int bestNumerator = value.round();
-    int bestDenominator = 1;
-    double bestError = (value - bestNumerator).abs();
-
-    for (int d = 1; d <= maxDenominator; d++) {
-      final n = (value * d).round();
-      final err = (value - (n / d)).abs();
-      if (err < bestError) {
-        bestError = err;
-        bestNumerator = n;
-        bestDenominator = d;
-      }
-    }
-
-    int a = bestNumerator.abs();
-    int b = bestDenominator;
-    while (b != 0) {
-      final t = a % b;
-      a = b;
-      b = t;
-    }
-    final gcd = a == 0 ? 1 : a;
-
-    final finalNum = bestNumerator ~/ gcd;
-    final finalDen = bestDenominator ~/ gcd;
-
-    // لو الخطأ كبير جداً، ارجع الرقم العشري بدل الكسر
-    final checkError = (value - (finalNum / finalDen)).abs();
-    if (checkError > 0.001) {
-      return (numerator: value.round(), denominator: 1);
-    }
-
-    return (
-      numerator: finalNum,
-      denominator: finalDen,
-    );
+  ({int numerator, int denominator}) _approximateFraction(double value,
+      {int maxDenominator = 16}) {
+    return MathResult.approximateFraction(value, maxDenominator: maxDenominator);
   }
 
-  String _formatCoefficientValue(double value) {
-    if (!_showCommonFractions) return _trimNumber(value);
-    if (value == value.roundToDouble()) return value.toInt().toString();
-
-    final sign = value < 0 ? '-' : '';
-    final absValue = value.abs();
-    final frac = _approximateFraction(absValue);
-
-    if (frac.denominator == 1) {
-      return '$sign${frac.numerator}';
-    }
-    return '$sign${frac.numerator}/${frac.denominator}';
-  }
-
-  String _formatSymbolicTerm(double coefficient, int power) {
-    if (coefficient == 0) return '';
-
-    final sign = coefficient < 0 ? '-' : '';
-    final absCoef = coefficient.abs();
-
-    if (power == 0) {
-      return '$sign${_formatCoefficientValue(absCoef)}';
-    }
-
-    final coefPart = (absCoef == 1) ? '' : _formatCoefficientValue(absCoef);
-    final varPart = power == 1 ? 'x' : 'x^$power';
-
-    if (coefPart.contains('/')) {
-      return '$sign($coefPart)*$varPart';
-    }
-
-    return '$sign$coefPart$varPart';
-  }
-
-  List<String> _splitPolynomialTerms(String expr) {
-    final normalized = expr.replaceAll(' ', '').replaceAll('-', '+-');
-    return normalized.split('+').where((t) => t.isNotEmpty).toList();
-  }
-
-  ({double coefficient, int power}) _parsePolynomialTerm(String term) {
-    final clean = term.replaceAll('*', '');
-
-    if (!clean.contains('x')) {
-      final constant = double.parse(clean);
-      return (coefficient: constant, power: 0);
-    }
-
-    final xIndex = clean.indexOf('x');
-    final coefRaw = clean.substring(0, xIndex);
-    final afterX = clean.substring(xIndex + 1);
-
-    double coefficient;
-    if (coefRaw.isEmpty || coefRaw == '+') {
-      coefficient = 1;
-    } else if (coefRaw == '-') {
-      coefficient = -1;
-    } else {
-      coefficient = double.parse(coefRaw);
-    }
-
-    int power = 1;
-    if (afterX.startsWith('^')) {
-      power = int.parse(afterX.substring(1));
-    }
-
-    return (coefficient: coefficient, power: power);
-  }
-
-  String _symbolicDerivative(String expr) {
-    final terms = _splitPolynomialTerms(expr);
-    final out = <String>[];
-
-    for (final term in terms) {
-      final parsed = _parsePolynomialTerm(term);
-      if (parsed.power == 0) {
-        continue;
-      }
-
-      final newCoef = parsed.coefficient * parsed.power;
-      final newPower = parsed.power - 1;
-      final symbolic = _formatSymbolicTerm(newCoef, newPower);
-      if (symbolic.isNotEmpty) {
-        out.add(symbolic);
-      }
-    }
-
-    if (out.isEmpty) return '0';
-    return out.join('+').replaceAll('+-', '-');
-  }
-
-  String _symbolicIntegral(String expr) {
-    final terms = _splitPolynomialTerms(expr);
-    final out = <String>[];
-
-    for (final term in terms) {
-      final parsed = _parsePolynomialTerm(term);
-
-      if (parsed.power == -1) {
-        // ∫(a/x)dx = a ln|x|
-        final a = parsed.coefficient;
-        if (a == 1) {
-          out.add('ln|x|');
-        } else if (a == -1) {
-          out.add('-ln|x|');
-        } else {
-          out.add('${_trimNumber(a)}ln|x|');
-        }
-        continue;
-      }
-
-      final newPower = parsed.power + 1;
-      final newCoef = parsed.coefficient / newPower;
-      final symbolic = _formatSymbolicTerm(newCoef, newPower);
-      if (symbolic.isNotEmpty) {
-        out.add(symbolic);
-      }
-    }
-
-    if (out.isEmpty) return 'C';
-    return '${out.join('+').replaceAll('+-', '-')}+C';
-  }
+  // ─── Arg splitter (delegated to MathEngine) ──────────────────────────────
 
   List<String> _splitTopLevelArgs(String input) {
-    final parts = <String>[];
-    final buffer = StringBuffer();
-    int depth = 0;
+    return _mathEngine.splitTopLevelArgs(input);
+  }
 
-    for (int i = 0; i < input.length; i++) {
-      final ch = input[i];
-      if (ch == '(') depth++;
-      if (ch == ')') depth--;
+  // ─── Eval preprocessing ───────────────────────────────────────────────────
 
-      if (ch == ',' && depth == 0) {
-        parts.add(buffer.toString().trim());
-        buffer.clear();
-      } else {
-        buffer.write(ch);
+  String _expandLog10(String s) {
+    s = s.replaceAll('log10(', '__LOG10__(');
+    while (s.contains('__LOG10__(')) {
+      final idx = s.indexOf('__LOG10__(');
+      int depth = 1, end = idx + 10;
+      while (depth > 0 && end < s.length) {
+        if (s[end] == '(') depth++;
+        if (s[end] == ')') depth--;
+        end++;
       }
+      final inner = s.substring(idx + 10, end - 1);
+      s = '${s.substring(0, idx)}(log($inner)/log(10))${s.substring(end)}';
     }
-
-    if (buffer.isNotEmpty) {
-      parts.add(buffer.toString().trim());
-    }
-
-    return parts;
+    return s;
   }
 
-  double _evaluateAtX(String exp, double xValue) {
-    String evalStr = exp;
-    evalStr = evalStr.replaceAll('√', 'sqrt');
-    // تحويل دائم لأسماء math_expressions بغض النظر عن الـ mode
-    evalStr = evalStr.replaceAll('asin(', '__ASIN__(');
-    evalStr = evalStr.replaceAll('acos(', '__ACOS__(');
-    evalStr = evalStr.replaceAll('atan(', '__ATAN__(');
+  // ─── Eval preprocessing (now handled by MathEngine/texpr) ───────────────────
 
-    if (_isDegreeMode) {
-      // تطبيق تحويل الدرجات على الدوال المباشرة فقط
-      evalStr = evalStr.replaceAll('sin(', 'sin((pi/180)*');
-      evalStr = evalStr.replaceAll('cos(', 'cos((pi/180)*');
-      evalStr = evalStr.replaceAll('tan(', 'tan((pi/180)*');
-      // إرجاع الدوال العكسية مع تحويل النتيجة من راديان لدرجات
-      evalStr = evalStr.replaceAll('__ASIN__(', '(180/pi)*arcsin(');
-      evalStr = evalStr.replaceAll('__ACOS__(', '(180/pi)*arccos(');
-      evalStr = evalStr.replaceAll('__ATAN__(', '(180/pi)*arctan(');
+  // Note: texpr handles implicit multiplication, degree/radian conversion, and
+  // degree/radian conversion is handled via variables in MathEngine
+
+  double _evaluateAtX(String expr, double xValue) {
+    final result = _mathEngine.evaluate(expr, {'x': xValue, 'y': _yValue});
+    if (!result.isSuccess) throw Exception(result.error);
+    if (result.realValue != null) return result.realValue!;
+    if (result.complexValue != null) {
+      // If user wants complex result but we need real for numerical methods,
+      // return the real part as fallback
+      return result.complexValue!.real;
     }
-
-    // في Rad mode نحول للأسماء الصحيحة بدون تعديل
-    if (!_isDegreeMode) {
-      evalStr = evalStr.replaceAll('__ASIN__(', 'arcsin(');
-      evalStr = evalStr.replaceAll('__ACOS__(', 'arccos(');
-      evalStr = evalStr.replaceAll('__ATAN__(', 'arctan(');
-    }
-
-    final parser = Parser();
-    final parsed = parser.parse(evalStr);
-    final cm = ContextModel();
-    cm.bindVariable(Variable('pi'), Number(math.pi));
-    cm.bindVariable(Variable('e'), Number(math.e));
-    cm.bindVariable(Variable('x'), Number(xValue));
-    cm.bindVariable(Variable('y'), Number(_yValue));
-
-    final value = parsed.evaluate(EvaluationType.REAL, cm);
-    if (value.isNaN || value.isInfinite) {
-      throw Exception('Math Error');
-    }
-    return value;
+    throw Exception('Math Error');
   }
 
-  double _calculateDerivative(String fx, double x0) {
-    const h = 1e-5;
-    final right = _evaluateAtX(fx, x0 + h);
-    final left = _evaluateAtX(fx, x0 - h);
-    return (right - left) / (2 * h);
+  double _calcDerivative(String fx, double x0) {
+    return _mathEngine.numericalDerivative(fx, 'x', x0);
   }
 
-  double _calculateIntegral(String fx, double a, double b) {
-    // Simpson's rule with fixed even segment count for smooth UI performance.
-    const n = 200;
-    final h = (b - a) / n;
-    double sum = _evaluateAtX(fx, a) + _evaluateAtX(fx, b);
-
-    for (int i = 1; i < n; i++) {
-      final x = a + i * h;
-      sum += (i % 2 == 0 ? 2.0 : 4.0) * _evaluateAtX(fx, x);
-    }
-
-    return (h / 3.0) * sum;
+  double _calcIntegral(String fx, double a, double b) {
+    return _mathEngine.numericalIntegral(fx, 'x', a, b, steps: 200);
   }
+
+  // ─── LaTeX renderer ───────────────────────────────────────────────────────
 
   String _getLatexExpression(String rawExp) {
     if (rawExp.isEmpty) return r'\text{...}';
+    String s = rawExp;
 
-    String latex = rawExp;
-
-    latex = latex.replaceAll('pi', r'\pi ');
-    latex = latex.replaceAll('*', r'\times ');
-    latex = latex.replaceAll('sin(', r'\sin(');
-    latex = latex.replaceAll('cos(', r'\cos(');
-    latex = latex.replaceAll('tan(', r'\tan(');
-    latex = latex.replaceAll('asin(', r'\arcsin(');
-    latex = latex.replaceAll('acos(', r'\arccos(');
-    latex = latex.replaceAll('atan(', r'\arctan(');
-    latex = latex.replaceAll('√(', r'\sqrt(');
-
-    while (latex.contains('/')) {
-      final slashIndex = latex.indexOf('/');
-
-      int startNum = slashIndex - 1;
-      int openParens = 0;
-
-      while (startNum >= 0) {
-        if (latex[startNum] == ')') {
-          openParens++;
-        } else if (latex[startNum] == '(') {
-          openParens--;
-        }
-
-        if (openParens < 0) {
-          startNum++;
-          break;
-        }
-
-        if (openParens == 0 &&
-            (latex[startNum] == '+' ||
-                latex[startNum] == '-' ||
-                latex[startNum] == '/')) {
-          startNum++;
-          break;
-        }
-
-        startNum--;
-      }
-
-      if (startNum < 0) startNum = 0;
-
-      int endNum = slashIndex + 1;
-      openParens = 0;
-
-      while (endNum < latex.length) {
-        if (latex[endNum] == '(') {
-          openParens++;
-        } else if (latex[endNum] == ')') {
-          openParens--;
-        }
-
-        if (openParens < 0) {
-          endNum--;
-          break;
-        }
-
-        if (openParens == 0 &&
-            (latex[endNum] == '+' ||
-                latex[endNum] == '-' ||
-                latex[endNum] == '/')) {
-          endNum--;
-          break;
-        }
-
-        endNum++;
-      }
-
-      if (endNum >= latex.length) endNum = latex.length - 1;
-
-      String num = latex.substring(startNum, slashIndex);
-      String den = latex.substring(slashIndex + 1, endNum + 1);
-
-      if (num.startsWith('(') && num.endsWith(')')) {
-        num = num.substring(1, num.length - 1);
-      }
-
-      if (den.startsWith('(') && den.endsWith(')')) {
-        den = den.substring(1, den.length - 1);
-      }
-
-      final fraction = r'\frac{' + num + r'}{' + den + r'}';
-      latex =
-          latex.substring(0, startNum) + fraction + latex.substring(endNum + 1);
-    }
-
-    return latex;
+    const cur = '❙CURSOR❙';
+    s = s.replaceAll('|', cur);
+    s = s.replaceAll('pi', r'\pi ');
+    s = s.replaceAll('*', r'\times ');
+    s = s.replaceAll('log10(', r'\log_{10}(');
+    s = s.replaceAll('ln(', r'\ln(');
+    s = s.replaceAll('asin(', r'\arcsin(');
+    s = s.replaceAll('acos(', r'\arccos(');
+    s = s.replaceAll('atan(', r'\arctan(');
+    s = s.replaceAll('sin(', r'\sin(');
+    s = s.replaceAll('cos(', r'\cos(');
+    s = s.replaceAll('tan(', r'\tan(');
+    s = s.replaceAll('d/dx(', r'\frac{d}{dx}(');
+    s = s.replaceAll('d/dy(', r'\frac{d}{dy}(');
+    s = s.replaceAll('∫(', r'\int(');
+    s = s.replaceAllMapped(RegExp(r'\^\(([^)]+)\)'), (m) => '^{${m[1]}}');
+    s = s.replaceAllMapped(RegExp(r'\^([0-9a-zA-Z.]+)'), (m) => '^{${m[1]}}');
+    s = _convertFn(s, '√(', r'\sqrt{');
+    s = _convertFn(s, '∛(', r'\sqrt[3]{');
+    s = _convertFn(s, 'sqrt(', r'\sqrt{');
+    s = _convertFn(s, 'cbrt(', r'\sqrt[3]{');
+    // Fallbacks for standalone unicode root symbols (without parentheses).
+    s = s.replaceAll('∛', r'\sqrt[3]{}');
+    s = s.replaceAll('√', r'\sqrt{}');
+    s = _convertFractions(s);
+    s = s.replaceAll(cur, r'\textbf{|}');
+    return s;
   }
 
-  void _onButtonPressed(String buttonText) {
+  String _convertFn(String s, String fn, String tex) {
+    while (s.contains(fn)) {
+      final idx = s.indexOf(fn);
+      final openIdx = idx + fn.length - 1;
+      if (openIdx >= s.length || s[openIdx] != '(') break;
+      int depth = 1, end = openIdx + 1;
+      while (depth > 0 && end < s.length) {
+        if (s[end] == '(') depth++;
+        if (s[end] == ')') depth--;
+        end++;
+      }
+      if (depth != 0) break;
+      final inner = s.substring(openIdx + 1, end - 1);
+      s = '${s.substring(0, idx)}$tex$inner}${s.substring(end)}';
+    }
+    return s;
+  }
+
+  String _convertFractions(String s) {
+    while (s.contains('/')) {
+      final si = s.indexOf('/');
+      int startNum = si - 1, op = 0;
+      while (startNum >= 0) {
+        if (s[startNum] == ')') op++;
+        else if (s[startNum] == '(') op--;
+        if (op < 0) { startNum++; break; }
+        if (op == 0 && '+-/=,*'.contains(s[startNum])) { startNum++; break; }
+        startNum--;
+      }
+      if (startNum < 0) startNum = 0;
+      int endNum = si + 1; op = 0;
+      while (endNum < s.length) {
+        if (s[endNum] == '(') op++;
+        else if (s[endNum] == ')') op--;
+        if (op < 0) { endNum--; break; }
+        if (op == 0 && '+-/=,*'.contains(s[endNum])) { endNum--; break; }
+        endNum++;
+      }
+      if (endNum >= s.length) endNum = s.length - 1;
+      String num = s.substring(startNum, si);
+      String den = s.substring(si + 1, endNum + 1);
+      if (num.startsWith('(') && num.endsWith(')')) num = num.substring(1, num.length - 1);
+      if (den.startsWith('(') && den.endsWith(')')) den = den.substring(1, den.length - 1);
+      s = '${s.substring(0, startNum)}\\frac{$num}{$den}${s.substring(endNum + 1)}';
+    }
+    return s;
+  }
+
+  // ─── Button handler ───────────────────────────────────────────────────────
+
+  void _onButtonPressed(String btn) {
+    if (btn == '=' || btn == 'CALC') {
+      _calculateResult();
+      return;
+    }
+
     setState(() {
       _errorType = '';
-
-      if (buttonText == 'AC') {
-        _undoStack.clear();
-        _expression = '';
-        _history = '';
-        _cursorIndex = 0;
-      } else if (buttonText == 'Frac' || buttonText == 'Frac✓') {
-        _showCommonFractions = !_showCommonFractions;
-      } else if (buttonText == 'SHIFT') {
-        _isShiftMode = !_isShiftMode;
-      } else if (buttonText == 'DEL') {
-        if (_expression.isNotEmpty) {
-          _pushUndo();
-          _deleteBeforeCursor();
-        }
-      } else if (buttonText == 'DEG\nRAD') {
-        _isDegreeMode = !_isDegreeMode;
-      } else if (buttonText == 'UNDO') {
-        if (_undoStack.isNotEmpty) {
-          _expression = _undoStack.removeLast();
+      switch (btn) {
+        case 'AC':
+          _undoStack.clear(); _expression = ''; _history = ''; _lastAns = '0'; _cursorIndex = 0;
+        case 'DEL':
+          if (_expression.isNotEmpty) { _pushUndo(); _deleteBeforeCursor(); }
+        case 'UNDO':
+          if (_undoStack.isNotEmpty) {
+            _expression = _undoStack.removeLast();
+          } else if (_history.isNotEmpty) {
+            _expression = _history;
+          }
           _errorType = '';
           _cursorIndex = _expression.length;
-        }
-      } else if (buttonText == '=') {
-        _calculateResult();
-      } else if (buttonText == 'π') {
-        _insertAtCursor('pi');
-      } else if (buttonText == 'e') {
-        _insertAtCursor('2.718281828459045');
-      } else if (buttonText == 'x') {
-        _insertAtCursor('x');
-      } else if (buttonText == 'y') {
-        _insertAtCursor('y');
-      } else if (buttonText == 'ans') {
-        _insertAtCursor(_history.isNotEmpty ? _history : '0');
-      } else if (buttonText == 'x²') {
-        if (_expression.isEmpty) {
-          _insertAtCursor('x^2');
-        } else {
-          _expression = '($_expression)^2';
-          _cursorIndex = _expression.length;
-        }
-      } else if (buttonText == 'xʸ') {
-        _insertAtCursor('^');
-      } else if ([
-        'sin',
-        'cos',
-        'tan',
-        'asin',
-        'acos',
-        'atan',
-      ].contains(buttonText)) {
-        _insertAtCursor('$buttonText(');
-      } else if (buttonText == 'log') {
-        _expression = _expression.isEmpty
-            ? 'log(100)/log(10)'
-            : 'log($_expression)/log(10)';
-        _cursorIndex = _expression.length;
-      } else if (buttonText == 'd/dx') {
-        if (_expression.isEmpty) {
-          _insertAtCursor('d/dx(x^2)');
-        } else {
-          _insertAtCursor('d/dx(');
-        }
-      } else if (buttonText == '∫') {
-        if (_expression.isEmpty) {
-          _insertAtCursor('∫(x^2)');
-        } else {
-          _insertAtCursor('∫(');
-        }
-      } else if (buttonText == '√') {
-        if (_expression.isEmpty) {
-          _insertAtCursor('√(9)');
-        } else {
-          _insertAtCursor('√(');
-        }
-      } else if (buttonText == 'a/b') {
-        _insertAtCursor('/');
-      } else {
-        _insertAtCursor(buttonText);
+        case 'SHIFT': _isShiftMode = !_isShiftMode;
+        case 'DEG\nRAD': _isDegreeMode = !_isDegreeMode;
+        case 'Frac' || 'Frac✓': _showCommonFractions = !_showCommonFractions;
+        case 'Eq': _insertAtCursor('=');
+        case 'π': _insertAtCursor('pi');
+        case 'e': _insertAtCursor('e');
+        case 'ans': _insertAtCursor(_lastAns);
+        case 'i': _insertAtCursor('i');
+        case 'x': _insertAtCursor('x');
+        case 'y': _insertAtCursor('y');
+        case 'x²':
+          if (_isShiftMode) { _insertAtCursor('^(-1)'); _isShiftMode = false; }
+          else if (_expression.isEmpty) { _insertAtCursor('x^2'); }
+          else { _expression = '($_expression)^2'; _cursorIndex = _expression.length; }
+        case '^' || 'xʸ': _insertAtCursor('^');
+        case '√':
+          if (_isShiftMode) { _insertAtCursor(_expression.isEmpty ? 'cbrt(x)' : 'cbrt('); _isShiftMode = false; }
+          else { _insertAtCursor(_expression.isEmpty ? '√(9)' : '√('); }
+        case '!': _insertAtCursor('!');
+        case 'sin': _insertAtCursor(_isShiftMode ? 'asin(' : 'sin('); if (_isShiftMode) _isShiftMode = false;
+        case 'cos': _insertAtCursor(_isShiftMode ? 'acos(' : 'cos('); if (_isShiftMode) _isShiftMode = false;
+        case 'tan': _insertAtCursor(_isShiftMode ? 'atan(' : 'tan('); if (_isShiftMode) _isShiftMode = false;
+        case 'asin': _insertAtCursor('asin(');
+        case 'acos': _insertAtCursor('acos(');
+        case 'atan': _insertAtCursor('atan(');
+        case 'log':
+          if (_isShiftMode) { _insertAtCursor('10^('); _isShiftMode = false; }
+          else { _insertAtCursor('log10('); }
+        case 'ln':
+          if (_isShiftMode) { _insertAtCursor('e^('); _isShiftMode = false; }
+          else { _insertAtCursor('ln('); }
+        case 'd/dx': _insertAtCursor(_expression.isEmpty ? 'd/dx(' : 'd/dx(');
+        case '∫': _insertAtCursor(_expression.isEmpty ? '∫(' : '∫(');
+        case '(':
+          _insertAtCursor(_isShiftMode ? 'abs(' : '(');
+          if (_isShiftMode) _isShiftMode = false;
+        case ',': _insertAtCursor(',');
+        case 'a/b': _insertAtCursor('/');
+        default: _insertAtCursor(btn);
       }
-
       _clampCursor();
     });
   }
 
-  void _calculateResult() {
+  // ─── Calculate ────────────────────────────────────────────────────────────
+
+  Future<void> _calculateResult() async {
     if (_expression.isEmpty) return;
+    String resultStr = '';
+
+    _pushUndo();
+
     try {
       if (_expression.startsWith('d/dx(') && _expression.endsWith(')')) {
+        // Symbolic or numerical derivative
         final inner = _expression.substring(5, _expression.length - 1);
         final args = _splitTopLevelArgs(inner);
         if (args.length == 1) {
-          final result = _symbolicDerivative(args[0]);
-          setState(() {
-            _history = _expression;
-            _expression = result;
-            _errorType = '';
-            _cursorIndex = _expression.length;
-          });
-          return;
+          // Symbolic derivative
+          resultStr = _mathEngine.differentiate(args[0], 'x');
+        } else if (args.length == 2) {
+          // Numerical derivative at point
+          resultStr = _trimNumber(_calcDerivative(args[0], double.parse(args[1])));
+        } else {
+          throw Exception('Syntax Error: d/dx expects 1 or 2 arguments');
         }
 
-        if (args.length != 2) {
-          throw Exception('Syntax Error');
-        }
-
-        final x0 = double.parse(args[1]);
-        final result = _calculateDerivative(args[0], x0);
-        String resultStr = result.toStringAsPrecision(10);
-        if (resultStr.contains('.') && resultStr.endsWith('0')) {
-          resultStr = result.toString();
-        }
-
-        setState(() {
-          _history = _expression;
-          _expression = resultStr;
-          _errorType = '';
-          _cursorIndex = _expression.length;
-        });
-        return;
-      }
-
-      if (_expression.startsWith('∫(') && _expression.endsWith(')')) {
+      } else if (_expression.startsWith('∫(') && _expression.endsWith(')')) {
+        // Symbolic or numerical integral
         final inner = _expression.substring(2, _expression.length - 1);
         final args = _splitTopLevelArgs(inner);
         if (args.length == 1) {
-          final result = _symbolicIntegral(args[0]);
-          setState(() {
-            _history = _expression;
-            _expression = result;
-            _errorType = '';
-            _cursorIndex = _expression.length;
-          });
-          return;
+          // Symbolic integral
+          resultStr = _mathEngine.integrate(args[0], 'x');
+        } else if (args.length == 3) {
+          // Definite integral
+          resultStr = _mathEngine.integrate(args[0], 'x', double.parse(args[1]), double.parse(args[2]));
+        } else {
+          throw Exception('Syntax Error: ∫ expects 1 or 3 arguments');
         }
 
-        if (args.length != 3) {
-          throw Exception('Syntax Error');
+      } else if (_expression.contains('=')) {
+        // Equation solver (uses MathEngine + equations package fallback)
+        resultStr = _mathEngine.solveEquation(_expression);
+
+      } else {
+        // Regular expression evaluation
+        final result = _mathEngine.evaluate(_expression, {'y': _yValue});
+        if (!result.isSuccess) {
+          throw Exception(result.error ?? 'Math Error');
         }
 
-        final a = double.parse(args[1]);
-        final b = double.parse(args[2]);
-        final result = _calculateIntegral(args[0], a, b);
-        String resultStr = result.toStringAsPrecision(10);
-        if (resultStr.contains('.') && resultStr.endsWith('0')) {
-          resultStr = result.toString();
+        // Format result based on user preferences
+        if (result.realValue != null) {
+          final val = result.realValue!;
+          if (_showCommonFractions && val != val.roundToDouble()) {
+            final frac = _approximateFraction(val);
+            resultStr =
+                frac.denominator == 1 ? _trimNumber(val) : '${frac.numerator}/${frac.denominator}';
+          } else {
+            resultStr = _trimNumber(val);
+          }
+        } else if (result.complexValue != null) {
+          // Complex result
+          final real = result.complexValue!.real;
+          final imag = result.complexValue!.imag;
+          if (imag == 0) {
+            resultStr = _trimNumber(real);
+          } else if (real == 0) {
+            resultStr = '${_trimNumber(imag)}i';
+          } else {
+            final sign = imag > 0 ? '+' : '';
+            resultStr = '${_trimNumber(real)}${sign}${_trimNumber(imag)}i';
+          }
+        } else {
+          resultStr = result.toDisplayString();
         }
-
-        setState(() {
-          _history = _expression;
-          _expression = resultStr;
-          _errorType = '';
-          _cursorIndex = _expression.length;
-        });
-        return;
-      }
-
-      String evalStr = _expression;
-
-      final openCount = '('.allMatches(evalStr).length;
-      final closeCount = ')'.allMatches(evalStr).length;
-
-      if (openCount > closeCount) {
-        evalStr += ')' * (openCount - closeCount);
-      }
-
-      evalStr = evalStr.replaceAll('√', 'sqrt');
-      // تحويل دائم لأسماء math_expressions
-      evalStr = evalStr.replaceAll('asin(', '__ASIN__(');
-      evalStr = evalStr.replaceAll('acos(', '__ACOS__(');
-      evalStr = evalStr.replaceAll('atan(', '__ATAN__(');
-
-      if (_isDegreeMode) {
-        // تطبيق تحويل الدرجات على الدوال المباشرة فقط
-        evalStr = evalStr.replaceAll('sin(', 'sin((pi/180)*');
-        evalStr = evalStr.replaceAll('cos(', 'cos((pi/180)*');
-        evalStr = evalStr.replaceAll('tan(', 'tan((pi/180)*');
-        // إرجاع الدوال العكسية مع تحويل النتيجة من راديان لدرجات
-        evalStr = evalStr.replaceAll('__ASIN__(', '(180/pi)*arcsin(');
-        evalStr = evalStr.replaceAll('__ACOS__(', '(180/pi)*arccos(');
-        evalStr = evalStr.replaceAll('__ATAN__(', '(180/pi)*arctan(');
-      }
-
-      if (!_isDegreeMode) {
-        evalStr = evalStr.replaceAll('__ASIN__(', 'arcsin(');
-        evalStr = evalStr.replaceAll('__ACOS__(', 'arccos(');
-        evalStr = evalStr.replaceAll('__ATAN__(', 'arctan(');
-      }
-
-      final parser = Parser();
-      final exp = parser.parse(evalStr);
-      final cm = ContextModel();
-
-      cm.bindVariable(Variable('pi'), Number(math.pi));
-      cm.bindVariable(Variable('e'), Number(math.e));
-      cm.bindVariable(Variable('y'), Number(_yValue));
-
-      final eval = exp.evaluate(EvaluationType.REAL, cm);
-
-      if (eval.isNaN || eval.isInfinite) {
-        throw Exception('Math Error');
-      }
-
-      String resultStr = eval.toString();
-      if (resultStr.endsWith('.0')) {
-        resultStr = resultStr.substring(0, resultStr.length - 2);
       }
 
       setState(() {
         _history = _expression;
+        _lastAns = resultStr;
         _expression = resultStr;
         _errorType = '';
         _cursorIndex = _expression.length;
@@ -697,55 +417,76 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
     } catch (e) {
       setState(() {
         _history = _expression;
-        _errorType = e.toString().contains('Math Error')
+        final msg = e.toString();
+        _errorType = msg.contains('Math Error')
             ? 'Math ERROR'
-            : 'Syntax ERROR';
+            : msg.contains('No Real')
+                ? 'No Real Solution'
+                : msg.contains('No Solution')
+                    ? 'No Solution'
+                    : 'Syntax ERROR';
       });
     }
   }
 
+  // ─── Widget builders ──────────────────────────────────────────────────────
+
   Widget _buildButton(
-    String text, {
+    String label, {
     Color? bgColor,
     Color? textColor,
     bool isPrimary = false,
     required bool isDark,
     int flex = 1,
+    double? fontSize,
   }) {
     final defaultBg = isDark ? const Color(0xFF334155) : Colors.white;
     final defaultText = isDark ? Colors.white : const Color(0xFF1E293B);
 
+    // Adaptive font size: long labels shrink gracefully
+    final autoSize = fontSize ??
+        (label.length >= 5 ? 11.5
+            : label.length == 4 ? 13.5
+            : label.length == 3 ? 15.5
+            : 19.0);
+
     return Expanded(
       flex: flex,
-      child: Container(
-        margin: const EdgeInsets.all(4.0),
+      child: Padding(
+        // Tighter padding = taller buttons = better proportions
+        padding: const EdgeInsets.all(2.5),
         child: Material(
           color: bgColor ?? defaultBg,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(9),
           elevation: isDark ? 0 : 1,
           child: InkWell(
-            onTap: () => _onButtonPressed(text),
-            borderRadius: BorderRadius.circular(8),
-            splashColor: Colors.blue.withOpacity(0.2),
+            onTap: () => _onButtonPressed(label),
+            borderRadius: BorderRadius.circular(9),
+            splashColor: Colors.blue.withValues(alpha: 0.2),
             child: Container(
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(9),
                 border: Border.all(
                   color: isDark
-                      ? Colors.white.withOpacity(0.05)
-                      : Colors.black.withOpacity(0.05),
+                      ? Colors.white.withValues(alpha: 0.06)
+                      : Colors.black.withValues(alpha: 0.06),
                   width: 1,
                 ),
               ),
-              child: Text(
-                text,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: text.length > 3 ? 13 : 18,
-                  fontWeight: isPrimary ? FontWeight.bold : FontWeight.w600,
-                  color: textColor ?? defaultText,
-                  fontFamily: 'Roboto',
+              // FittedBox prevents text overflow on any screen size
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: autoSize,
+                    fontWeight: isPrimary ? FontWeight.bold : FontWeight.w600,
+                    color: textColor ?? defaultText,
+                    fontFamily: 'Roboto',
+                    height: 1.1,
+                  ),
                 ),
               ),
             ),
@@ -759,23 +500,42 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
     return Expanded(
       child: Directionality(
         textDirection: TextDirection.ltr,
-        child: Row(textDirection: TextDirection.ltr, children: children),
+        child: Row(
+          textDirection: TextDirection.ltr,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: children,
+        ),
       ),
     );
   }
 
+  // ─── Build ────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     final isDark = context.select<AppProvider, bool>((p) => p.isDarkMode);
+    final screenHeight = MediaQuery.of(context).size.height;
 
-    final primaryColor = const Color(0xFF3B82F6);
-    final scientificBg = isDark
-        ? const Color(0xFF1E293B)
-        : const Color(0xFFF1F5F9);
+    // Responsive display height: shorter on small screens
+    final displayHeight = (screenHeight * 0.15).clamp(108.0, 140.0);
+
+    const primaryColor = Color(0xFF3B82F6);
+    final scientificBg = isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9);
     final scientificText = isDark ? Colors.grey[300] : Colors.grey[800];
     final actionBg = isDark ? const Color(0xFF0F172A) : const Color(0xFFE2E8F0);
-    final dangerColor = const Color(0xFFEF4444);
-    final warningColor = const Color(0xFFF59E0B);
+    const tealBg = Color(0xFF0F766E);
+    const dangerColor = Color(0xFFEF4444);
+    const warningColor = Color(0xFFF59E0B);
+
+    // Shift-aware labels
+    final sinLabel = _isShiftMode ? 'sin⁻¹' : 'sin';
+    final cosLabel = _isShiftMode ? 'cos⁻¹' : 'cos';
+    final tanLabel = _isShiftMode ? 'tan⁻¹' : 'tan';
+    final logLabel = _isShiftMode ? '10^x' : 'log';
+    final lnLabel = _isShiftMode ? 'eˣ' : 'ln';
+    final sqrtLabel = _isShiftMode ? '∛' : '√';
+    final powLabel = _isShiftMode ? 'x⁻¹' : 'x²';
+    final parenLabel = _isShiftMode ? 'abs(' : '(';
 
     return Directionality(
       textDirection: TextDirection.ltr,
@@ -790,67 +550,76 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
             color: isDark ? const Color(0xFF0B1120) : const Color(0xFFF8FAFC),
             child: Column(
               children: [
-                Container(
-              height: 140,
-              width: double.infinity,
-              margin: const EdgeInsets.all(12),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: isDark
-                    ? const Color(0xFF020617)
-                    : const Color(0xFFE2E8F0),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: isDark
-                      ? const Color(0xFF334155)
-                      : Colors.grey.shade300,
-                  width: 2,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(isDark ? 0.3 : 0.05),
-                    blurRadius: 10,
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    _history,
-                    textAlign: TextAlign.left,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontFamily: 'Courier',
-                      color: isDark ? Colors.grey[500] : Colors.grey[600],
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (_errorType.isNotEmpty)
-                    Text(
-                      _errorType,
-                      textAlign: TextAlign.left,
-                      style: const TextStyle(
-                        fontSize: 24,
-                        color: Colors.redAccent,
-                        fontFamily: 'Courier',
-                        fontWeight: FontWeight.bold,
+
+                // ── Display ────────────────────────────────────────────────
+                GestureDetector(
+                  onTap: () {
+                    final text = _expression.isNotEmpty ? _expression : _history;
+                    if (text.isNotEmpty) {
+                      Clipboard.setData(ClipboardData(text: text));
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text('Copied!'),
+                        duration: Duration(milliseconds: 1000),
+                        behavior: SnackBarBehavior.floating,
+                      ));
+                    }
+                  },
+                  child: Container(
+                    height: displayHeight,
+                    width: double.infinity,
+                    margin: const EdgeInsets.fromLTRB(10, 10, 10, 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF020617) : const Color(0xFFE2E8F0),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isDark ? const Color(0xFF334155) : Colors.grey.shade300,
+                        width: 2,
                       ),
-                    )
-                  else
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
+                      boxShadow: [BoxShadow(
+                        color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.05),
+                        blurRadius: 10,
+                      )],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          _history,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontFamily: 'Courier',
+                            color: isDark ? Colors.grey[500] : Colors.grey[600],
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (_errorType.isNotEmpty)
+                          Expanded(
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  _errorType,
+                                  style: const TextStyle(
+                                    fontSize: 24,
+                                    color: Colors.redAccent,
+                                    fontFamily: 'Courier',
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          )
+                        else
                           Expanded(
                             child: Align(
                               alignment: Alignment.bottomLeft,
                               child: ScrollConfiguration(
-                                behavior: ScrollConfiguration.of(
-                                  context,
-                                ).copyWith(
+                                behavior: ScrollConfiguration.of(context).copyWith(
                                   dragDevices: {
                                     PointerDeviceKind.touch,
                                     PointerDeviceKind.mouse,
@@ -859,41 +628,26 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
                                 ),
                                 child: SingleChildScrollView(
                                   scrollDirection: Axis.horizontal,
-                                  reverse: false,
-                                  child: SingleChildScrollView(
-                                    scrollDirection: Axis.vertical,
-                                    reverse: false,
-                                    child: Padding(
-                                      padding: const EdgeInsets.only(
-                                        left: 8.0,
-                                        bottom: 8.0,
-                                        top: 16.0,
+                                  reverse: true,
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(bottom: 4, top: 6),
+                                    child: Math.tex(
+                                      _getLatexExpression(
+                                        _expression.substring(0, _cursorIndex) +
+                                            '|' +
+                                            _expression.substring(_cursorIndex),
                                       ),
-                                      child: Math.tex(
-                                        _getLatexExpression(_expression),
-                                        mathStyle: MathStyle.display,
-                                        textStyle: TextStyle(
-                                          fontSize: 28,
-                                          color: isDark
-                                              ? Colors.white
-                                              : Colors.black87,
+                                      mathStyle: MathStyle.display,
+                                      textStyle: TextStyle(
+                                        fontSize: _expression.length > 20 ? 21 : 27,
+                                        color: isDark ? Colors.white : Colors.black87,
+                                      ),
+                                      onErrorFallback: (_) => Text(
+                                        _expression.isEmpty ? '...' : _expression,
+                                        style: TextStyle(
+                                          fontSize: 25,
+                                          color: isDark ? Colors.white : Colors.black87,
                                         ),
-                                        onErrorFallback: (err) {
-                                          // During live typing, expressions can be temporarily incomplete
-                                          // (for example trailing '^'). Show raw text instead of a red error.
-                                          return Text(
-                                            _expression.isEmpty
-                                                ? '...'
-                                                : _expression,
-                                            textAlign: TextAlign.left,
-                                            style: TextStyle(
-                                              fontSize: 28,
-                                              color: isDark
-                                                  ? Colors.white
-                                                  : Colors.black87,
-                                            ),
-                                          );
-                                        },
                                       ),
                                     ),
                                   ),
@@ -901,94 +655,109 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
                               ),
                             ),
                           ),
-                        ],
-                      ),
+                      ],
                     ),
-                ],
-              ),
-            ),
+                  ),
+                ),
 
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8.0,
-                  vertical: 4.0,
+                // ── Keypad ─────────────────────────────────────────────────
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(5, 0, 5, 5),
+                    child: Column(
+                      children: [
+                        // Row 1: SHIFT  DEG/RAD  Frac  UNDO  Eq
+                        _buildKeyRow([
+                          _buildButton('SHIFT',
+                              bgColor: _isShiftMode ? const Color(0xFF8B5CF6) : scientificBg,
+                              textColor: _isShiftMode ? Colors.white : scientificText,
+                              isPrimary: _isShiftMode, isDark: isDark),
+                          _buildButton('DEG\nRAD',
+                              bgColor: _isDegreeMode ? const Color(0xFF10B981) : actionBg,
+                              textColor: _isDegreeMode ? Colors.white : scientificText,
+                              isDark: isDark),
+                          _buildButton(_showCommonFractions ? 'Frac✓' : 'Frac',
+                              bgColor: scientificBg, textColor: scientificText, isDark: isDark),
+  _buildButton('DEL', bgColor: warningColor, textColor: Colors.white, isPrimary: true, isDark: isDark),
+                          _buildButton('AC', bgColor: dangerColor, textColor: Colors.white, isPrimary: true, isDark: isDark),
+
+                        ]),
+
+                        // Row 2: d/dx  ∫  ,  π  e
+                        _buildKeyRow([
+                          _buildButton('d/dx', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
+                          _buildButton('∫', bgColor: scientificBg, textColor: scientificText, isDark: isDark, fontSize: 21),
+                          _buildButton(',', bgColor: scientificBg, textColor: scientificText, isDark: isDark, fontSize: 20),
+                          _buildButton('π', bgColor: scientificBg, textColor: scientificText, isDark: isDark, fontSize: 21),
+                          _buildButton('e', bgColor: scientificBg, textColor: scientificText, isDark: isDark, fontSize: 20),
+                        ]),
+
+                        // Row 3: sin  cos  tan  log  ln
+                        _buildKeyRow([
+                          _buildButton(sinLabel, bgColor: scientificBg, textColor: scientificText, isDark: isDark),
+                          _buildButton(cosLabel, bgColor: scientificBg, textColor: scientificText, isDark: isDark),
+                          _buildButton(tanLabel, bgColor: scientificBg, textColor: scientificText, isDark: isDark),
+                          _buildButton(logLabel, bgColor: scientificBg, textColor: scientificText, isDark: isDark),
+                          _buildButton(lnLabel, bgColor: scientificBg, textColor: scientificText, isDark: isDark),
+                        ]),
+
+                        // Row 4: x²  ^  √  !  i
+                        _buildKeyRow([
+                          _buildButton(powLabel, bgColor: scientificBg, textColor: scientificText, isDark: isDark),
+                          _buildButton('^', bgColor: scientificBg, textColor: scientificText, isDark: isDark, fontSize: 22),
+                          _buildButton(sqrtLabel, bgColor: scientificBg, textColor: scientificText, isDark: isDark, fontSize: 21),
+                          _buildButton('!', bgColor: scientificBg, textColor: scientificText, isDark: isDark, fontSize: 21),
+                          _buildButton('i', bgColor: scientificBg, textColor: scientificText, isDark: isDark, fontSize: 21),
+                        ]),
+
+                        // Row 5: (  )  x  y  ans
+                        _buildKeyRow([
+                          _buildButton(parenLabel, bgColor: scientificBg, textColor: scientificText, isDark: isDark),
+                          _buildButton(')', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
+                          _buildButton('x', bgColor: tealBg, textColor: Colors.white, isDark: isDark),
+                          _buildButton('y', bgColor: tealBg, textColor: Colors.white, isDark: isDark),
+                          _buildButton('ans', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
+                        ]),
+
+                        // Row 6: 7  8  9  DEL  AC
+                        _buildKeyRow([
+                          _buildButton('7', isDark: isDark),
+                          _buildButton('8', isDark: isDark),
+                          _buildButton('9', isDark: isDark),
+                                                    _buildButton('UNDO',
+                              bgColor: scientificBg, textColor: warningColor, isDark: isDark),
+                          _buildButton('Eq',
+                              bgColor: tealBg, textColor: Colors.white, isPrimary: true, isDark: isDark),
+                                                ]),
+
+                        // Row 7: 4  5  6  ×  ÷
+                        _buildKeyRow([
+                          _buildButton('4', isDark: isDark),
+                          _buildButton('5', isDark: isDark),
+                          _buildButton('6', isDark: isDark),
+                          _buildButton('*', bgColor: actionBg, textColor: primaryColor, isDark: isDark, fontSize: 23),
+                          _buildButton('/', bgColor: actionBg, textColor: primaryColor, isDark: isDark, fontSize: 23),
+                        ]),
+
+                        // Row 8: 1  2  3  +  -
+                        _buildKeyRow([
+                          _buildButton('1', isDark: isDark),
+                          _buildButton('2', isDark: isDark),
+                          _buildButton('3', isDark: isDark),
+                          _buildButton('+', bgColor: actionBg, textColor: primaryColor, isDark: isDark, fontSize: 25),
+                          _buildButton('-', bgColor: actionBg, textColor: primaryColor, isDark: isDark, fontSize: 25),
+                        ]),
+
+                        // Row 9: 0 (×2)  .  CALC (×2)
+                        _buildKeyRow([
+                          _buildButton('0', flex: 2, isDark: isDark),
+                          _buildButton('.', isDark: isDark, fontSize: 25),
+                          _buildButton('CALC', flex: 2, bgColor: primaryColor, textColor: Colors.white, isPrimary: true, isDark: isDark),
+                        ]),
+                      ],
+                    ),
+                  ),
                 ),
-                child: Column(
-                  children: [
-                    // Row 1: Settings & Clear
-                    _buildKeyRow([
-                      _buildButton('SHIFT', bgColor: _isShiftMode ? const Color(0xFF8B5CF6) : scientificBg, textColor: _isShiftMode ? Colors.white : scientificText, isPrimary: _isShiftMode, isDark: isDark),
-                      _buildButton('DEG\nRAD', bgColor: _isDegreeMode ? const Color(0xFF10B981) : actionBg, textColor: _isDegreeMode ? Colors.white : scientificText, isDark: isDark),
-                      _buildButton(_showCommonFractions ? 'Frac✓' : 'Frac', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
-                      _buildButton('UNDO', bgColor: scientificBg, textColor: warningColor, isDark: isDark),
-                      _buildButton('AC', bgColor: dangerColor, textColor: Colors.white, isPrimary: true, isDark: isDark),
-                    ]),
-                    // Row 2: Basic Trig
-                    _buildKeyRow([
-                      _buildButton('sin', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
-                      _buildButton('cos', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
-                      _buildButton('tan', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
-                      _buildButton('log', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
-                      _buildButton('DEL', bgColor: warningColor, textColor: Colors.white, isPrimary: true, isDark: isDark),
-                    ]),
-                    // Row 3: Inverse Trig & Pi
-                    _buildKeyRow([
-                      _buildButton('asin', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
-                      _buildButton('acos', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
-                      _buildButton('atan', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
-                      _buildButton('√', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
-                      _buildButton('π', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
-                    ]),
-                    // Row 4: Calculus & Variables (x, y)
-                    _buildKeyRow([
-                      _buildButton('d/dx', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
-                      _buildButton('∫', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
-                      _buildButton('x', bgColor: const Color(0xFF0F766E), textColor: Colors.white, isDark: isDark),
-                      _buildButton('y', bgColor: const Color(0xFF0F766E), textColor: Colors.white, isDark: isDark),
-                      _buildButton('e', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
-                    ]),
-                    // Row 5: Powers & Brackets
-                    _buildKeyRow([
-                      _buildButton('x²', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
-                      _buildButton('xʸ', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
-                      _buildButton('(', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
-                      _buildButton(')', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
-                      _buildButton('a/b', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
-                    ]),
-                    // Row 6: Numbers & Div/Mult
-                    _buildKeyRow([
-                      _buildButton('7', isDark: isDark),
-                      _buildButton('8', isDark: isDark),
-                      _buildButton('9', isDark: isDark),
-                      _buildButton('/', bgColor: actionBg, textColor: primaryColor, isDark: isDark),
-                      _buildButton('*', bgColor: actionBg, textColor: primaryColor, isDark: isDark),
-                    ]),
-                    // Row 7: Numbers & Sub/Add
-                    _buildKeyRow([
-                      _buildButton('4', isDark: isDark),
-                      _buildButton('5', isDark: isDark),
-                      _buildButton('6', isDark: isDark),
-                      _buildButton('-', bgColor: actionBg, textColor: primaryColor, isDark: isDark),
-                      _buildButton('+', bgColor: actionBg, textColor: primaryColor, isDark: isDark),
-                    ]),
-                    // Row 8: Numbers & Zero/Dot
-                    _buildKeyRow([
-                      _buildButton('1', isDark: isDark),
-                      _buildButton('2', isDark: isDark),
-                      _buildButton('3', isDark: isDark),
-                      _buildButton('0', isDark: isDark),
-                      _buildButton('.', isDark: isDark),
-                    ]),
-                    // Row 9: Ans & Equals
-                    _buildKeyRow([
-                      _buildButton('ans', flex: 1, bgColor: scientificBg, textColor: scientificText, isDark: isDark),
-                      _buildButton('=', flex: 4, bgColor: primaryColor, textColor: Colors.white, isPrimary: true, isDark: isDark),
-                    ]),
-                  ],
-                ),
-              ),
-            ),
               ],
             ),
           ),

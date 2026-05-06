@@ -300,6 +300,7 @@ class IsarComment {
   int page = 1;
   IsarPoint? position;
   String content = '';
+  String attachedMediaUrl = '';
   DateTime date = DateTime.now();
   int color = 0;
   double fontSize = 14.0;

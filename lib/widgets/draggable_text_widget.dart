@@ -1,13 +1,22 @@
+import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:math_expressions/math_expressions.dart';
+import 'package:math_expressions/math_expressions.dart' as me;
+import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
+
+import '../models/annotations.dart';
+import '../providers/app_state.dart';
+import '../services/supabase_storage_service.dart';
 
 class DraggableTextWidget extends StatefulWidget {
   final String commentId;
   final String content;
+  final String? attachedMediaUrl;
   final Color color;
   final double fontSize;
   final bool isBold;
@@ -31,6 +40,7 @@ class DraggableTextWidget extends StatefulWidget {
     super.key,
     required this.commentId,
     required this.content,
+    this.attachedMediaUrl,
     required this.color,
     required this.fontSize,
     required this.isBold,
@@ -59,6 +69,8 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
   Offset _dragOffset = Offset.zero;
   late TextEditingController _textController;
   late FocusNode _focusNode;
+  bool _isUploadingMedia = false;
+  String? _attachedMediaUrl;
 
   bool _containsArabic(String text) {
     return RegExp(r'[\u0600-\u06FF]').hasMatch(text);
@@ -126,6 +138,7 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
     super.initState();
     _textController = TextEditingController(text: widget.content);
     _focusNode = FocusNode();
+    _attachedMediaUrl = widget.attachedMediaUrl;
     // When a brand-new widget is built already in editing mode (e.g. _addTextAt),
     // didUpdateWidget never fires, so we must request focus here.
     if (widget.isEditing) {
@@ -144,6 +157,71 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
     _textController.dispose();
     _focusNode.dispose();
     super.dispose();
+  }
+
+  void _persistAttachmentUrl(String? url) {
+    final app = context.read<AppProvider>();
+    final pdf = app.activePdf;
+    if (pdf == null) return;
+
+    PdfComment? existingComment;
+    for (final comment in pdf.comments) {
+      if (comment.id == widget.commentId) {
+        existingComment = comment;
+        break;
+      }
+    }
+
+    if (existingComment != null) {
+      final updatedComment = existingComment.copyWith(attachedMediaUrl: url);
+      app.updateComment(pdf.id, existingComment, updatedComment);
+    }
+  }
+
+  Future<void> _pickAndUploadImage() async {
+    if (_isUploadingMedia) return;
+
+    String? filePath;
+
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+        withData: false,
+      );
+      filePath = result?.files.single.path;
+    } else {
+      // Keep image_picker available for mobile targets.
+      // On desktop we avoid the plugin path that was failing in the Windows runner.
+      final picker = ImagePicker();
+      final pickedFile = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 70,
+      );
+      filePath = pickedFile?.path;
+    }
+
+    if (filePath == null || filePath.isEmpty) return;
+
+    setState(() => _isUploadingMedia = true);
+    try {
+      final storage = SupabaseStorageService();
+      final url = await storage.uploadFile(
+        File(filePath),
+        isAudio: false,
+      );
+      if (url == null) return;
+
+      _persistAttachmentUrl(url);
+
+      if (mounted) {
+        setState(() => _attachedMediaUrl = url);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isUploadingMedia = false);
+      }
+    }
   }
 
   void _tryAutoSolveLatex(String currentText) {
@@ -177,10 +255,10 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
     cleanEq = cleanEq.replaceAll(' ', ''); // remove spaces
 
     try {
-      Parser p = Parser();
-      Expression exp = p.parse(cleanEq);
-      ContextModel cm = ContextModel();
-      double eval = exp.evaluate(EvaluationType.REAL, cm);
+      me.Parser p = me.Parser();
+      me.Expression exp = p.parse(cleanEq);
+      me.ContextModel cm = me.ContextModel();
+      double eval = exp.evaluate(me.EvaluationType.REAL, cm);
 
       String resultStr;
       
@@ -333,6 +411,11 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
         });
       }
     }
+
+    if (widget.attachedMediaUrl != oldWidget.attachedMediaUrl &&
+        widget.attachedMediaUrl != _attachedMediaUrl) {
+      _attachedMediaUrl = widget.attachedMediaUrl;
+    }
   }
 
   @override
@@ -382,41 +465,155 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
     // تجهيز قلب المحتوى (حقل تعديل أو نص عرض)
     Widget coreContent;
 
+    Widget buildAttachmentPreview({required bool editable}) {
+      final url = _attachedMediaUrl;
+      if (url == null || url.isEmpty) return const SizedBox.shrink();
+
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Stack(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  minWidth: 220,
+                  maxWidth: 300,
+                  maxHeight: 180,
+                ),
+                child: Image.network(
+                  url,
+                  height: 150,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return const Center(child: CircularProgressIndicator());
+                  },
+                  errorBuilder: (context, error, stackTrace) {
+                    print('❌ Image rendering failed!');
+                    print('🔗 Failed URL: $_attachedMediaUrl');
+                    print('🛑 Error details: $error');
+
+                    return Container(
+                      height: 150,
+                      width: double.infinity,
+                      color: Colors.grey.withOpacity(0.2),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: const [
+                          Icon(Icons.broken_image, color: Colors.redAccent, size: 40),
+                          SizedBox(height: 8),
+                          Text(
+                            'فشل تحميل الصورة',
+                            style: TextStyle(color: Colors.redAccent),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+            if (editable)
+              Positioned(
+                top: 6,
+                right: 6,
+                child: IconButton(
+                  tooltip: 'إزالة الصورة',
+                  icon: const Icon(Icons.cancel, color: Colors.red),
+                  onPressed: () {
+                    _persistAttachmentUrl(null);
+                    if (mounted) {
+                      setState(() => _attachedMediaUrl = null);
+                    }
+                  },
+                ),
+              ),
+          ],
+        ),
+      );
+    }
+
     if (widget.isEditing) {
       // ── وضع التعديل: حقل نص مضمّن ──────────────────────────────────────
       coreContent = Directionality(
         textDirection: editingDirection,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 0.85,
-          ),
-          child: IntrinsicWidth(
-            child: TextField(
-              controller: _textController,
-              focusNode: _focusNode,
-              autofocus: true,
-              maxLines: null,
-              minLines: 1,
-              style: editingStyle,
-              textDirection: editingDirection,
-              textAlign: editingDirection == TextDirection.rtl
-                  ? TextAlign.right
-                  : TextAlign.left,
-              decoration: const InputDecoration(
-                border: InputBorder.none,
-                isDense: true,
-                contentPadding: EdgeInsets.zero,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 0.85,
               ),
-              onChanged: (val) {
-                _tryAutoSolveLatex(val);
-                // Re-evaluate direction while typing so mixed-language text feels natural.
-                setState(() {});
-              },
-              onSubmitted: (value) {
-                widget.onEditComplete(value, null);
-              },
+              child: IntrinsicWidth(
+                child: TextField(
+                  controller: _textController,
+                  focusNode: _focusNode,
+                  autofocus: true,
+                  maxLines: null,
+                  minLines: 1,
+                  style: editingStyle,
+                  textDirection: editingDirection,
+                  textAlign: editingDirection == TextDirection.rtl
+                      ? TextAlign.right
+                      : TextAlign.left,
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  onChanged: (val) {
+                    _tryAutoSolveLatex(val);
+                    // Re-evaluate direction while typing so mixed-language text feels natural.
+                    setState(() {});
+                  },
+                  onSubmitted: (value) {
+                    widget.onEditComplete(value, null);
+                  },
+                ),
+              ),
             ),
-          ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_isUploadingMedia)
+                  const SizedBox(
+                    width: 32,
+                    height: 32,
+                    child: Padding(
+                      padding: EdgeInsets.all(6),
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                else
+                  IconButton(
+                    tooltip: 'إرفاق صورة',
+                    icon: const Icon(Icons.image_outlined, size: 20),
+                    onPressed: _pickAndUploadImage,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                      minWidth: 32,
+                      minHeight: 32,
+                    ),
+                    color: Colors.blueAccent,
+                  ),
+                IconButton(
+                  tooltip: 'حفظ الملاحظة',
+                  icon: const Icon(Icons.check_circle_outline, size: 20),
+                  onPressed: () => widget.onEditComplete(_textController.text, null),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 32,
+                    minHeight: 32,
+                  ),
+                  color: const Color(0xFF10B981),
+                ),
+              ],
+            ),
+          ],
         ),
       );
     } else if (widget.isLatex) {
@@ -453,40 +650,56 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
     // تغليف المحتوى الأساسي بالمربع ذو الحدود والخلفية
     final isDarkContext = Theme.of(context).brightness == Brightness.dark;
 
-    Widget boxedContent = Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: widget.isEditing
-            ? (isDarkContext
-                  ? const Color.fromARGB(255, 255, 255, 255).withOpacity(0.9)
-                  : Colors.white.withOpacity(0.9))
-            : (effectiveBgColor == Colors.transparent
-                  ? null
-                  : effectiveBgColor),
-        border: Border.all(
-          color: widget.isEditing
-              ? Colors.blue.withOpacity(0.5) // إطار أزرق عند التعديل
-              : (effectiveShowBorder
-                    ? effectiveBorderColor
-                    : Colors.transparent),
-          width: widget.isEditing ? 1.5 : (effectiveShowBorder ? 2 : 0),
-        ),
-        borderRadius: BorderRadius.circular(8),
-        boxShadow: widget.isEditing
-            ? [
-                BoxShadow(
-                  color: Colors.black.withOpacity(isDarkContext ? 0.3 : 0.1),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
-                ),
-              ]
-            : null,
-      ),
-      child: coreContent,
-    );
+    final hasTextBubble = widget.isEditing || widget.content.trim().isNotEmpty;
 
-    // إضافة الكبسولات والأدوات حول المربع عند التعديل
-    Widget finalContent = boxedContent;
+    Widget boxedContent = hasTextBubble
+        ? Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: widget.isEditing
+                  ? (isDarkContext
+                        ? const Color.fromARGB(255, 255, 255, 255)
+                              .withOpacity(0.9)
+                        : Colors.white.withOpacity(0.9))
+                  : (effectiveBgColor == Colors.transparent
+                        ? null
+                        : effectiveBgColor),
+              border: Border.all(
+                color: widget.isEditing
+                    ? Colors.blue.withOpacity(0.5) // إطار أزرق عند التعديل
+                    : (effectiveShowBorder
+                          ? effectiveBorderColor
+                          : Colors.transparent),
+                width: widget.isEditing ? 1.5 : (effectiveShowBorder ? 2 : 0),
+              ),
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: widget.isEditing
+                  ? [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(isDarkContext ? 0.3 : 0.1),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ]
+                  : null,
+            ),
+            child: coreContent,
+          )
+        : const SizedBox.shrink();
+
+    final bubbleChildren = <Widget>[];
+    if ((_attachedMediaUrl ?? '').isNotEmpty) {
+      bubbleChildren.add(buildAttachmentPreview(editable: widget.isEditing));
+    }
+    if (hasTextBubble) {
+      bubbleChildren.add(boxedContent);
+    }
+
+    Widget finalContent = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: bubbleChildren,
+    );
 
     if (widget.isEditing) {
       finalContent = TapRegion(
@@ -494,7 +707,7 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
         onTapOutside: (event) {
           widget.onEditComplete(_textController.text, event);
         },
-        child: boxedContent,
+        child: finalContent,
       );
     }
 
