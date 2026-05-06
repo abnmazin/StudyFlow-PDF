@@ -1687,9 +1687,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
       },
       child: PdfViewer.file(
         pdf.path,
-        key: ValueKey(
-          '${pdf.path}_${controller.hashCode}_${_needsReload ? DateTime.now().millisecondsSinceEpoch : 'stable'}',
-        ),
+        key: ValueKey('${pdf.path}_${pdf.lastModified}'),
         controller: controller,
         params: PdfViewerParams(
           maxImageBytesCachedOnMemory: 100 * 1024 * 1024,

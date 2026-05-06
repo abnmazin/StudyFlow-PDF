@@ -1,10 +1,23 @@
 # Changelog
 
 ## 2026-05-06
-- Task: Fix image enlargement constraints, implement native clipboard image pasting, and resolve HttpException.
-- What changed: Fixed image MaxWidth constraints to allow full resizing. Added native Clipboard Image Pasting support using `pasteboard` and manually handled both text/image pasting to bypass Windows clipboard concurrency locks. Replaced `Image.network` with `CachedNetworkImage` to resolve persistent `Connection closed before full header was received` HTTP errors on Windows.
-- Bug fixed: Image enlargement was capped tightly. Flutter Windows `Image.network` dropped HTTP/2 connections randomly. Fixed native text and image pasting collision on Windows.
-- Failed Attempts: None.
+- Task: PDF Mutation Sync, Annotation Shifting Fixes, and Performance Optimization.
+- What changed:
+    - Fixed Multi-Device Page Sync by switching to global `fileHash` targeting instead of local Isar IDs.
+    - Implemented robust timestamp filtering (`isGreaterThan: now`) in the mutation listener to prevent race conditions.
+    - Forced `pdfrx` viewer rebuilds using a `ValueKey` based on the file path and last modified timestamp.
+    - Fixed image zoom scaling by applying `widget.scale` to all media dimensions and constraints in `DraggableTextWidget`.
+    - Resolved persistent disk caching failures by stripping dynamic query tokens from Supabase URLs for a stable `cacheKey`.
+    - Fixed 0-based vs 1-based index bug in annotation shifts (Page Shift Problem).
+    - Unified `app_state` deletion logic and added `shiftAnnotationsOnPageInsert`.
+    - Wired up `listenToMutations` in the PDF open lifecycle (`setActivePdf`) to ensure real-time structural sync.
+    - Fixed "Ghost Annotations" by routing page-deletion items through the formal trash system (`removeComment`/`removeHighlight`).
+    - Added real-time sync support for inserted pages (Add Page).
+    - Implemented `PdfMutationService.insertPageLocally` using Syncfusion.
+    - Replaced `Image.network` with `CachedNetworkImage` for Supabase bandwidth optimization.
+    - Implemented native Clipboard Image Pasting via `pasteboard` for Windows.
+- Bug fixed: Annotations were misaligned after page deletion. App crashed on Windows clipboard concurrency. Supabase egress high due to lack of caching.
+- Failed Attempts: Direct UI-based `deletePage` without awaiting the future led to broadcast race conditions. Fixed by awaiting results.
 
 ## 2026-05-06
 - Task: Fixed Note data model to serialize and deserialize mediaUrl to/from Firestore and Isar.

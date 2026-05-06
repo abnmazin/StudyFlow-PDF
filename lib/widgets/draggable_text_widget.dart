@@ -546,46 +546,68 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
       final url = _attachedMediaUrl;
       if (url == null || url.isEmpty) return const SizedBox.shrink();
 
+      // 1. Fix Caching: Strip dynamic tokens for a stable cache key
+      final String stableCacheKey =
+          url.contains('?') ? url.split('?').first : url;
+
+      // 2. Fix Scaling: Multiply dimensions by widget.scale
+      final double scaledHeight = _mediaHeight * widget.scale;
+      final double scaledMinWidth = 220 * widget.scale;
+      final double scaledMaxWidth =
+          (MediaQuery.of(context).size.width * 0.8) * widget.scale;
+      final double scaledBorderRadius = 10 * widget.scale;
+
       return Padding(
-        padding: const EdgeInsets.only(bottom: 8),
+        padding: EdgeInsets.only(bottom: 8 * widget.scale),
         child: Stack(
           children: [
             ClipRRect(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(scaledBorderRadius),
               child: ConstrainedBox(
                 constraints: BoxConstraints(
-                  minWidth: 220,
-                  maxWidth: MediaQuery.of(context).size.width * 0.8,
-                  maxHeight: _mediaHeight,
+                  minWidth: scaledMinWidth,
+                  maxWidth: scaledMaxWidth,
+                  maxHeight: scaledHeight,
                 ),
                 child: CachedNetworkImage(
                   imageUrl: url,
-                  key: ValueKey('${url}_$_imageRetryCount'),
-                  height: _mediaHeight,
+                  cacheKey: stableCacheKey, // Force stable disk cache
+                  key: ValueKey('${stableCacheKey}_$_imageRetryCount'),
+                  height: scaledHeight,
                   fit: BoxFit.contain,
-                  placeholder: (context, url) => const Center(child: CircularProgressIndicator()),
+                  placeholder:
+                      (context, url) => const Center(
+                        child: CircularProgressIndicator(),
+                      ),
                   errorWidget: (context, url, error) {
-                    print('❌ Image rendering failed!');
-                    print('🔗 Failed URL: $_attachedMediaUrl');
-                    print('🛑 Error details: $error');
-
+                    print('❌ [CachedNetworkImage] rendering failed: $error');
                     return Container(
-                      height: 150,
+                      height: 150 * widget.scale,
                       width: double.infinity,
                       color: Colors.grey.withOpacity(0.2),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.broken_image, color: Colors.redAccent, size: 40),
-                          const SizedBox(height: 8),
-                          const Text(
+                          Icon(
+                            Icons.broken_image,
+                            color: Colors.redAccent,
+                            size: 40 * widget.scale,
+                          ),
+                          SizedBox(height: 8 * widget.scale),
+                          Text(
                             'فشل تحميل الصورة',
-                            style: TextStyle(color: Colors.redAccent),
+                            style: TextStyle(
+                              color: Colors.redAccent,
+                              fontSize: 14 * widget.scale,
+                            ),
                           ),
                           TextButton.icon(
                             onPressed: () => setState(() => _imageRetryCount++),
-                            icon: const Icon(Icons.refresh, size: 16),
-                            label: const Text('إعادة المحاولة', style: TextStyle(fontSize: 12)),
+                            icon: Icon(Icons.refresh, size: 16 * widget.scale),
+                            label: Text(
+                              'إعادة المحاولة',
+                              style: TextStyle(fontSize: 12 * widget.scale),
+                            ),
                           ),
                         ],
                       ),
@@ -596,11 +618,15 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
             ),
             if (editable)
               Positioned(
-                top: 6,
-                right: 6,
+                top: 6 * widget.scale,
+                right: 6 * widget.scale,
                 child: IconButton(
                   tooltip: 'إزالة الصورة',
-                  icon: const Icon(Icons.cancel, color: Colors.red),
+                  icon: Icon(
+                    Icons.cancel,
+                    color: Colors.red,
+                    size: 24 * widget.scale,
+                  ),
                   onPressed: () {
                     _persistAttachmentUrl(null);
                     if (mounted) {

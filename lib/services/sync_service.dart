@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'dart:math';
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import '../models/models.dart';
+import '../providers/app_state.dart';
+import '../services/pdf_mutation_service.dart';
 
 /// Firestore collection: sync_sessions/{code}
 ///
@@ -13,6 +16,7 @@ import '../models/models.dart';
 ///   participants  List of Map     [{uid, username}]
 ///   (Sub-collection) annotations/{pdfHash}  Map {'data': List}
 class SyncService {
+  StreamSubscription? _mutationSubscription;
   final FirebaseFirestore _db;
 
   SyncService({FirebaseFirestore? firestore})
@@ -1144,5 +1148,93 @@ class SyncService {
           .delete(),
       operationName: 'removeAnnotationFromRemoteTrash',
     );
+  }
+
+  // ─────────────────────────────────────────────
+  // PDF DOCUMENT MUTATIONS (Page Shifts / Deletes)
+  // ─────────────────────────────────────────────
+
+  /// Broadcasts a PDF structural mutation (e.g., page deletion) to other connected clients.
+  Future<void> broadcastMutation(
+    String fileHash,
+    String action,
+    int pageIndex,
+  ) async {
+    final mutationCol = _db.collection('pdfs').doc(fileHash).collection('mutations');
+
+    await _withTimeout(
+      mutationCol.add({
+        'action': action,
+        'pageIndex': pageIndex,
+        'timestamp': FieldValue.serverTimestamp(),
+      }),
+      operationName: 'broadcastMutation',
+    );
+  }
+
+  void listenToMutations(
+    String fileHash,
+    String localPdfId,
+    AppProvider appProvider,
+  ) {
+    _mutationSubscription?.cancel();
+    final now = Timestamp.now(); // Only listen to future mutations
+    _mutationSubscription = _db
+        .collection('pdfs')
+        .doc(fileHash)
+        .collection('mutations')
+        .where('timestamp', isGreaterThan: now)
+        .orderBy('timestamp', descending: true)
+        .snapshots()
+        .listen((snapshot) async {
+          if (snapshot.docs.isEmpty) return;
+          for (var change in snapshot.docChanges) {
+            if (change.type == DocumentChangeType.added) {
+              final data = change.doc.data()!;
+              final action = data['action'];
+              final pageIndex = data['pageIndex'];
+
+              if (action == 'delete_page' && pageIndex != null) {
+                // 1. Get current file path
+                final pdf = appProvider.getPdf(localPdfId);
+                if (pdf == null || pdf.path.isEmpty) return;
+                final pdfFile = File(pdf.path);
+
+                // 2. Execute local deletion
+                final newFile = await PdfMutationService.deletePageLocally(
+                  pdfFile,
+                  pageIndex,
+                );
+
+                // 3. Shift annotations
+                appProvider.shiftAnnotationsOnPageDelete(localPdfId, pageIndex);
+
+                // 4. Update file path in state and trigger pdfrx reload
+                appProvider.updatePdfLocalPath(localPdfId, newFile.path);
+              } else if (action == 'insert_page' && pageIndex != null) {
+                // 1. Get current file path
+                final pdf = appProvider.getPdf(localPdfId);
+                if (pdf == null || pdf.path.isEmpty) return;
+                final pdfFile = File(pdf.path);
+
+                // 2. Execute local insertion
+                final newFile = await PdfMutationService.insertPageLocally(
+                  pdfFile,
+                  pageIndex,
+                );
+
+                // 3. Shift annotations
+                appProvider.shiftAnnotationsOnPageInsert(localPdfId, pageIndex);
+
+                // 4. Update file path in state and trigger pdfrx reload
+                appProvider.updatePdfLocalPath(localPdfId, newFile.path);
+              }
+            }
+          }
+        });
+  }
+
+  void dispose() {
+    _mutationSubscription?.cancel();
   }
 }

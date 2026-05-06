@@ -1,4 +1,4 @@
-﻿part of 'pdf_viewer_widget_w.dart';
+part of 'pdf_viewer_widget_w.dart';
 
 class _WinMemoryTrimmer {
   _WinMemoryTrimmer._();
@@ -43,7 +43,7 @@ class _WinMemoryTrimmer {
 extension _PDFViewerWidgetStateActions on _PDFViewerWidgetState {
   //  Page Operations
 
-  void _addPage(PdfItem pdf) {
+  Future<void> _addPage(PdfItem pdf) async {
     if (_isProcessing) return;
     // ignore: invalid_use_of_protected_member
     setState(() => _isProcessing = true);
@@ -55,7 +55,14 @@ extension _PDFViewerWidgetStateActions on _PDFViewerWidgetState {
     } else {
       targetPage = pdf.lastPage ?? 1;
     }
-    context.read<AppProvider>().addPage(pdf.id, insertAtIndex: targetPage);
+    await context.read<AppProvider>().addPage(pdf.id, insertAtIndex: targetPage);
+
+    final hash = pdf.fileHash;
+    if (mounted && hash != null) {
+      context
+          .read<SyncService>()
+          .broadcastMutation(hash, 'insert_page', targetPage);
+    }
   }
 
   void _deleteCurrentPage(PdfItem pdf) {
@@ -83,12 +90,23 @@ extension _PDFViewerWidgetStateActions on _PDFViewerWidgetState {
             child: const Text('إلغاء'),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(ctx);
               // ignore: invalid_use_of_protected_member
               setState(() => _isProcessing = true);
               // Page numbers in controller are 1-based, our API expects 0-based index
-              context.read<AppProvider>().deletePage(pdf.id, pageToDelete - 1);
+              await context
+                  .read<AppProvider>()
+                  .deletePage(pdf.id, pageToDelete - 1);
+
+              final hash = pdf.fileHash;
+              if (mounted && hash != null) {
+                context.read<SyncService>().broadcastMutation(
+                  hash,
+                  'delete_page',
+                  pageToDelete - 1,
+                );
+              }
             },
             child: const Text('حذف', style: TextStyle(color: Colors.red)),
           ),

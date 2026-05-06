@@ -169,7 +169,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   // Phase 3B: Dirty PDF tracking for annotation persistence
   final Set<String> _dirtyPdfIds = {};
 
-  void _markPdfDirty(String pdfId) {
+  void markPdfDirty(String pdfId) {
     if (pdfId.isEmpty) return;
     _dirtyPdfIds.add(pdfId);
     debugPrint('📝 [AppProvider] Marked PDF as dirty: $pdfId');
@@ -552,7 +552,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
           },
         );
         _notify(); // Single notify here
-        _markPdfDirty(pdfId);
+        markPdfDirty(pdfId);
         _triggerSync(pdf.fileHash ?? '');
       }
       return;
@@ -1832,7 +1832,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> saveStateNow({String? pdfId}) async {
     if (pdfId != null && pdfId.isNotEmpty) {
-      _markPdfDirty(pdfId);
+      markPdfDirty(pdfId);
     }
     await _saveState();
   }
@@ -2027,6 +2027,12 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     _saveState();
     _updateImageCacheGovernance();
     _notify();
+
+    // 🚀 NEW: Wire up the structural mutation listener (Add/Delete Page sync)
+    final pdfItem = activePdf;
+    if (pdfItem != null && pdfItem.fileHash != null) {
+      _syncService.listenToMutations(pdfItem.fileHash!, id, this);
+    }
 
     // AUTO-JOIN: If lecturer opens a PDF, look for an active session immediately. (Removed 2.5s delay)
     final hash = activePdf?.fileHash;
@@ -2352,7 +2358,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         debugPrint('📝 Action recorded: highlight ${newH.id}');
         _redoHistory.clear();
         _notify();
-        _markPdfDirty(pdfId);
+        markPdfDirty(pdfId);
         _markUnsavedChanges();
         triggerSync();
         return;
@@ -2432,7 +2438,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       }
 
       _notify();
-      _markPdfDirty(pdfId);
+      markPdfDirty(pdfId);
 
       // DEBOUNCED SYNC: Rely entirely on batching. No immediate deleteAnnotation call.
       _markUnsavedChanges();
@@ -2498,7 +2504,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       }
 
       _notify();
-      _markPdfDirty(deleted.pdfId);
+      markPdfDirty(deleted.pdfId);
       _markUnsavedChanges();
       triggerSync(); // Trigger immediate sync to propagate the restoration
       return;
@@ -2537,7 +2543,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       debugPrint('📝 Action recorded: comment ${newC.id}');
       _redoHistory.clear();
       _notify();
-      _markPdfDirty(pdfId);
+      markPdfDirty(pdfId);
 
       _markUnsavedChanges();
       triggerSync();
@@ -2559,7 +2565,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         });
         if (pdf.comments.length != beforeC) {
           changed = true;
-          _markPdfDirty(pdf.id);
+          markPdfDirty(pdf.id);
         }
 
         final beforeH = pdf.highlights.length;
@@ -2569,7 +2575,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         });
         if (pdf.highlights.length != beforeH) {
           changed = true;
-          _markPdfDirty(pdf.id);
+          markPdfDirty(pdf.id);
         }
       }
     }
@@ -2612,7 +2618,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       }
 
       _notify();
-      _markPdfDirty(pdfId);
+      markPdfDirty(pdfId);
 
       // DEBOUNCED SYNC: Batching all mutations (including deletions tracked in _locallyDeletedIds)
       _markUnsavedChanges();
@@ -2632,7 +2638,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
       pdf.comments.removeWhere((c) => c.id == commentId);
       _notify();
-      _markPdfDirty(pdfId);
+      markPdfDirty(pdfId);
       return;
     }
   }
@@ -2657,7 +2663,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       _locallyDeletedIds[pdf.fileHash!]?.clear();
       _lockedLocalOnlyHighlightIds.remove(pdf.fileHash);
       _notify();
-      _markPdfDirty(pdfId);
+      markPdfDirty(pdfId);
 
       // Standard debounced sync: will push the empty state after 3s
       _markUnsavedChanges();
@@ -2686,7 +2692,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     // Mark every active PDF dirty to ensure global clear persists
     for (var cls in _classes) {
       for (var pdf in cls.pdfs) {
-        _markPdfDirty(pdf.id);
+        markPdfDirty(pdf.id);
       }
     }
   }
@@ -2712,7 +2718,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       _redoHistory.removeWhere((a) => a.pdfId == pdfId);
 
       _notify();
-      _markPdfDirty(pdfId);
+      markPdfDirty(pdfId);
       _markUnsavedChanges();
       triggerDebouncedSync(silent: true);
       if (currentSessionCode != null && activePdf?.fileHash != null) {
@@ -2757,7 +2763,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       _redoHistory.removeWhere((a) => a.pdfId == pdfId);
 
       _notify();
-      _markPdfDirty(pdfId);
+      markPdfDirty(pdfId);
       _markUnsavedChanges();
       triggerDebouncedSync(silent: true);
       if (currentSessionCode != null && activePdf?.fileHash != null) {
@@ -2780,7 +2786,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       pdf.bookmarks.clear();
 
       _notify();
-      _markPdfDirty(pdfId);
+      markPdfDirty(pdfId);
       return;
     }
   }
@@ -2801,7 +2807,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       _redoHistory.removeWhere((a) => a.pdfId == pdfId);
 
       _notify();
-      _markPdfDirty(pdfId);
+      markPdfDirty(pdfId);
       _markUnsavedChanges();
       triggerDebouncedSync(silent: true);
       if (currentSessionCode != null && activePdf?.fileHash != null) {
@@ -2844,7 +2850,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
           newState: updated.toJson(),
         );
         _notify(); // Single notify
-        _markPdfDirty(pdfId);
+        markPdfDirty(pdfId);
         _markUnsavedChanges();
         triggerDebouncedSync(silent: true);
       }
@@ -3017,7 +3023,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
 
     _notify();
-    _markPdfDirty(action.pdfId);
+    markPdfDirty(action.pdfId);
     _markUnsavedChanges();
     triggerDebouncedSync(silent: true);
   }
@@ -3167,7 +3173,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
 
     _notify();
-    _markPdfDirty(action.pdfId);
+    markPdfDirty(action.pdfId);
     _markUnsavedChanges();
     triggerDebouncedSync(silent: true);
   }
@@ -3226,7 +3232,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
           borderColor: borderColor ?? old.borderColor,
         );
         _notify();
-        _markPdfDirty(pdf.id);
+        markPdfDirty(pdf.id);
         return;
       }
     }
@@ -3334,7 +3340,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
           bgColor: bgColor ?? old.bgColor,
         );
         _notify();
-        _markPdfDirty(pdf.id);
+        markPdfDirty(pdf.id);
         return true;
       }
     }
@@ -3412,7 +3418,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     if (!await file.exists()) return;
 
     if (pageIndex >= 0) {
-      _shiftAnnotationsAfterDelete(pdfItem, pageIndex);
+      shiftAnnotationsOnPageDelete(pdfId, pageIndex);
 
       final sourcePath = pdfItem.path;
       final realPath = pdfItem.originalPath ?? pdfItem.path;
@@ -3537,63 +3543,41 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       if (pdfIndex != -1) {
         cls.pdfs[pdfIndex] = updatedPdf;
       }
-      _notify();
+
+      if (insertAtIndex != null) {
+        shiftAnnotationsOnPageInsert(pdfId, insertAtIndex);
+      } else {
+        _notify();
+      }
     } catch (e) {
       debugPrint("Error adding page: $e");
     }
   }
 
-  void _shiftAnnotationsAfterDelete(PdfItem pdf, int deletedPageIndex) {
-    // pageIndex is 0-based.
-    // Models use 1-based indexing for pages.
-    final int deletedPageNum = deletedPageIndex + 1;
+  void shiftAnnotationsOnPageInsert(String pdfId, int insertedPageIndex) {
+    final pdf = getPdf(pdfId);
+    if (pdf == null) return;
+    bool changed = false;
+    final int targetPage = insertedPageIndex + 1;
 
-    // 1. Remove annotations on the deleted page
-    pdf.highlights.removeWhere((h) => h.page == deletedPageNum);
-    pdf.comments.removeWhere((c) => c.page == deletedPageNum);
-
-    // 2. Shift subsequent annotations up (decrement page number)
-    // We need to replace the lists because logic might require new instances
-    // But since we have a List<Highlight>, we can just replace elements or use a new list.
-
-    // Highlights
-    List<Highlight> updatedHighlights = [];
-    for (var h in pdf.highlights) {
-      if (h.page > deletedPageNum) {
-        updatedHighlights.add(
-          h.copyWith(
-            page: h.page - 1,
-            updatedAt: DateTime.now().millisecondsSinceEpoch,
-            isSynced: false,
-          ),
-        );
-      } else {
-        updatedHighlights.add(h);
+    for (int i = 0; i < pdf.comments.length; i++) {
+      if (pdf.comments[i].page >= targetPage) {
+        pdf.comments[i] =
+            pdf.comments[i].copyWith(page: pdf.comments[i].page + 1);
+        changed = true;
       }
     }
-    pdf.highlights.clear();
-    pdf.highlights.addAll(updatedHighlights);
-
-    // Comments
-    List<PdfComment> updatedComments = [];
-    for (var c in pdf.comments) {
-      if (c.page > deletedPageNum) {
-        updatedComments.add(
-          c.copyWith(
-            page: c.page - 1,
-            updatedAt: DateTime.now().millisecondsSinceEpoch,
-            isSynced: false,
-          ),
-        );
-      } else {
-        updatedComments.add(c);
+    for (int i = 0; i < pdf.highlights.length; i++) {
+      if (pdf.highlights[i].page >= targetPage) {
+        pdf.highlights[i] =
+            pdf.highlights[i].copyWith(page: pdf.highlights[i].page + 1);
+        changed = true;
       }
     }
-    pdf.comments.clear();
-    pdf.comments.addAll(updatedComments);
-
-    // Save the state with shifted annotations
-    _markPdfDirty(pdf.id);
+    if (changed) {
+      markPdfDirty(pdfId);
+      _notify();
+    }
   }
 
   // Management Methods
@@ -3662,7 +3646,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
           name: name,
         );
         cls.pdfs[pdfIndex].bookmarks.add(newBookmark);
-        _markPdfDirty(pdfId);
+        markPdfDirty(pdfId);
         _notify();
       }
     }
@@ -3673,7 +3657,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       var pdfIndex = cls.pdfs.indexWhere((p) => p.id == pdfId);
       if (pdfIndex != -1) {
         cls.pdfs[pdfIndex].bookmarks.removeWhere((b) => b.id == bookmarkId);
-        _markPdfDirty(pdfId);
+        markPdfDirty(pdfId);
         _notify();
         return;
       }
@@ -3744,6 +3728,77 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     await FileManagerService().updatePdfOrder(classId, pdfUuids);
 
     _notify();
+  }
+
+  PdfItem? getPdf(String pdfId) {
+    for (final cls in _classes) {
+      final index = cls.pdfs.indexWhere((p) => p.id == pdfId);
+      if (index != -1) {
+        return cls.pdfs[index];
+      }
+    }
+    return null;
+  }
+
+  void updatePdfLocalPath(String pdfId, String newPath) {
+    for (int i = 0; i < _classes.length; i++) {
+      final cls = _classes[i];
+      final pdfIndex = cls.pdfs.indexWhere((p) => p.id == pdfId);
+      if (pdfIndex != -1) {
+        cls.pdfs[pdfIndex] = cls.pdfs[pdfIndex].copyWith(
+          path: newPath,
+          lastModified: DateTime.now().millisecondsSinceEpoch,
+        );
+        _notify();
+        break;
+      }
+    }
+  }
+
+  void shiftAnnotationsOnPageDelete(String pdfId, int deletedPageIndex) {
+    final pdf = getPdf(pdfId);
+    if (pdf == null) return;
+    final int targetPage = deletedPageIndex + 1;
+
+    // 1. Formally delete items on the deleted page (sends them to Trash/Firestore)
+    // We create copies of the lists to avoid ConcurrentModificationError while iterating
+    final commentsToDelete =
+        pdf.comments.where((c) => c.page == targetPage).toList();
+    for (var c in commentsToDelete) {
+      removeComment(pdfId, c); // Leverages formal deletion & sync reconciliation
+    }
+
+    final highlightsToDelete =
+        pdf.highlights.where((h) => h.page == targetPage).toList();
+    for (var h in highlightsToDelete) {
+      removeHighlight(pdfId, h);
+    }
+
+    // 2. Shift the remaining annotations down
+    bool changed = false;
+    for (int i = 0; i < pdf.comments.length; i++) {
+      if (pdf.comments[i].page > targetPage) {
+        pdf.comments[i] = pdf.comments[i].copyWith(
+          page: pdf.comments[i].page - 1,
+          isSynced: false,
+        );
+        changed = true;
+      }
+    }
+    for (int i = 0; i < pdf.highlights.length; i++) {
+      if (pdf.highlights[i].page > targetPage) {
+        pdf.highlights[i] = pdf.highlights[i].copyWith(
+          page: pdf.highlights[i].page - 1,
+          isSynced: false,
+        );
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      markPdfDirty(pdfId);
+      _notify();
+    }
   }
 
   // ─── STUDY TASKS ───────────────────────────────────────────────────────────

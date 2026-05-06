@@ -43,6 +43,7 @@
 - `AppProvider.endEditing()`: accepts optional `attachedMediaUrl` and `mediaHeight` from the UI layer to explicitly preserve attachments and their sizes during the final save commit.
 - `AppProvider.updateComment()`: uses full `oldComment.toJson()` / `updated.toJson()` snapshots for undo-history entries so `PdfComment.fromJson()` can restore all fields — including `attachedMediaUrl` and `mediaHeight` — during Undo/Redo.
 - `TranslationService`: AI and fast translation backends.
+- `PdfMutationService`: PDF Mutation Sync System (Syncfusion + Event-driven) for structural PDF modifications (Add/Delete pages). Working in tandem with Firestore `pdfs/{pdfId}/mutations` subcollection, it broadcasts lightweight mutation events ('delete_page', 'insert_page') to connected clients to avoid re-uploading the entire PDF file. AppState `shiftAnnotationsOnPageDelete` and `shiftAnnotationsOnPageInsert` recalibrate all associated highlights and comments using 1-based indexing to match the new physical document structure.
 
 ## Notes
 - Matrix UI is intentionally wrapped in LTR for linear algebra readability.
