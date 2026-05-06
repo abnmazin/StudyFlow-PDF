@@ -1196,6 +1196,7 @@ class FileManagerService extends ChangeNotifier {
       ..bgColor = c.bgColor.value
       ..isSynced = c.isSynced
       ..updatedAt = c.updatedAt
+      ..mediaHeight = c.mediaHeight
       ..position = (IsarPoint()
         ..dx = c.position.dx
         ..dy = c.position.dy);
@@ -1254,6 +1255,7 @@ class FileManagerService extends ChangeNotifier {
       ..bgColor = json['bgColor'] ?? 0
       ..isSynced = json['isSynced'] ?? false
       ..updatedAt = json['updatedAt'] ?? 0
+      ..mediaHeight = (json['mediaHeight'] as num?)?.toDouble()
       ..position = (IsarPoint()
         ..dx = (json['dx'] as num?)?.toDouble()
         ..dy = (json['dy'] as num?)?.toDouble());

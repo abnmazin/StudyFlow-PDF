@@ -11,6 +11,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   firebase_auth
   firebase_core
   isar_flutter_libs
+  pasteboard
   printing
   url_launcher_windows
 )

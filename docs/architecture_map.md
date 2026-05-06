@@ -38,8 +38,10 @@
 - `AppProvider`: central app state for active PDFs, split-screen mode, sessions, sync, dark mode, and sidebar/mobile UI state.
 - `WindowManagerProvider`: manages floating window state and layering.
 - `SupabaseStorageService`: uploads media files into Supabase Storage and returns public URLs for Firestore-backed records.
-- `PdfComment`: note/comment model now supports an optional attached media URL for image-backed notes.
-- `IsarComment`: local comment cache now persists `attachedMediaUrl`, with generated schema accessors in `isar_models.g.dart`.
+- `PdfComment`: note/comment model supports optional `attachedMediaUrl` and `mediaHeight` fields. `toJson()` / `fromJson()` handle serialization for both Isar and Firestore.
+- `IsarComment`: local comment cache persists `attachedMediaUrl` and `mediaHeight`, with generated schema accessors in `isar_models.g.dart`.
+- `AppProvider.endEditing()`: accepts optional `attachedMediaUrl` and `mediaHeight` from the UI layer to explicitly preserve attachments and their sizes during the final save commit.
+- `AppProvider.updateComment()`: uses full `oldComment.toJson()` / `updated.toJson()` snapshots for undo-history entries so `PdfComment.fromJson()` can restore all fields — including `attachedMediaUrl` and `mediaHeight` — during Undo/Redo.
 - `TranslationService`: AI and fast translation backends.
 
 ## Notes
@@ -51,5 +53,5 @@
 - In split mode, switching folders preserves the current primary PDF and refreshes only the secondary selection for the newly opened folder when possible.
 - Toolbar action clusters fall back to horizontal scrolling in split-screen and narrow layouts instead of overflowing.
 - `draggable_text_widget.dart` aliases `math_expressions` as `me` to avoid symbol conflicts with Flutter widgets (`Stack`).
-- Note attachment previews use `Image.network` with `loadingBuilder` and diagnostic `errorBuilder` logging to trace failed Supabase URL rendering.
+- Note attachment previews use `Image.network` with `loadingBuilder` and a manual "Retry" mechanism in `errorBuilder` to recover from intermittent network failures (e.g., closed connections).
 - Build-shell overlays (search, text-selection, formatting toolbar, vertical slider) are anchored to the primary pane controller in split mode.

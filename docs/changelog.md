@@ -1,10 +1,20 @@
 # Changelog
 
 ## 2026-05-06
-- Task: Debug note image network rendering failures.
-- What changed: Added errorBuilder and loadingBuilder to image preview for network debugging in `draggable_text_widget.dart` so failed note image loads now log the URL and exact error details.
-- Bug fixed: Broken-image cases now expose actionable diagnostics instead of only showing a generic fallback icon.
-- Failed Attempts: None in this pass.
+- Task: Fix image enlargement constraints, implement native clipboard image pasting, and resolve HttpException.
+- What changed: Fixed image MaxWidth constraints to allow full resizing. Added native Clipboard Image Pasting support using `pasteboard` and manually handled both text/image pasting to bypass Windows clipboard concurrency locks. Replaced `Image.network` with `CachedNetworkImage` to resolve persistent `Connection closed before full header was received` HTTP errors on Windows.
+- Bug fixed: Image enlargement was capped tightly. Flutter Windows `Image.network` dropped HTTP/2 connections randomly. Fixed native text and image pasting collision on Windows.
+- Failed Attempts: None.
+
+## 2026-05-06
+- Task: Fixed Note data model to serialize and deserialize mediaUrl to/from Firestore and Isar.
+- What changed:
+  - Fixed image aspect ratio in notes by using `BoxFit.contain` and removing forced width.
+  - Resolved state loss in View Mode by persisting `mediaHeight` to the Isar database and updating hydration mapping.
+  - Fixed "disappearing new images" bug by allowing notes with empty text to be saved if they contain an image attachment.
+  - Audited all save triggers to ensure media URL and height are explicitly passed to the provider.
+- Bug fixed: Image distortion fixed; custom sizes now persist in view mode; image-only notes no longer self-delete.
+- Failed Attempts: None.
 
 ## 2026-05-06
 - Task: Fix `Stack` symbol collision in draggable note widget.

@@ -119,6 +119,7 @@ class PdfComment {
   final Offset position;
   final String content;
   final String? attachedMediaUrl;
+  final double? mediaHeight;
   final DateTime date;
   final Color color;
   final String? createdBy;
@@ -138,6 +139,7 @@ class PdfComment {
     required this.position,
     required this.content,
     this.attachedMediaUrl,
+    this.mediaHeight,
     required this.date,
     this.createdBy,
     this.color = Colors.black,
@@ -163,6 +165,7 @@ class PdfComment {
       'attachedMediaUrl': attachedMediaUrl,
     if (attachedMediaUrl != null && attachedMediaUrl!.isNotEmpty)
       'mediaUrl': attachedMediaUrl,
+    if (mediaHeight != null) 'mediaHeight': mediaHeight,
     if (createdBy != null && createdBy!.isNotEmpty) 'createdBy': createdBy,
     'color': color.value,
     'fontSize': fontSize,
@@ -198,6 +201,7 @@ class PdfComment {
       attachedMediaUrl:
           (json['attachedMediaUrl'] as String?) ??
           (json['mediaUrl'] as String?),
+      mediaHeight: (json['mediaHeight'] as num?)?.toDouble(),
     );
   }
 
@@ -219,6 +223,7 @@ class PdfComment {
     int? updatedAt,
     String? createdBy,
     String? attachedMediaUrl,
+    double? mediaHeight,
   }) {
     return PdfComment(
       id: id ?? this.id,
@@ -238,6 +243,7 @@ class PdfComment {
       updatedAt: updatedAt ?? this.updatedAt,
       createdBy: createdBy ?? this.createdBy,
       attachedMediaUrl: attachedMediaUrl ?? this.attachedMediaUrl,
+      mediaHeight: mediaHeight ?? this.mediaHeight,
     );
   }
 }

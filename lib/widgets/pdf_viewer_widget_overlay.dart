@@ -172,16 +172,25 @@ extension _PDFViewerWidgetStateOverlay on _PDFViewerWidgetState {
                 showBorder: effectiveShowBorder,
                 borderColor: effectiveBorderColor,
                 bgColor: effectiveBgColor,
+                mediaHeight: c.mediaHeight,
                 scale: scale,
                 isEditing: c.id == _editingCommentId,
                 enableDrag:
                     !(_tool == ToolType.eraser) && (c.id != _editingCommentId),
-                onEditComplete: (newText, event) {
-                  if (newText.trim().isEmpty) {
+                onEditComplete: (newText, mediaUrl, mediaHeight, event) {
+                  final hasText = newText.trim().isNotEmpty;
+                  final hasMedia = mediaUrl != null && mediaUrl.isNotEmpty;
+
+                  if (!hasText && !hasMedia) {
                     appProvider.cancelEditing(c.id);
                     appProvider.removeComment(pdf.id, c);
                   } else {
-                    appProvider.endEditing(c.id, newText);
+                    appProvider.endEditing(
+                      c.id,
+                      newText,
+                      attachedMediaUrl: mediaUrl,
+                      mediaHeight: mediaHeight,
+                    );
                   }
                   setState(() => _editingCommentId = null);
                 },

@@ -1558,6 +1558,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
                 showBorder: ic.showBorder,
                 borderColor: Color(ic.borderColor),
                 bgColor: Color(ic.bgColor),
+                mediaHeight: ic.mediaHeight,
                 isSynced: ic.isSynced,
                 updatedAt: ic.updatedAt,
               ),
@@ -2831,46 +2832,16 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
           isSynced: false,
         );
         pdf.comments[index] = updated;
-        // سجل التعديل في سجل العمليات
+        // Record the update in the action history using full toJson() snapshots.
+        // This ensures PdfComment.fromJson() can correctly restore the comment
+        // (including attachedMediaUrl) during Undo/Redo.
         recordUpdate(
           pdfId: pdfId,
           itemId: updated.id,
           actionType: ActionTypes.ACTION_UPDATE_COMMENT,
-          notify: false, // PATCH 3: Avoid double notify
-          oldState: {
-            'content': oldComment.content,
-            if (oldComment.attachedMediaUrl != null)
-              'attachedMediaUrl': oldComment.attachedMediaUrl,
-            'color': oldComment.color.value,
-            'fontSize': oldComment.fontSize,
-            'isBold': oldComment.isBold,
-            'isLatex': oldComment.isLatex,
-            'fontFamily': oldComment.fontFamily,
-            'showBorder': oldComment.showBorder,
-            'borderColor': oldComment.borderColor.value,
-            'bgColor': oldComment.bgColor.value,
-            'position': {
-              'dx': oldComment.position.dx,
-              'dy': oldComment.position.dy,
-            },
-          },
-          newState: {
-            'content': newComment.content,
-            if (newComment.attachedMediaUrl != null)
-              'attachedMediaUrl': newComment.attachedMediaUrl,
-            'color': newComment.color.value,
-            'fontSize': newComment.fontSize,
-            'isBold': newComment.isBold,
-            'isLatex': newComment.isLatex,
-            'fontFamily': newComment.fontFamily,
-            'showBorder': newComment.showBorder,
-            'borderColor': newComment.borderColor.value,
-            'bgColor': newComment.bgColor.value,
-            'position': {
-              'dx': newComment.position.dx,
-              'dy': newComment.position.dy,
-            },
-          },
+          notify: false, // Avoid double notify — _notify() is called explicitly below.
+          oldState: oldComment.toJson(),
+          newState: updated.toJson(),
         );
         _notify(); // Single notify
         _markPdfDirty(pdfId);
@@ -3273,7 +3244,6 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   void startEditing(String commentId, PdfComment comment) {
     _activeEditingCommentId = commentId;
     _lastEditedCommentId = commentId;
-    // Store initial styles
     _tempStyles[commentId] = {
       'color': comment.color.value,
       'fontSize': comment.fontSize,
@@ -3283,6 +3253,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       'showBorder': comment.showBorder,
       'borderColor': comment.borderColor.value,
       'bgColor': comment.bgColor.value,
+      'attachedMediaUrl': comment.attachedMediaUrl,
+      'mediaHeight': comment.mediaHeight ?? 150.0,
     };
     _notify();
   }
@@ -3376,7 +3348,12 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   // End editing and save final comment
-  Future<void> endEditing(String commentId, String finalContent) async {
+  Future<void> endEditing(
+    String commentId,
+    String finalContent, {
+    String? attachedMediaUrl,
+    double? mediaHeight,
+  }) async {
     final styles = _tempStyles[commentId];
     if (styles == null) return;
 
@@ -3387,7 +3364,6 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     try {
       final originalComment = pdf.comments.firstWhere((c) => c.id == commentId);
 
-      // Create updated comment with final styles
       final updatedComment = originalComment.copyWith(
         content: finalContent,
         color: Color(styles['color']),
@@ -3398,6 +3374,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         showBorder: styles['showBorder'],
         borderColor: Color(styles['borderColor']),
         bgColor: Color(styles['bgColor']),
+        // Explicitly prioritize the attachedMediaUrl and mediaHeight passed from the UI layer.
+        attachedMediaUrl: attachedMediaUrl ?? originalComment.attachedMediaUrl,
+        mediaHeight: mediaHeight ?? originalComment.mediaHeight,
       );
 
       // Save to database

@@ -71,6 +71,8 @@ dependencies:
   texpr: ^0.1.4
   equations: ^6.0.0
   image_picker: ^1.2.2
+  pasteboard: any
+  cached_network_image: any
 
 
 

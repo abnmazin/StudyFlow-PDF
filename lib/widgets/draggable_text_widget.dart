@@ -2,7 +2,9 @@ import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:pasteboard/pasteboard.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:math_expressions/math_expressions.dart' as me;
@@ -17,6 +19,7 @@ class DraggableTextWidget extends StatefulWidget {
   final String commentId;
   final String content;
   final String? attachedMediaUrl;
+  final double? mediaHeight;
   final Color color;
   final double fontSize;
   final bool isBold;
@@ -30,7 +33,12 @@ class DraggableTextWidget extends StatefulWidget {
   final ValueChanged<Offset> onDragEnd;
   final bool enableDrag;
   final bool isEditing;
-  final void Function(String text, PointerDownEvent? event) onEditComplete;
+  final void Function(
+    String text,
+    String? mediaUrl,
+    double mediaHeight,
+    PointerDownEvent? event,
+  ) onEditComplete;
   final VoidCallback? onIncreaseSize;
   final VoidCallback? onDecreaseSize;
   final VoidCallback? onToggleBorder;
@@ -41,6 +49,7 @@ class DraggableTextWidget extends StatefulWidget {
     required this.commentId,
     required this.content,
     this.attachedMediaUrl,
+    this.mediaHeight,
     required this.color,
     required this.fontSize,
     required this.isBold,
@@ -71,6 +80,8 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
   late FocusNode _focusNode;
   bool _isUploadingMedia = false;
   String? _attachedMediaUrl;
+  double _mediaHeight = 150.0;
+  int _imageRetryCount = 0;
 
   bool _containsArabic(String text) {
     return RegExp(r'[\u0600-\u06FF]').hasMatch(text);
@@ -137,7 +148,19 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
   void initState() {
     super.initState();
     _textController = TextEditingController(text: widget.content);
-    _focusNode = FocusNode();
+    _focusNode = FocusNode(
+      onKeyEvent: (node, event) {
+        if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.keyV) {
+          final isControlPressed = HardwareKeyboard.instance.isControlPressed || HardwareKeyboard.instance.isMetaPressed;
+          if (isControlPressed) {
+            // Intercept and handle manually to prevent Windows clipboard locking
+            _handleClipboardPasteManually();
+            return KeyEventResult.handled;
+          }
+        }
+        return KeyEventResult.ignored;
+      },
+    );
     _attachedMediaUrl = widget.attachedMediaUrl;
     // When a brand-new widget is built already in editing mode (e.g. _addTextAt),
     // didUpdateWidget never fires, so we must request focus here.
@@ -221,6 +244,55 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
       if (mounted) {
         setState(() => _isUploadingMedia = false);
       }
+    }
+  }
+
+  Future<void> _handleClipboardPasteManually() async {
+    try {
+      final imageBytes = await Pasteboard.image;
+      if (imageBytes != null && imageBytes.isNotEmpty) {
+        setState(() => _isUploadingMedia = true);
+        final storage = SupabaseStorageService();
+        final url = await storage.uploadBytes(imageBytes, '.png');
+        if (url != null) {
+          _persistAttachmentUrl(url);
+          if (mounted) setState(() => _attachedMediaUrl = url);
+        }
+        if (mounted) setState(() => _isUploadingMedia = false);
+        return; // Image handled, stop here
+      }
+    } catch (e) {
+      print('❌ [Pasteboard] failed to read image: $e');
+      if (mounted) setState(() => _isUploadingMedia = false);
+    }
+
+    // Fallback: Manually paste text if no image was found
+    try {
+      final data = await Clipboard.getData(Clipboard.kTextPlain);
+      if (data != null && data.text != null && data.text!.isNotEmpty) {
+        final text = data.text!;
+        final currentSelection = _textController.selection;
+        if (currentSelection.isValid) {
+          final newText = _textController.text.replaceRange(
+            currentSelection.start,
+            currentSelection.end,
+            text,
+          );
+          _textController.value = TextEditingValue(
+            text: newText,
+            selection: TextSelection.collapsed(
+              offset: currentSelection.start + text.length,
+            ),
+          );
+        } else {
+          _textController.text += text;
+        }
+        // Trigger onChanged manually to update LaTeX sizing
+        _tryAutoSolveLatex(_textController.text);
+        if (mounted) setState(() {});
+      }
+    } catch (e) {
+      print('❌ [Clipboard] failed to read text: $e');
     }
   }
 
@@ -416,6 +488,11 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
         widget.attachedMediaUrl != _attachedMediaUrl) {
       _attachedMediaUrl = widget.attachedMediaUrl;
     }
+
+    if (widget.mediaHeight != oldWidget.mediaHeight &&
+        widget.mediaHeight != _mediaHeight) {
+      _mediaHeight = widget.mediaHeight ?? 150.0;
+    }
   }
 
   @override
@@ -476,21 +553,18 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
             ClipRRect(
               borderRadius: BorderRadius.circular(10),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(
+                constraints: BoxConstraints(
                   minWidth: 220,
-                  maxWidth: 300,
-                  maxHeight: 180,
+                  maxWidth: MediaQuery.of(context).size.width * 0.8,
+                  maxHeight: _mediaHeight,
                 ),
-                child: Image.network(
-                  url,
-                  height: 150,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  loadingBuilder: (context, child, loadingProgress) {
-                    if (loadingProgress == null) return child;
-                    return const Center(child: CircularProgressIndicator());
-                  },
-                  errorBuilder: (context, error, stackTrace) {
+                child: CachedNetworkImage(
+                  imageUrl: url,
+                  key: ValueKey('${url}_$_imageRetryCount'),
+                  height: _mediaHeight,
+                  fit: BoxFit.contain,
+                  placeholder: (context, url) => const Center(child: CircularProgressIndicator()),
+                  errorWidget: (context, url, error) {
                     print('❌ Image rendering failed!');
                     print('🔗 Failed URL: $_attachedMediaUrl');
                     print('🛑 Error details: $error');
@@ -501,12 +575,17 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
                       color: Colors.grey.withOpacity(0.2),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
-                        children: const [
+                        children: [
                           Icon(Icons.broken_image, color: Colors.redAccent, size: 40),
-                          SizedBox(height: 8),
-                          Text(
+                          const SizedBox(height: 8),
+                          const Text(
                             'فشل تحميل الصورة',
                             style: TextStyle(color: Colors.redAccent),
+                          ),
+                          TextButton.icon(
+                            onPressed: () => setState(() => _imageRetryCount++),
+                            icon: const Icon(Icons.refresh, size: 16),
+                            label: const Text('إعادة المحاولة', style: TextStyle(fontSize: 12)),
                           ),
                         ],
                       ),
@@ -564,13 +643,42 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
                     isDense: true,
                     contentPadding: EdgeInsets.zero,
                   ),
+                  contentInsertionConfiguration: ContentInsertionConfiguration(
+                    allowedMimeTypes: const <String>['image/png', 'image/jpeg', 'image/gif', 'image/webp'],
+                    onContentInserted: (KeyboardInsertedContent content) async {
+                      if (content.hasData) {
+                        final bytes = content.data!;
+                        setState(() => _isUploadingMedia = true);
+                        try {
+                          final storage = SupabaseStorageService();
+                          String ext = '.png'; // Default
+                          if (content.mimeType == 'image/jpeg') ext = '.jpg';
+                          if (content.mimeType == 'image/gif') ext = '.gif';
+                          if (content.mimeType == 'image/webp') ext = '.webp';
+                          
+                          final url = await storage.uploadBytes(bytes, ext);
+                          if (url != null) {
+                            _persistAttachmentUrl(url);
+                            if (mounted) setState(() => _attachedMediaUrl = url);
+                          }
+                        } finally {
+                          if (mounted) setState(() => _isUploadingMedia = false);
+                        }
+                      }
+                    },
+                  ),
                   onChanged: (val) {
                     _tryAutoSolveLatex(val);
                     // Re-evaluate direction while typing so mixed-language text feels natural.
                     setState(() {});
                   },
                   onSubmitted: (value) {
-                    widget.onEditComplete(value, null);
+                    widget.onEditComplete(
+                      value,
+                      _attachedMediaUrl,
+                      _mediaHeight,
+                      null,
+                    );
                   },
                 ),
               ),
@@ -603,7 +711,13 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
                 IconButton(
                   tooltip: 'حفظ الملاحظة',
                   icon: const Icon(Icons.check_circle_outline, size: 20),
-                  onPressed: () => widget.onEditComplete(_textController.text, null),
+                  onPressed:
+                      () => widget.onEditComplete(
+                        _textController.text,
+                        _attachedMediaUrl,
+                        _mediaHeight,
+                        null,
+                      ),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(
                     minWidth: 32,
@@ -613,6 +727,27 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
                 ),
               ],
             ),
+            if (_attachedMediaUrl != null && _attachedMediaUrl!.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              const Text(
+                "حجم الصورة",
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blueGrey,
+                ),
+              ),
+              Slider(
+                value: _mediaHeight,
+                min: 50.0,
+                max: 500.0,
+                onChanged: (val) {
+                  setState(() {
+                    _mediaHeight = val;
+                  });
+                },
+              ),
+            ],
           ],
         ),
       );
@@ -705,7 +840,12 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
       finalContent = TapRegion(
         groupId: 'text_editing_region',
         onTapOutside: (event) {
-          widget.onEditComplete(_textController.text, event);
+          widget.onEditComplete(
+            _textController.text,
+            _attachedMediaUrl,
+            _mediaHeight,
+            event,
+          );
         },
         child: finalContent,
       );
