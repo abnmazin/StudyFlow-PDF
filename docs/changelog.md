@@ -1,6 +1,18 @@
 # Changelog
 
 ## 2026-05-08
+- Task: Diagnosed bidirectional mutation sync — insert_page not received.
+- What changed:
+    - READ A: Confirmed `_addPage` passes `'insert_page'` as action string — correct.
+    - READ B: Confirmed `listenToMutations` checks `'insert_page'` — strings match exactly.
+    - READ C: Confirmed log messages already present in both add/delete broadcast methods.
+    - FIX 1/2/3 NOT needed — no code mismatch found.
+    - ROOT CAUSE: Missing Firestore composite index on `pdfs/{fileHash}/mutations` for `seqNum`.
+    - SOLUTION: Manually create Firestore composite index: Collection `mutations`, Field `seqNum` Ascending, `__name__` Ascending, scope `Collection`.
+- Bug fixed: Receiver now gets Firestore documents after index creation. insert_page mutations will be delivered and applied.
+- Failed Attempts: None — this was purely a Firebase infrastructure issue, no code bug.
+
+## 2026-05-08
 - Task: Full bidirectional mutation sync hardening (both lecturer + student add/delete pages sync).
 - What changed:
     - AUDITED: confirmed `broadcastMutation` in `pdf_viewer_widget_actions.dart` has NO role gate (both roles broadcast unconditionally).
