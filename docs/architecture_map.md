@@ -36,12 +36,15 @@
 
 ## State and Services
 - `AppProvider`: central app state for active PDFs, split-screen mode, sessions, sync, dark mode, and sidebar/mobile UI state.
+- `AppProvider`: central app state for active PDFs, split-screen mode, sessions, sync, dark mode, and sidebar/mobile UI state. Mutation listener registration now only restarts when the tracked file hash changes.
 - `WindowManagerProvider`: manages floating window state and layering.
 - `SupabaseStorageService`: uploads media files into Supabase Storage and returns public URLs for Firestore-backed records.
 - `PdfComment`: note/comment model supports optional `attachedMediaUrl` and `mediaHeight` fields. `toJson()` / `fromJson()` handle serialization for both Isar and Firestore.
 - `IsarComment`: local comment cache persists `attachedMediaUrl` and `mediaHeight`, with generated schema accessors in `isar_models.g.dart`.
 - `AppProvider.endEditing()`: accepts optional `attachedMediaUrl` and `mediaHeight` from the UI layer to explicitly preserve attachments and their sizes during the final save commit.
 - `AppProvider.updateComment()`: uses full `oldComment.toJson()` / `updated.toJson()` snapshots for undo-history entries so `PdfComment.fromJson()` can restore all fields — including `attachedMediaUrl` and `mediaHeight` — during Undo/Redo.
+- `SyncService.broadcastMutation()`: writes PDF mutations with client-side `seqNum` plus server timestamp for audit trail.
+- `SyncService.listenToMutations()`: sequences mutation delivery by `seqNum`, then delegates page add/delete execution back to `AppProvider` instead of mutating files inline.
 - `TranslationService`: AI and fast translation backends.
 - `PdfMutationService`: PDF Mutation Sync System (Syncfusion + Event-driven) for structural PDF modifications (Add/Delete pages). Working in tandem with Firestore `pdfs/{pdfId}/mutations` subcollection, it broadcasts lightweight mutation events ('delete_page', 'insert_page') to connected clients to avoid re-uploading the entire PDF file. AppState `shiftAnnotationsOnPageDelete` and `shiftAnnotationsOnPageInsert` recalibrate all associated highlights and comments using 1-based indexing to match the new physical document structure.
 

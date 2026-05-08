@@ -3,6 +3,8 @@ import 'dart:math';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import '../models/models.dart';
 import '../providers/app_state.dart';
 import '../services/pdf_mutation_service.dart';
@@ -16,11 +18,39 @@ import '../services/pdf_mutation_service.dart';
 ///   participants  List of Map     [{uid, username}]
 ///   (Sub-collection) annotations/{pdfHash}  Map {'data': List}
 class SyncService {
+  final String _deviceSessionId;
   StreamSubscription? _mutationSubscription;
+  final Map<String, int> _lastProcessedSeqNum = {};
+  final Map<String, Set<String>> _appliedMutationIds = {};
+  final Map<String, int> _lastBroadcastTime = {};
   final FirebaseFirestore _db;
 
   SyncService({FirebaseFirestore? firestore})
-    : _db = firestore ?? FirebaseFirestore.instance;
+    : _deviceSessionId = 'device_${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(99999)}',
+      _db = firestore ?? FirebaseFirestore.instance;
+
+  static Future<void> logMutation(String message) async {
+    final timestamp = DateTime.now().toLocal().toString().split('.').first;
+    final logLine = '[$timestamp] $message';
+    print(logLine);
+
+    if (kIsWeb) return;
+
+    try {
+      final docDir = await getApplicationDocumentsDirectory();
+      final logDir = Directory(p.join(docDir.path, 'StudyFlowPdf', 'Logs'));
+      if (!await logDir.exists()) await logDir.create(recursive: true);
+
+      final logFile = File(p.join(logDir.path, 'sync_debug.txt'));
+      await logFile.writeAsString(
+        '$logLine\n',
+        mode: FileMode.append,
+        flush: true,
+      );
+    } catch (e) {
+      debugPrint('Error writing to log file: $e');
+    }
+  }
 
   // 15-second global timeout for Firestore operations to prevent "Zombie" hangs.
   static const Duration _defaultTimeout = Duration(seconds: 15);
@@ -1160,16 +1190,40 @@ class SyncService {
     String action,
     int pageIndex,
   ) async {
-    final mutationCol = _db.collection('pdfs').doc(fileHash).collection('mutations');
+    // Debounce: ignore duplicate calls within 500ms for same action+page
+    final key = '$fileHash:$action:$pageIndex';
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final last = _lastBroadcastTime[key] ?? 0;
+    if (now - last < 500) {
+      debugPrint('⏭️ [BROADCAST] Debounced duplicate: $action pageIndex=$pageIndex');
+      return;
+    }
+    _lastBroadcastTime[key] = now;
 
-    await _withTimeout(
-      mutationCol.add({
-        'action': action,
-        'pageIndex': pageIndex,
-        'timestamp': FieldValue.serverTimestamp(),
-      }),
-      operationName: 'broadcastMutation',
-    );
+    final mutationCol = _db
+        .collection('pdfs')
+        .doc(fileHash)
+        .collection('mutations');
+
+    try {
+      final seqNum = now;
+      SyncService.logMutation(
+        '🚀 [SYNC SENDER] Writing to Firestore: pdfs/$fileHash/mutations',
+      );
+      await _withTimeout(
+        mutationCol.add({
+          'action': action,
+          'pageIndex': pageIndex,
+          'seqNum': seqNum,
+          'senderId': _deviceSessionId,
+          'timestamp': FieldValue.serverTimestamp(),
+        }),
+        operationName: 'broadcastMutation',
+      );
+      SyncService.logMutation('✅ [SYNC SENDER] Broadcast successful!');
+    } catch (e) {
+      SyncService.logMutation('❌ [SYNC SENDER] Broadcast FAILED: $e');
+    }
   }
 
   void listenToMutations(
@@ -1177,64 +1231,98 @@ class SyncService {
     String localPdfId,
     AppProvider appProvider,
   ) {
+    SyncService.logMutation(
+      '📡 [SYNC RECEIVER] Initializing listener for fileHash: $fileHash, localPdfId: $localPdfId',
+    );
     _mutationSubscription?.cancel();
-    final now = Timestamp.now(); // Only listen to future mutations
+
+    final startSeqNum = DateTime.now().millisecondsSinceEpoch - 2000;
+    // Always reset on new subscription — handles re-open after file deletion
+    _lastProcessedSeqNum[fileHash] = startSeqNum;
+
+    debugPrint('🎧 [SYNC RECEIVER] Subscribing to mutations for hash: $fileHash, seqNum > ${_lastProcessedSeqNum[fileHash]}');
+
     _mutationSubscription = _db
         .collection('pdfs')
         .doc(fileHash)
         .collection('mutations')
-        .where('timestamp', isGreaterThan: now)
-        .orderBy('timestamp', descending: true)
+        .where('seqNum', isGreaterThan: _lastProcessedSeqNum[fileHash])
+        .orderBy('seqNum', descending: false)
         .snapshots()
         .listen((snapshot) async {
-          if (snapshot.docs.isEmpty) return;
           for (var change in snapshot.docChanges) {
-            if (change.type == DocumentChangeType.added) {
-              final data = change.doc.data()!;
-              final action = data['action'];
-              final pageIndex = data['pageIndex'];
+            debugPrint('📨 [RECEIVER RAW] docChange type=${change.type.name}, id=${change.doc.id}, data=${change.doc.data()}');
+            if (change.type != DocumentChangeType.added) continue;
 
-              if (action == 'delete_page' && pageIndex != null) {
-                // 1. Get current file path
-                final pdf = appProvider.getPdf(localPdfId);
-                if (pdf == null || pdf.path.isEmpty) return;
-                final pdfFile = File(pdf.path);
+            final data = change.doc.data();
+            if (data == null) continue;
 
-                // 2. Execute local deletion
-                final newFile = await PdfMutationService.deletePageLocally(
-                  pdfFile,
-                  pageIndex,
-                );
+            // ANTI-ECHO: Skip mutations sent by this same device
+            final senderId = (data['senderId'] ?? '').toString();
+            if (senderId == _deviceSessionId) {
+              debugPrint('⏭️ [ANTI-ECHO] Skipping echo mutation from self (senderId=$senderId)');
+              continue;
+            }
 
-                // 3. Shift annotations
-                appProvider.shiftAnnotationsOnPageDelete(localPdfId, pageIndex);
+            // Primary dedup: by Firestore document ID (survives listener reattach)
+            final docId = change.doc.id;
+            _appliedMutationIds.putIfAbsent(fileHash, () => {});
+            if (_appliedMutationIds[fileHash]!.contains(docId)) {
+              debugPrint('⏭️ [DEDUP] Already applied mutation $docId — skipping');
+              continue;
+            }
 
-                // 4. Update file path in state and trigger pdfrx reload
-                appProvider.updatePdfLocalPath(localPdfId, newFile.path);
-              } else if (action == 'insert_page' && pageIndex != null) {
-                // 1. Get current file path
-                final pdf = appProvider.getPdf(localPdfId);
-                if (pdf == null || pdf.path.isEmpty) return;
-                final pdfFile = File(pdf.path);
+            final seqNum = (data['seqNum'] as num?)?.toInt();
+            if (seqNum == null) continue;
 
-                // 2. Execute local insertion
-                final newFile = await PdfMutationService.insertPageLocally(
-                  pdfFile,
-                  pageIndex,
-                );
+            final lastSeen = _lastProcessedSeqNum[fileHash] ?? startSeqNum;
+            if (seqNum <= lastSeen) {
+              debugPrint('⏭️ [DEDUP] seqNum $seqNum <= lastSeen $lastSeen — skipping');
+              continue;
+            }
 
-                // 3. Shift annotations
-                appProvider.shiftAnnotationsOnPageInsert(localPdfId, pageIndex);
+            // Mark BEFORE async work to prevent race condition double-apply
+            _appliedMutationIds[fileHash]!.add(docId);
+            _lastProcessedSeqNum[fileHash] = seqNum;
 
-                // 4. Update file path in state and trigger pdfrx reload
-                appProvider.updatePdfLocalPath(localPdfId, newFile.path);
+            final action = (data['action'] ?? '').toString();
+            final pageIndex = (data['pageIndex'] as num?)?.toInt();
+            if (pageIndex == null) continue;
+
+            debugPrint(
+              '🔥 [SYNC RECEIVER] New mutation detected: action=$action pageIndex=$pageIndex seqNum=$seqNum docId=$docId',
+            );
+
+            // Validate page index before applying to prevent corruption
+            final currentPdf = appProvider.getPdf(localPdfId);
+            final currentPageCount = currentPdf?.pageCount ?? 0;
+
+            if (action == 'delete_page') {
+              if (pageIndex < 0 || (currentPageCount > 0 && pageIndex >= currentPageCount)) {
+                debugPrint('⚠️ [RECEIVER] delete_page index $pageIndex out of bounds (pages: $currentPageCount) — skipping');
+                continue;
               }
+              debugPrint('🔥 [RECEIVER] Applying delete_page at index $pageIndex (pages: $currentPageCount)');
+              await appProvider.deletePage(localPdfId, pageIndex);
+            } else if (action == 'insert_page') {
+              if (pageIndex < 0 || pageIndex > currentPageCount) {
+                debugPrint('⚠️ [RECEIVER] insert_page index $pageIndex out of bounds (pages: $currentPageCount) — skipping');
+                continue;
+              }
+              debugPrint('🔥 [RECEIVER] Applying insert_page at index $pageIndex (pages: $currentPageCount)');
+              await appProvider.addPage(localPdfId, insertAtIndex: pageIndex);
             }
           }
+        }, onError: (e) {
+          debugPrint('❌ [SYNC RECEIVER] Listener FAILED for $fileHash: $e');
+          debugPrint('❌ [SYNC RECEIVER] This is likely a missing Firestore composite index!');
         });
   }
 
   void dispose() {
     _mutationSubscription?.cancel();
+    _mutationSubscription = null;
+    _lastProcessedSeqNum.clear();
+    _appliedMutationIds.clear();
   }
 }

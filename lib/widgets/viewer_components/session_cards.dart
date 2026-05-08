@@ -706,22 +706,27 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    Icon(
-                      locked ? LucideIcons.lock : LucideIcons.unlock,
-                      size: 16,
-                      color: locked ? const Color(0xFFF87171) : widget.textMuted,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      locked ? 'رسم الطلاب مقفل' : 'قفل رسم الطلاب',
-                      style: TextStyle(
-                        color: locked ? const Color(0xFFF87171) : widget.textPrimary,
-                        fontSize: 13,
+                Expanded(
+                  child: Row(
+                    children: [
+                      Icon(
+                        locked ? LucideIcons.lock : LucideIcons.unlock,
+                        size: 16,
+                        color: locked ? const Color(0xFFF87171) : widget.textMuted,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          locked ? 'رسم الطلاب مقفل' : 'قفل رسم الطلاب',
+                          style: TextStyle(
+                            color: locked ? const Color(0xFFF87171) : widget.textPrimary,
+                            fontSize: 13,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 _locking
                     ? const SizedBox(
@@ -744,30 +749,35 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    Icon(
-                      app.sessionJoinLocked
-                          ? LucideIcons.userX
-                          : LucideIcons.userPlus,
-                      size: 16,
-                      color: app.sessionJoinLocked
-                          ? const Color(0xFFFACC15)
-                          : widget.textMuted,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      app.sessionJoinLocked
-                          ? 'الدخول مغلق (Join Locked)'
-                          : 'قفل دخول الطلاب الجدد',
-                      style: TextStyle(
+                Expanded(
+                  child: Row(
+                    children: [
+                      Icon(
+                        app.sessionJoinLocked
+                            ? LucideIcons.userX
+                            : LucideIcons.userPlus,
+                        size: 16,
                         color: app.sessionJoinLocked
                             ? const Color(0xFFFACC15)
-                            : widget.textPrimary,
-                        fontSize: 13,
+                            : widget.textMuted,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          app.sessionJoinLocked
+                              ? 'الدخول مغلق (Join Locked)'
+                              : 'قفل دخول الطلاب الجدد',
+                          style: TextStyle(
+                            color: app.sessionJoinLocked
+                                ? const Color(0xFFFACC15)
+                                : widget.textPrimary,
+                            fontSize: 13,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 _joinLocking
                     ? const SizedBox(

@@ -47,21 +47,30 @@ extension _PDFViewerWidgetStateActions on _PDFViewerWidgetState {
     if (_isProcessing) return;
     // ignore: invalid_use_of_protected_member
     setState(() => _isProcessing = true);
+    try {
+      // Add after current page
+      int targetPage = 1;
+      if (_pdfController.isReady && _pdfController.pageNumber != null) {
+        targetPage = _pdfController.pageNumber!;
+      } else {
+        targetPage = pdf.lastPage ?? 1;
+      }
+      await context.read<AppProvider>().addPage(pdf.id, insertAtIndex: targetPage);
 
-    // Add after current page
-    int targetPage = 1;
-    if (_pdfController.isReady && _pdfController.pageNumber != null) {
-      targetPage = _pdfController.pageNumber!;
-    } else {
-      targetPage = pdf.lastPage ?? 1;
-    }
-    await context.read<AppProvider>().addPage(pdf.id, insertAtIndex: targetPage);
-
-    final hash = pdf.fileHash;
-    if (mounted && hash != null) {
-      context
-          .read<SyncService>()
-          .broadcastMutation(hash, 'insert_page', targetPage);
+      final hash = pdf.fileHash;
+      if (mounted && hash != null) {
+        SyncService.logMutation(
+          '🚀 [SYNC SENDER] Triggering insert_page broadcast for fileHash: $hash, pageIndex: $targetPage',
+        );
+        await context.read<AppProvider>().broadcastMutation(
+          hash,
+          'insert_page',
+          targetPage,
+        );
+      }
+    } finally {
+      // ignore: invalid_use_of_protected_member
+      if (mounted) setState(() => _isProcessing = false);
     }
   }
 
@@ -94,18 +103,26 @@ extension _PDFViewerWidgetStateActions on _PDFViewerWidgetState {
               Navigator.pop(ctx);
               // ignore: invalid_use_of_protected_member
               setState(() => _isProcessing = true);
-              // Page numbers in controller are 1-based, our API expects 0-based index
-              await context
-                  .read<AppProvider>()
-                  .deletePage(pdf.id, pageToDelete - 1);
+              try {
+                // Page numbers in controller are 1-based, our API expects 0-based index
+                await context
+                    .read<AppProvider>()
+                    .deletePage(pdf.id, pageToDelete - 1);
 
-              final hash = pdf.fileHash;
-              if (mounted && hash != null) {
-                context.read<SyncService>().broadcastMutation(
-                  hash,
-                  'delete_page',
-                  pageToDelete - 1,
-                );
+                final hash = pdf.fileHash;
+                if (mounted && hash != null) {
+                  SyncService.logMutation(
+                    '🚀 [SYNC SENDER] Triggering delete_page broadcast for fileHash: $hash, pageIndex: ${pageToDelete - 1}',
+                  );
+                  await context.read<AppProvider>().broadcastMutation(
+                    hash,
+                    'delete_page',
+                    pageToDelete - 1,
+                  );
+                }
+              } finally {
+                // ignore: invalid_use_of_protected_member
+                if (mounted) setState(() => _isProcessing = false);
               }
             },
             child: const Text('حذف', style: TextStyle(color: Colors.red)),

@@ -430,7 +430,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             child: GestureDetector(
                               onTap: _openTelegram,
                               child: Text(
-                                '© 2026 AbnMazin',
+                                '2026 AbnMazin©',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   color: textMuted.withOpacity(0.85),

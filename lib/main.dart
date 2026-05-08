@@ -12,6 +12,7 @@ import 'package:desktop_drop/desktop_drop.dart';
 import 'package:cross_file/cross_file.dart';
 import 'providers/app_state.dart';
 import 'services/file_manager_service.dart';
+import 'services/sync_service.dart';
 import 'widgets/floating_window_manager.dart';
 import 'widgets/sidebar_w.dart';
 import 'widgets/pdf_viewer_widget_w.dart';
@@ -211,6 +212,7 @@ Future<void> _bootstrapApp(List<String> args) async {
     );
   }
 }
+
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   await _bootstrapApp(args);
@@ -225,8 +227,12 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        Provider(create: (_) => SyncService()),
         ChangeNotifierProvider(create: (_) => fileManager),
-        ChangeNotifierProvider(create: (_) => AppProvider()),
+        ChangeNotifierProvider(
+          create: (context) =>
+              AppProvider(syncService: context.read<SyncService>()),
+        ),
         ChangeNotifierProvider(create: (_) => WindowManagerProvider()),
       ],
       child: Builder(

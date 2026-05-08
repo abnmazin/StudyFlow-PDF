@@ -1,8 +1,46 @@
 # Changelog
 
+## 2026-05-08
+- Task: Full bidirectional mutation sync hardening (both lecturer + student add/delete pages sync).
+- What changed:
+    - AUDITED: confirmed `broadcastMutation` in `pdf_viewer_widget_actions.dart` has NO role gate (both roles broadcast unconditionally).
+    - AUDITED: confirmed `listenToMutations` in `app_state.dart` (`setActivePdf` + `setSessionCode`) has NO role gate (both roles listen unconditionally).
+    - Added `_appliedMutationIds` Map<String, Set<String>> — Firestore document ID-based deduplication.
+    - Primary dedup: skip mutations whose `change.doc.id` was already applied (survives listener reattach).
+    - Secondary dedup: skip mutations with `seqNum <= lastSeen` with diagnostic log.
+    - Added page index bounds validation before applying `delete_page` or `insert_page`.
+    - Reset `_lastMutationListenerHash = null` in `setActivePdf` when switching PDFs (FIX D from prior session, verified still applied).
+    - `_lastProcessedSeqNum` uses direct assignment instead of `putIfAbsent` (FIX F from prior session, verified still applied).
+    - `_appliedMutationIds.clear()` in `dispose()`.
+- Bug fixed: Receiver now has proper dedup so concurrent mutations from two devices don't collide. Page index validation prevents corruption from out-of-sync mutations.
+- NOTE: You must create a Firestore composite index in the Firebase Console: Collection `pdfs/{fileHash}/mutations`, Field `seqNum` Ascending.
+- Failed Attempts: First attempt at multi-block replace failed due to SEARCH mismatch; split into smaller scoped edits.
+
+## 2026-05-08
+- Task: Fix mutation sync echo problem + add anti-echo + raw debug log.
+- What changed:
+    - Added `_deviceSessionId` to `SyncService` — a unique per-instance ID.
+    - Added `senderId` field to `broadcastMutation` writes to Firestore.
+    - Added anti-echo check in `listenToMutations`: if `senderId == _deviceSessionId`, skip execution.
+    - Added `📨 [RECEIVER RAW]` debug log to see every raw Firestore document change.
+    - Renamed receiver log from `[MutationSync] Received` to `🔥 [SYNC RECEIVER] New mutation detected`.
+- Bug fixed: Same-device echo mutations no longer execute locally (was causing double page deletions).
+- Failed Attempts: None.
+
+## 2026-05-08
+- Task: Fix page mutations not persisting after app restart (txn vs writeTxn bug).
+- What changed:
+    - Fixed `deletePage` and `addPage` in `app_state.dart` to use `writeTxn` instead of `txn` for persisting workingPath to Isar.
+    - Isar's `txn()` is read-only — writes inside it were silently ignored, causing the modified PDF to revert to originalPath on restart.
+    - Refactored to: use `txn()` only for the read, then `writeTxn()` for the write.
+    - Added diagnostic debug logs for both methods.
+- Bug fixed: Deleting or adding pages now survives app restart because `workingPath` and `totalPages` are actually persisted to Isar.
+- Failed Attempts: None.
+
 ## 2026-05-06
 - Task: PDF Mutation Sync, Annotation Shifting Fixes, and Performance Optimization.
 - What changed:
+    - Fixed PDF Mutation Sync by replacing the clock-skew prone timestamp filter with a robust `isFirstLoad` bypass and `limit(1)` query.
     - Fixed Multi-Device Page Sync by switching to global `fileHash` targeting instead of local Isar IDs.
     - Implemented robust timestamp filtering (`isGreaterThan: now`) in the mutation listener to prevent race conditions.
     - Forced `pdfrx` viewer rebuilds using a `ValueKey` based on the file path and last modified timestamp.
@@ -155,6 +193,16 @@
 - What changed: Reworked `_buildAppCard` in `mini_apps_menu.dart` to use fixed-height icon and text regions, centered icon placement, and glassmorphism-style border/shadow accents.
 - Bug fixed: The Matrix Calculator card no longer pushes its icon upward when its title wraps to two lines.
 - Failed Attempts: The first pass introduced a nested `InkWell`; it was removed immediately to keep the card interaction clean.
+
+## 2026-05-08
+- Task: Stabilize PDF mutation sync delivery between peers.
+- What changed:
+  - Replaced mutation broadcasts with client-side `seqNum` values while keeping `serverTimestamp` only as an audit field.
+  - Reworked `listenToMutations()` to process `seqNum` in ascending order, skip replayed mutations, and delegate page changes back through `AppProvider`.
+  - Added listener hash tracking in `AppProvider` so `setActivePdf()` only restarts the mutation subscription when the file hash changes.
+  - Reset mutation tracking state on `SyncService.dispose()` so rejoining a session starts cleanly.
+- Bug fixed: Pending `serverTimestamp` nulls no longer block first delivery, concurrent mutations are not collapsed by a `limit(1)` snapshot, and the receiver now uses the provider state machine instead of mutating files inline.
+- Failed Attempts: The original listener path depended on `timestamp`-based filtering and direct file edits inside `SyncService`, which proved too fragile under pending writes and re-subscription churn.
 
 ## 2026-05-05
 - Task: Prevent toolbar overflow in split-screen and narrow windows.

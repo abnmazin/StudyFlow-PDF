@@ -1691,8 +1691,8 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
         controller: controller,
         params: PdfViewerParams(
           maxImageBytesCachedOnMemory: 100 * 1024 * 1024,
-          maxScale: 4.0,
-          minScale: 0.5,
+          maxScale: 8.0,
+          minScale: 0.1,
           scrollByMouseWheel: _isPointerOverAiChat ? 0.0 : 0.8,
           pageOverlaysBuilder: (context, pageRect, page) {
             return [

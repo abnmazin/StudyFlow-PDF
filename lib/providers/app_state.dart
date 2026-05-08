@@ -18,10 +18,12 @@ import 'package:path/path.dart' as p;
 import '../models/models.dart';
 import '../models/app_user.dart';
 import '../models/isar_models.dart' hide PdfDocument;
+import 'package:isar/isar.dart';
 import '../models/structure.dart';
 import '../services/file_manager_service.dart';
 import '../services/file_hash_service.dart';
 import '../services/sync_service.dart';
+import '../services/pdf_mutation_service.dart';
 import '../services/hardware_service.dart';
 import '../screens/auth/login_screen.dart';
 
@@ -70,11 +72,12 @@ extension ActionTypes on AppProvider {
 }
 
 class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
-  final SyncService _syncService = SyncService();
+  final SyncService _syncService;
   final FileManagerService _fileManager = FileManagerService();
   final HardwareService _hardwareService = HardwareService();
 
-  AppProvider() {
+  AppProvider({SyncService? syncService})
+    : _syncService = syncService ?? SyncService() {
     _initConnectivity();
     _initialize();
     WidgetsBinding.instance.addObserver(this);
@@ -123,6 +126,17 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
 
     super.dispose();
+  }
+
+  // ─── SYNC MUTATION BRIDGE ──────────────────────────────────────────────────
+  // Routes structural mutation broadcasts through AppProvider so that UI
+  // widgets in Overlays/new Routes don't need to find SyncService in context.
+  Future<void> broadcastMutation(
+    String fileHash,
+    String action,
+    int pageIndex,
+  ) async {
+    await _syncService.broadcastMutation(fileHash, action, pageIndex);
   }
 
   // ─── STATE FIELDS ──────────────────────────────────────────────────────────
@@ -210,6 +224,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   bool _isSyncing = false;
   bool get isSyncing => _isSyncing;
   bool _notifyScheduled = false;
+  String? _lastMutationListenerHash;
   bool _isJoiningSession = false;
   bool get isJoiningSession => _isJoiningSession;
   Timer? _syncDebounce; // Debouncer for background sync
@@ -847,6 +862,15 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       _stopKickListener();
       if (code != null && _currentUser != null) {
         _startKickListener(code);
+      }
+
+      // Start mutation listener when session is set AND a PDF is already open
+      if (code != null && pdf.fileHash != null) {
+        if (_lastMutationListenerHash != pdf.fileHash) {
+          _lastMutationListenerHash = pdf.fileHash;
+          debugPrint('🎧 [SESSION] Starting mutation listener after session code set');
+          _syncService.listenToMutations(pdf.fileHash!, pdf.id, this);
+        }
       }
 
       _saveState();
@@ -1979,9 +2003,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         _secondaryPdfId = cls.lastActivePdfId;
         if (_secondaryPdfId == null ||
             !cls.pdfs.any((p) => p.id == _secondaryPdfId)) {
-          _secondaryPdfId = _fallbackSecondaryPdfId(
-            primaryPdfId: _activePdfId,
-          );
+          _secondaryPdfId = _fallbackSecondaryPdfId(primaryPdfId: _activePdfId);
         }
       }
     } else if (cls.id == id && cls.lastActivePdfId != null) {
@@ -2002,6 +2024,11 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void setActivePdf(String id) {
+    // Reset listener hash when switching to a different PDF
+    // so the listener restarts properly for the new file
+    if (_activePdfId != id) {
+      _lastMutationListenerHash = null;
+    }
     _activePdfId = id;
     _isMobileOpen = false;
 
@@ -2031,7 +2058,11 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     // 🚀 NEW: Wire up the structural mutation listener (Add/Delete Page sync)
     final pdfItem = activePdf;
     if (pdfItem != null && pdfItem.fileHash != null) {
-      _syncService.listenToMutations(pdfItem.fileHash!, id, this);
+      if (_lastMutationListenerHash != pdfItem.fileHash) {
+        _lastMutationListenerHash = pdfItem.fileHash;
+        debugPrint('🎧 [APP_STATE] Starting mutation listener for hash: ${pdfItem.fileHash}');
+        _syncService.listenToMutations(pdfItem.fileHash!, id, this);
+      }
     }
 
     // AUTO-JOIN: If lecturer opens a PDF, look for an active session immediately. (Removed 2.5s delay)
@@ -2845,7 +2876,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
           pdfId: pdfId,
           itemId: updated.id,
           actionType: ActionTypes.ACTION_UPDATE_COMMENT,
-          notify: false, // Avoid double notify — _notify() is called explicitly below.
+          notify:
+              false, // Avoid double notify — _notify() is called explicitly below.
           oldState: oldComment.toJson(),
           newState: updated.toJson(),
         );
@@ -3415,59 +3447,24 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     final pdfItem = cls.pdfs.firstWhere((p) => p.id == pdfId);
     final file = File(pdfItem.path);
 
-    if (!await file.exists()) return;
+    if (!await file.exists() || pageIndex < 0) return;
 
-    if (pageIndex >= 0) {
+    try {
+      // 1. Mutate locally using the hardened rolling-file service
+      final newFile = await PdfMutationService.deletePageLocally(
+        file,
+        pageIndex,
+      );
+
+      // 2. Shift Annotations
       shiftAnnotationsOnPageDelete(pdfId, pageIndex);
 
-      final sourcePath = pdfItem.path;
-      final realPath = pdfItem.originalPath ?? pdfItem.path;
-      final tempPath =
-          "${realPath.replaceAll('.pdf', '')}_studyflowpdf_temp_${DateTime.now().microsecondsSinceEpoch}.pdf";
-
-      // ISOLATE OPERATION
-      final bool success = await Isolate.run(() async {
-        try {
-          final isolateSourceFile = File(sourcePath);
-          if (!await isolateSourceFile.exists()) return false;
-
-          final bytes = await isolateSourceFile.readAsBytes();
-          final document = PdfDocument(inputBytes: bytes);
-
-          if (pageIndex < document.pages.count && document.pages.count > 1) {
-            document.pages.removeAt(pageIndex);
-            final newBytes = await document.save();
-            await File(tempPath).writeAsBytes(newBytes, flush: true);
-
-            if (realPath != tempPath) {
-              await File(realPath).writeAsBytes(newBytes, flush: true);
-            }
-            document.dispose();
-            return true;
-          }
-          document.dispose();
-          return false;
-        } catch (e) {
-          return false;
-        }
-      });
-
-      if (!success) return;
-
-      if (pdfItem.path != realPath && pdfItem.path != tempPath) {
-        try {
-          await File(pdfItem.path).delete();
-        } catch (_) {}
-      }
-
-      await Future.delayed(const Duration(milliseconds: 100));
-      final int newTimestamp = DateTime.now().millisecondsSinceEpoch;
-
+      // 3. Update paths and page count
+      final newPageCount = (pdfItem.pageCount ?? 1) - 1;
       final updatedPdf = pdfItem.copyWith(
-        path: tempPath,
-        originalPath: realPath,
-        lastModified: newTimestamp,
-        lastPage: pdfItem.lastPage,
+        path: newFile.path,
+        pageCount: newPageCount,
+        lastModified: DateTime.now().millisecondsSinceEpoch,
       );
 
       final pdfIndex = cls.pdfs.indexWhere((p) => p.id == pdfId);
@@ -3475,6 +3472,24 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         cls.pdfs[pdfIndex] = updatedPdf;
       }
       _notify();
+
+      // 4. Persist to Isar so the structural change survives restart
+      final fm = FileManagerService();
+      // CRITICAL: Must use writeTxn for writes — txn is read-only in Isar 3.x
+      final doc = await fm.isar.txn(() =>
+          fm.isar.pdfDocuments.filter().uuidEqualTo(pdfId).findFirst());
+      if (doc != null) {
+        doc.workingPath = newFile.path;
+        doc.totalPages = newPageCount;
+        await fm.isar.writeTxn(() async {
+          await fm.isar.pdfDocuments.put(doc);
+        });
+        debugPrint('✅ [deletePage] Persisted workingPath to Isar: ${newFile.path}');
+      } else {
+        debugPrint('⚠️ [deletePage] PdfDocument not found in Isar for id: $pdfId');
+      }
+    } catch (e) {
+      debugPrint('❌ [AppProvider] Error during deletePage: $e');
     }
   }
 
@@ -3486,71 +3501,48 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
       if (!await file.exists()) return;
 
-      final sourcePath = pdfItem.path;
-      final realPath = pdfItem.originalPath ?? pdfItem.path;
-      final tempPath =
-          "${realPath.replaceAll('.pdf', '')}_studyflowpdf_temp_${DateTime.now().microsecondsSinceEpoch}.pdf";
+      final targetIndex = insertAtIndex ?? pdfItem.pageCount ?? 0;
 
-      // ISOLATE OPERATION
-      final bool success = await Isolate.run(() async {
-        try {
-          final isolateSourceFile = File(sourcePath);
-          if (!await isolateSourceFile.exists()) return false;
+      // 1. Mutate locally using the hardened rolling-file service
+      final newFile = await PdfMutationService.insertPageLocally(
+        file,
+        targetIndex,
+      );
 
-          final bytes = await isolateSourceFile.readAsBytes();
-          final document = PdfDocument(inputBytes: bytes);
+      // 2. Shift Annotations
+      shiftAnnotationsOnPageInsert(pdfId, targetIndex);
 
-          if (insertAtIndex != null &&
-              insertAtIndex >= 0 &&
-              insertAtIndex <= document.pages.count) {
-            document.pages.insert(insertAtIndex);
-          } else {
-            document.pages.add();
-          }
-
-          final newBytes = await document.save();
-          await File(tempPath).writeAsBytes(newBytes, flush: true);
-
-          if (realPath != tempPath) {
-            await File(realPath).writeAsBytes(newBytes, flush: true);
-          }
-          document.dispose();
-          return true;
-        } catch (e) {
-          return false;
-        }
-      });
-
-      if (!success) return;
-
-      if (pdfItem.path != realPath && pdfItem.path != tempPath) {
-        try {
-          await File(pdfItem.path).delete();
-        } catch (_) {}
-      }
-
-      await Future.delayed(const Duration(milliseconds: 100));
-      final int newTimestamp = DateTime.now().millisecondsSinceEpoch;
-
+      // 3. Update paths and page count
+      final newPageCount = (pdfItem.pageCount ?? 0) + 1;
       final updatedPdf = pdfItem.copyWith(
-        path: tempPath,
-        originalPath: realPath,
-        lastModified: newTimestamp,
-        lastPage: insertAtIndex != null ? insertAtIndex + 1 : null,
+        path: newFile.path,
+        pageCount: newPageCount,
+        lastModified: DateTime.now().millisecondsSinceEpoch,
       );
 
       final pdfIndex = cls.pdfs.indexWhere((p) => p.id == pdfId);
       if (pdfIndex != -1) {
         cls.pdfs[pdfIndex] = updatedPdf;
       }
+      _notify();
 
-      if (insertAtIndex != null) {
-        shiftAnnotationsOnPageInsert(pdfId, insertAtIndex);
+      // 4. Persist to Isar so the structural change survives restart
+      final fm = FileManagerService();
+      // CRITICAL: Must use writeTxn for writes — txn is read-only in Isar 3.x
+      final doc = await fm.isar.txn(() =>
+          fm.isar.pdfDocuments.filter().uuidEqualTo(pdfId).findFirst());
+      if (doc != null) {
+        doc.workingPath = newFile.path;
+        doc.totalPages = newPageCount;
+        await fm.isar.writeTxn(() async {
+          await fm.isar.pdfDocuments.put(doc);
+        });
+        debugPrint('✅ [addPage] Persisted workingPath to Isar: ${newFile.path}');
       } else {
-        _notify();
+        debugPrint('⚠️ [addPage] PdfDocument not found in Isar for id: $pdfId');
       }
     } catch (e) {
-      debugPrint("Error adding page: $e");
+      debugPrint('❌ [AppProvider] Error during addPage: $e');
     }
   }
 
@@ -3562,15 +3554,17 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
     for (int i = 0; i < pdf.comments.length; i++) {
       if (pdf.comments[i].page >= targetPage) {
-        pdf.comments[i] =
-            pdf.comments[i].copyWith(page: pdf.comments[i].page + 1);
+        pdf.comments[i] = pdf.comments[i].copyWith(
+          page: pdf.comments[i].page + 1,
+        );
         changed = true;
       }
     }
     for (int i = 0; i < pdf.highlights.length; i++) {
       if (pdf.highlights[i].page >= targetPage) {
-        pdf.highlights[i] =
-            pdf.highlights[i].copyWith(page: pdf.highlights[i].page + 1);
+        pdf.highlights[i] = pdf.highlights[i].copyWith(
+          page: pdf.highlights[i].page + 1,
+        );
         changed = true;
       }
     }
@@ -3750,6 +3744,34 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
           lastModified: DateTime.now().millisecondsSinceEpoch,
         );
         _notify();
+
+        // 🔥 CRITICAL: Persist the new path to Isar so it survives app restarts.
+        // Look up the PdfDocument by UUID and update its workingPath.
+        final fm = FileManagerService();
+        fm.isar
+            .txn(
+              () =>
+                  fm.isar.pdfDocuments.filter().uuidEqualTo(pdfId).findFirst(),
+            )
+            .then((doc) async {
+              if (doc == null) {
+                debugPrint(
+                  '⚠️ [AppProvider] updatePdfLocalPath: doc not found in Isar for $pdfId',
+                );
+                return;
+              }
+              doc.workingPath = newPath;
+              await fm.isar.writeTxn(() async {
+                await fm.isar.pdfDocuments.put(doc);
+              });
+              debugPrint(
+                '✅ [AppProvider] Persisted new path to Isar for $pdfId → $newPath',
+              );
+            })
+            .catchError((e) {
+              debugPrint('❌ [AppProvider] Failed to persist path to Isar: $e');
+            });
+
         break;
       }
     }
@@ -3762,14 +3784,19 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
     // 1. Formally delete items on the deleted page (sends them to Trash/Firestore)
     // We create copies of the lists to avoid ConcurrentModificationError while iterating
-    final commentsToDelete =
-        pdf.comments.where((c) => c.page == targetPage).toList();
+    final commentsToDelete = pdf.comments
+        .where((c) => c.page == targetPage)
+        .toList();
     for (var c in commentsToDelete) {
-      removeComment(pdfId, c); // Leverages formal deletion & sync reconciliation
+      removeComment(
+        pdfId,
+        c,
+      ); // Leverages formal deletion & sync reconciliation
     }
 
-    final highlightsToDelete =
-        pdf.highlights.where((h) => h.page == targetPage).toList();
+    final highlightsToDelete = pdf.highlights
+        .where((h) => h.page == targetPage)
+        .toList();
     for (var h in highlightsToDelete) {
       removeHighlight(pdfId, h);
     }
