@@ -571,8 +571,7 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                         textMuted,
                       ),
 
-                      if (app.currentUser?.role == 'lecturer' ||
-                          app.currentUser?.role == 'developer') ...[
+                      if (app.currentUser?.isLecturer ?? false) ...[
                         const SizedBox(height: 24),
                         _buildSectionHeader(
                           'أدوات المحاضر: إنشاء حزمة',
@@ -605,7 +604,7 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                         ),
                       ],
 
-                      if (app.currentUser?.role != 'lecturer') ...[
+                      if (!(app.currentUser?.isLecturer ?? false)) ...[
                         const SizedBox(height: 24),
                         _buildSectionHeader(
                           'أدوات الطالب',
@@ -623,7 +622,7 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                         ),
                       ],
 
-                      if (app.currentUser?.role == 'lecturer') ...[
+                      if (app.currentUser?.role == 'lecturer' && !app.currentUser!.isAdmin) ...[
                         const SizedBox(height: 24),
                         _buildSectionHeader(
                           'الانضمام إلى حزمة',
@@ -641,7 +640,7 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                         ),
                       ],
 
-                      if (app.currentUser?.role == 'developer') ...[
+                      if (app.currentUser?.isAdmin ?? false) ...[
                         const SizedBox(height: 24),
                         _buildSectionHeader(
                           'خيارات المطور المتقدمة',

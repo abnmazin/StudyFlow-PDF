@@ -585,8 +585,7 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
     final ownerUsername = _norm(_sessionOwnerName);
     final canManageSession =
       app.currentUser != null &&
-      (app.currentUser!.role == 'lecturer' ||
-        app.currentUser!.role == 'developer') &&
+      (app.currentUser!.isLecturer) &&
       ownerUsername.isNotEmpty &&
       currentUsername == ownerUsername;
 

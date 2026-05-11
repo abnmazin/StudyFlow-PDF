@@ -27,7 +27,11 @@ import '../models/isar_models.dart'; // NEW: for PdfDocument
 import '../services/file_manager_service.dart'; // NEW: for getRecentDocuments
 import 'dialogs/merge_pdf_dialog.dart'; // NEW
 import 'dialogs/images_to_pdf_dialog.dart'; // NEW
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/sync_service.dart';
+import '../services/university_service.dart';
+import 'university_hub.dart';
+import 'university_cloud_library_w.dart';
 import '../utils/responsive_utils.dart';
 
 part 'pdf_viewer_widget_dashboard.dart';
@@ -1751,7 +1755,9 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
           onPageChanged: (page) {
             final currentPage = page ?? _lastReportedPage;
 
-            _lastReportedPage = currentPage;
+            if (showOverlays) {
+              _lastReportedPage = currentPage;
+            }
 
             if (_scrollDebounce?.isActive ?? false) {
               _scrollDebounce!.cancel();
@@ -1766,7 +1772,9 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
               }
             });
 
-            _schedulePostScrollMaintenance();
+            if (showOverlays) {
+              _schedulePostScrollMaintenance();
+            }
           },
         ),
         initialPageNumber: pdf.lastPage ?? 1,

@@ -708,6 +708,8 @@ class _SidebarState extends State<Sidebar> {
     String classId,
   ) {
     final isActive = app.activePdfId == pdf.id;
+    final isSecondary = app.isSplitMode && app.secondaryPdfId == pdf.id;
+
 
     final child = InkWell(
       onTap: () {
@@ -722,8 +724,13 @@ class _SidebarState extends State<Sidebar> {
         margin: const EdgeInsets.symmetric(vertical: 2),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(
-          color: isActive ? const Color(0x4D1E3A8A) : Colors.transparent,
+          color: isActive
+              ? const Color(0x4D1E3A8A)
+              : (isSecondary ? const Color(0x2694A3B8) : Colors.transparent),
           borderRadius: BorderRadius.circular(4),
+          border: isSecondary
+              ? Border.all(color: const Color(0x3394A3B8), width: 1)
+              : null,
         ),
         child: Row(
           children: [
@@ -732,7 +739,7 @@ class _SidebarState extends State<Sidebar> {
               size: 14,
               color: isActive
                   ? const Color(0xFFBFDBFE)
-                  : const Color(0xFF94A3B8),
+                  : (isSecondary ? const Color(0xFFCBD5E1) : const Color(0xFF94A3B8)),
             ),
             const SizedBox(width: 8),
             Expanded(
@@ -742,7 +749,7 @@ class _SidebarState extends State<Sidebar> {
                   fontSize: 14,
                   color: isActive
                       ? const Color(0xFFBFDBFE)
-                      : const Color(0xFF94A3B8),
+                      : (isSecondary ? const Color(0xFFCBD5E1) : const Color(0xFF94A3B8)),
                 ),
                 overflow: TextOverflow.ellipsis,
               ),

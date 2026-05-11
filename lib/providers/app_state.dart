@@ -658,6 +658,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   List<ClassItem> get classes => _classes;
   String? get activeClassId => _activeClassId;
   String? get activePdfId => _activePdfId;
+  String? get secondaryPdfId => _secondaryPdfId;
   bool get isMobileOpen => _isMobileOpen;
   bool get showDevInfo => _showDevInfo;
   bool get isSidebarCollapsed => _isSidebarCollapsed;
@@ -685,8 +686,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   bool get sessionLocked => _sessionLocked;
   bool get isLockedDrawingForCurrentUser {
-    final role = _currentUser?.role;
-    return sessionLocked && (role == 'student' || role == 'member');
+    return sessionLocked && (_currentUser?.isStudent ?? true);
   }
 
   bool get sessionJoinLocked => _sessionJoinLocked;
@@ -812,7 +812,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     _startUserMonitor(user.uid);
     _saveState(); // PERSISTENT LOGIN: Save user on set
 
-    if (user.role == 'lecturer') {
+    if (user.isLecturer) {
       _preloadLecturerSessions(user.username);
     }
 
@@ -2068,7 +2068,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     // AUTO-JOIN: If lecturer opens a PDF, look for an active session immediately. (Removed 2.5s delay)
     final hash = activePdf?.fileHash;
     final username = _currentUser?.username;
-    if (_currentUser?.role == 'lecturer' && hash != null && username != null) {
+    if (_currentUser?.isLecturer == true && hash != null && username != null) {
       _syncService.findExistingSession(username, hash).then((existingCode) {
         if (existingCode != null) {
           setSessionCode(existingCode);

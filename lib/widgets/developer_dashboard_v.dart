@@ -60,7 +60,7 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
       setState(() => _currentAppVersion = packageInfo.version);
 
       // Load remote versions for developer editing
-      if (context.read<AppProvider>().currentUser?.role == 'developer') {
+      if (context.read<AppProvider>().currentUser?.isAdmin ?? false) {
         final doc = await FirebaseFirestore.instance
             .collection('app_config')
             .doc('version')
@@ -498,9 +498,9 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
     final textMuted = isDark ? const Color(0xFF94A3B8) : scheme.onSurfaceVariant;
     final surfaceAlt = isDark ? const Color(0xFF1E293B) : scheme.surfaceContainerHighest;
     final role = app.currentUser?.role ?? 'member';
-    final isDev = role == 'developer';
-    final isLecturer = role == 'lecturer';
-    final isStudent = !isDev && !isLecturer;
+    final isDev = app.currentUser?.isAdmin ?? false;
+    final isLecturer = app.currentUser?.isLecturer ?? false;
+    final isStudent = app.currentUser?.isStudent ?? true;
 
     return Container(
       width: 650,
@@ -626,8 +626,8 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
     bool isDark,
   ) {
     final role = app.currentUser?.role ?? 'member';
-    final isDev = role == 'developer';
-    final isLecturer = role == 'lecturer';
+    final isDev = app.currentUser?.isAdmin ?? false;
+    final isLecturer = app.currentUser?.isLecturer ?? false;
 
     switch (index) {
       case 0:
@@ -726,10 +726,10 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
 
     Color roleColor = Colors.blue;
     String roleLabel = 'طالب';
-    if (role == 'developer') {
+    if (app.currentUser?.isAdmin ?? false) {
       roleColor = Colors.amber;
-      roleLabel = 'مشرف (مطور)';
-    } else if (role == 'lecturer') {
+      roleLabel = 'مشرف (آدمن)';
+    } else if (app.currentUser?.role == 'lecturer') {
       roleColor = Colors.purple;
       roleLabel = 'محاضر';
     }
@@ -2076,10 +2076,10 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
             final role = data['role'] ?? 'member';
             final hwId = (data['hardwareId'] ?? "").toString();
 
-            Color roleColor = role == 'developer'
+            Color roleColor = (role == 'developer' || role == 'admin')
                 ? Colors.amber
                 : (role == 'lecturer' ? Colors.purple : Colors.blue);
-            IconData roleIcon = role == 'developer'
+            IconData roleIcon = (role == 'developer' || role == 'admin')
                 ? LucideIcons.shieldCheck
                 : (role == 'lecturer'
                       ? LucideIcons.graduationCap
@@ -2535,8 +2535,10 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
   }) {
     final nameCtrl = TextEditingController(text: currentName);
     final dispCtrl = TextEditingController(text: currentDisplayName);
-    String role = currentRole ?? 'member';
+    String role = currentRole ?? 'student';
     final isEdit = id != null;
+    // Get the current admin's universityId to auto-assign
+    final adminUniversityId = context.read<AppProvider>().currentUser?.universityId;
 
     showDialog(
       context: context,
@@ -2571,22 +2573,41 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
             DropdownButtonFormField<String>(
               value: role,
               decoration: InputDecoration(
-                labelText: 'الصلاحية',
+                labelText: 'الصلاحية (Role)',
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
                 isDense: true,
               ),
               items: const [
-                DropdownMenuItem(value: 'member', child: Text('طالب')),
-                DropdownMenuItem(value: 'lecturer', child: Text('محاضر')),
-                DropdownMenuItem(
-                  value: 'developer',
-                  child: Text('مشرف (مطور)'),
-                ),
+                DropdownMenuItem(value: 'student', child: Text('طالب (Student)')),
+                DropdownMenuItem(value: 'admin', child: Text('مشرف (Admin)')),
               ],
               onChanged: (v) => role = v!,
             ),
+            if (adminUniversityId != null && adminUniversityId.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.indigo.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.indigo.withOpacity(0.2)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(LucideIcons.landmark, size: 16, color: Colors.indigo),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'University: $adminUniversityId',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
         actions: [
@@ -2601,20 +2622,29 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
               if (uname.isEmpty) return;
 
               if (isEdit) {
-                debugPrint('👤 Updating displayName for user: $id');
-                await _firestore.collection('users').doc(id).update({
+                debugPrint('👤 Updating user: $id');
+                final updates = <String, dynamic>{
                   'username': uname,
                   'displayName': dname,
                   'role': role,
-                });
+                };
+                if (adminUniversityId != null && adminUniversityId.isNotEmpty) {
+                  updates['universityId'] = adminUniversityId;
+                }
+                await _firestore.collection('users').doc(id).update(updates);
               } else {
-                await _firestore.collection('users').add({
+                final newUser = <String, dynamic>{
                   'username': uname,
                   'displayName': dname,
                   'role': role,
                   'hardwareId': '',
                   'createdAt': FieldValue.serverTimestamp(),
-                });
+                };
+                // Auto-assign universityId from admin's university
+                if (adminUniversityId != null && adminUniversityId.isNotEmpty) {
+                  newUser['universityId'] = adminUniversityId;
+                }
+                await _firestore.collection('users').add(newUser);
               }
               if (context.mounted) Navigator.pop(ctx);
             },

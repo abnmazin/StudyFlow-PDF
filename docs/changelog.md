@@ -1,4 +1,42 @@
 # Changelog
+ 
+## 2026-05-11
+- Task: Refined Split-Screen Context Awareness and Navigation.
+- What changed:
+    - **PDF Viewer Isolation** (`lib/widgets/pdf_viewer_widget_w.dart`): Fixed state leakage in `onPageChanged` where scrolling the secondary PDF would overwrite global variables (`_lastReportedPage`) and trigger primary-pane maintenance routines.
+    - **Sidebar UX Polish** (`lib/widgets/sidebar_w.dart`): Added a subtle secondary highlight (muted gray) for the file currently open in the secondary pane. Added `secondaryPdfId` getter to `AppProvider` to fix the missing property error.
+    - **Tool Binding Validation**: Verified and reinforced that AI Chat, Bookmarks, and Page Counter are strictly bound to the primary PDF controller and ID, preventing tool confusion in split-screen mode.
+- Bug fixed: Secondary PDF interactions no longer pollute the primary document's navigation state or tool context.
+- Task: Unified University Roles and Standardized Permission Checks.
+- What changed:
+    - **Unified Role Logic** (`lib/models/app_user.dart`): Added high-level getters (`isAdmin`, `isLecturer`, `isDeveloper`) that treat the new `admin` role as a superuser.
+    - **Gated Access Unification**: Updated `GlobalSettingsModal`, `DeveloperDashboardView`, `AppProvider`, and `Session Cards` to use the new permission getters instead of hardcoded role strings.
+    - **User Management Labels**: Updated `DeveloperDashboardView` to display "مشرف (آدمن)" for administrative accounts.
+    - **Infrastructure Fix** (`lib/services/university_service.dart`): Refactored `downloadPdfToLocal` to save PDFs to a permanent subdirectory (`university_pdfs`) instead of temporary storage, ensuring files remain accessible after app restart.
+    - **Dashboard Layout Optimization** (`lib/widgets/pdf_viewer_widget_dashboard.dart`): Rearranged the landing page for university users to a side-by-side layout on wide screens. **Quick Actions** are now positioned below the Library, and the **"Add Task" button** (plus icon) has been restored.
+    - **Bug Fix (Navigation/UI)**: Resolved an issue where the sidebar toggle button in the toolbar was using a hardcoded threshold (768px) inconsistent with the global breakpoint (600px). This caused the button to appear as a "visual-only" hamburger menu on medium screens without actually triggering the sidebar.
+    - **Sidebar Enhancements**: Added a `panelLeftClose` button to the desktop toolbar when the sidebar is open, allowing users to collapse it directly from the viewer interface.
+    - **UI Modernization** (`lib/widgets/university_cloud_library_w.dart`): Completely refactored the **Folder Detail View** into a **Floating Modal Panel** (650x600). Implemented Backdrop Blur, entry animations (scale/fade), and a centered fixed-size glassmorphism container.
+- Bug fixed: Users with the `admin` role (assigned for university management) can now access Developer Settings and Dashboard without manually changing their role to `developer`. **Add Task** button restored.
+
+
+## 2026-05-10
+- Task: Optimized Mutation Sync query to remove composite index requirement.
+- What changed:
+    - REFACTORED: `SyncService.listenToMutations` to use server-side `.where('seqNum', isGreaterThan: ...)` filter.
+    - REFACTORED: Removed explicit `descending: false` from `orderBy` to simplify query plan.
+    - DOCUMENTED: Updated `architecture_map.md` to reflect that only a single-field index is now required for `mutations`.
+- Bug fixed: Mutation sync now works without requiring a manual composite index in most Firestore environments.
+- Failed Attempts: None.
+
+## 2026-05-10
+- Task: Diagnosed "Failed to load university data" (Firestore Index Error).
+- What changed:
+    - IDENTIFIED: `UniversityService.streamFolders()` and `streamFilesInFolder()` were failing due to missing composite indices.
+    - DOCUMENTED: Added "Required Firestore Composite Indices" section to `architecture_map.md`.
+    - INSTRUCTED: User needs to create indices for `university_folders` and `university_files` via the Firebase Console links.
+- Bug fixed: once indices are deployed in Firebase, the University Library will load correctly.
+- Failed Attempts: None.
 
 ## 2026-05-08
 - Task: Diagnosed bidirectional mutation sync — insert_page not received.
@@ -10,7 +48,8 @@
     - ROOT CAUSE: Missing Firestore composite index on `pdfs/{fileHash}/mutations` for `seqNum`.
     - SOLUTION: Manually create Firestore composite index: Collection `mutations`, Field `seqNum` Ascending, `__name__` Ascending, scope `Collection`.
 - Bug fixed: Receiver now gets Firestore documents after index creation. insert_page mutations will be delivered and applied.
-- Failed Attempts: None — this was purely a Firebase infrastructure issue, no code bug.
+- OPTIMIZATION: Removed explicit `orderBy('seqNum', descending: false)` and added server-side `.where('seqNum', isGreaterThan: ...)` to avoid composite index requirements while maintaining correct processing order.
+- Failed Attempts: None.
 
 ## 2026-05-08
 - Task: Full bidirectional mutation sync hardening (both lecturer + student add/delete pages sync).
@@ -205,6 +244,105 @@
 - What changed: Reworked `_buildAppCard` in `mini_apps_menu.dart` to use fixed-height icon and text regions, centered icon placement, and glassmorphism-style border/shadow accents.
 - Bug fixed: The Matrix Calculator card no longer pushes its icon upward when its title wraps to two lines.
 - Failed Attempts: The first pass introduced a nested `InkWell`; it was removed immediately to keep the card interaction clean.
+
+## 2026-05-09
+- Task: Fixed Dashboard Selector rebuild logic — UniversityCloudLibraryWidget now renders instantly after migration
+- What changed:
+    - **`_buildDashboard` Selector** (`lib/widgets/pdf_viewer_widget_dashboard.dart`): Added `prev.user?.role != next.user?.role` and `prev.user?.universityId != next.user?.universityId` to `shouldRebuild`. The old code only checked `prev.user?.uid != next.user?.uid` — since `uid` doesn't change after `setCurrentUser` (only `role`/`universityId` change), the Selector never fired a rebuild, leaving the dashboard frozen on the legacy view.
+    - **Debug print** added to `_buildMainContentArea`: Logs `hasUniversity`, `universityId`, and `role` on every build — visible in the console.
+- Bug fixed: Clicking "Setup University" now instantaneously transitions from legacy local folders to `UniversityCloudLibraryWidget`.
+- Failed Attempts: None.
+- `dart analyze` passes with zero warnings and zero errors.
+
+## 2026-05-09
+- Task: Fixed Admin Migration optimistic local state update
+- What changed:
+    - **`_migrateAdminAccount`** (`lib/widgets/pdf_viewer_widget_dashboard.dart`): After Firestore write succeeds, now creates an optimistic `copyWith()` of `AppUser` with `role: 'admin'` and `universityId: 'southern_technical_university'`, then calls `app.setCurrentUser(updatedUser)` + `UniversityService().init(updatedUser)`. This triggers an immediate `Selector` rebuild, flipping `hasUniversity` to `true` and rendering `UniversityCloudLibraryWidget` without requiring a restart.
+    - **`AppUser.copyWith`** (`lib/models/app_user.dart`): Added `copyWith()` method to create modified copies while preserving all other fields.
+- Bug fixed: Clicking "Setup University" now instantly transitions the dashboard to the Cloud Library UI instead of requiring a manual app restart.
+- Failed Attempts: None.
+- `dart analyze` passes with zero warnings and zero errors.
+
+## 2026-05-09
+- Task: Cloud-First University Library — Dashboard Overhaul, Download Pipeline, Cloud Library UI
+- What changed:
+    - **New Widget** `lib/widgets/university_cloud_library_w.dart`: Full `UniversityCloudLibraryWidget` that replaces the legacy local folder grid for university users. Displays university name header, streaming folder grid, admin create/upload/delete controls, student download pipeline. `_FolderDetailScreen` (private) shows files inside a folder with download buttons and progress indicators.
+    - **Download Pipeline** (`lib/services/university_service.dart`): Added `downloadPdfToLocal(UniversityFile)` — lightweight method that downloads Supabase bytes to `getApplicationDocumentsDirectory()` without inserting into Isar. The UI layer calls `FileManagerService.importAndOpenPdf()` to finalize import into Isar + open in viewer.
+    - **Dashboard Overhaul** (`lib/widgets/pdf_viewer_widget_dashboard.dart`): When `hasUniversity` is true, `UniversityCloudLibraryWidget` replaces the legacy personal folder grid (`_buildRealFolderGrid`) AND quick actions (`_buildQuickActionChips`). Announcements and To-Do list sections remain visible for all users.
+    - **Import**: Added `import 'university_cloud_library_w.dart'` to `pdf_viewer_widget_w.dart`.
+- Architecture decisions:
+    - Cloud library is the PRIMARY view for university users — no legacy "مجلداتي" or "إجراءات سريعة" sections shown.
+    - Admin/developer sees folder creation + upload controls on folder cards + upload button in folder detail.
+    - Student sees download icon on each file in folder detail; download triggers the pipeline: Supabase SDK → local file → `importAndOpenPdf` → `setActivePdf`.
+    - Download button shows a spinner during download and is disabled for duplicate taps.
+- Failed Attempts: None.
+- `dart analyze` passes with zero warnings and zero errors on all modified/new files.
+
+## 2026-05-09
+- Task: UX Fixes, Migration Script, Reading Progress Wiring, User Management Update
+- What changed:
+    - **Null Safety Fix** (`lib/services/university_service.dart`, `lib/widgets/university_hub.dart`): Added `isReady` getter to gracefully exit when `universityId` is missing instead of throwing. UniversityHub now silently renders nothing (not even a loading spinner) when user has no universityId — no rebuild loops.
+    - **Reading Progress Wiring Instructions** (`lib/widgets/pdf_viewer_widget_w.dart`): Added import for `UniversityService`. The `FolderViewScreen` already calls `_restoreReadingProgress()` automatically on file open — core flow is wired end-to-end.
+    - **Admin Migration Button** (`lib/widgets/pdf_viewer_widget_dashboard.dart`): Added `_migrateAdminAccount()` function that creates a `universities/southern_technical_university` document and updates the current user's Firestore profile with `universityId: 'southern_technical_university'` and `role: 'admin'`. A "Setup University" button appears in the dashboard when the user is a `developer` role without a `universityId`.
+    - **User Management Update** (`lib/widgets/developer_dashboard_v.dart`): Updated `_modernUserDialog` — role dropdown now has `student`/`admin` options. New users created by an admin automatically inherit the admin's `universityId`. A visual badge shows the assigned university.
+- Failed Attempts: The `!` operator on `user.universityId!` caused a compile error when accessed unconditionally on a nullable — fixed with `user.universityId?.isNotEmpty == true`.
+- `dart analyze` passes with zero warnings and zero errors on all modified files.
+
+## 2026-05-08
+- Task: Phase 3/4 — UI Implementation: UniversityHub, FolderViewScreen, UploadPdfDialog, Dashboard Integration
+- What changed:
+    - **UniversityHub** (`lib/widgets/university_hub.dart`): Stateful widget that initializes UniversityService, streams folders in real-time, displays them in a grid. Role-adaptive: admin sees "New Folder" button + delete controls on cards; student sees read-only grid. Replaces legacy "مجلداتي" section when user has a `universityId`.
+    - **FolderViewScreen** (`lib/widgets/university_folder_view.dart`): File listing inside a university folder. Streams `UniversityFile`s in real-time. Role-adaptive: admin sees "Upload PDF" app bar button + swipe-to-delete on file tiles; student sees read-only file list with "Open" button. Download pipeline: checks local Isar cache → downloads from Supabase → opens via AppProvider. Restores reading progress from Firestore on open.
+    - **UploadPdfDialog** (`lib/widgets/university_upload_dialog.dart`): Admin dialog using `file_picker` to select PDFs. Shows progress indicator during upload pipeline. Calls `UniversityService.uploadPdf()` for the 4-step upload process.
+    - **Dashboard Integration** (`lib/widgets/pdf_viewer_widget_dashboard.dart`): `_buildMainContentArea` now checks `app.currentUser.universityId` — if present and non-empty, renders `UniversityHub` instead of the legacy personal folder grid (`_buildRealFolderGrid`). Falls back to old behavior for users without a university. Import added to `pdf_viewer_widget_w.dart`.
+- Architecture design decisions:
+    - UniversityHub is injected at the same position as the old "مجلداتي" section — no layout restructuring.
+    - Navigation to FolderViewScreen uses standard `Navigator.push` (not a route change) to keep the dashboard as the root.
+    - File download uses hash-based local cache check first (no redundant downloads).
+    - Reading progress is restored silently when opening a file from a university folder (snackbar notification shown).
+    - All three new widgets match the existing glassmorphism design language (dark/light mode colors, rounded borders, indigo accents).
+- Failed Attempts: First folder_view had `findAll()` on Isar instead of `findFirst()` — fixed. Had trailing imports at bottom of file — moved to top. Had `cloudUpload` icon which doesn't exist in lucide_icons — replaced with `upload`. Had unnecessary `localPath` variable — refactored to null-check pattern.
+- `dart analyze` passes with zero errors and zero warnings on all new/modified files.
+
+## 2026-05-08
+- Task: Phase 2 — UniversityService: Backend Services for Folder/File CRUD, Upload/Download Pipeline, Reading Progress Sync
+- What changed:
+    - **UniversityService** (`lib/services/university_service.dart`): Full singleton service implementing:
+        - Folder CRUD: `getFolders()`, `streamFolders()`, `createFolder()`, `updateFolder()`, `deleteFolder()` — all scoped to the user's `universityId`, write operations gated by `_assertAdmin()`.
+        - File listing: `getFilesInFolder()`, `streamFilesInFolder()` — Firestore queries filtered by `universityId + folderId` with real-time streaming.
+        - Upload pipeline (`uploadPdf`): 4-step process — (1) SHA-256 hash computation via existing `FileHashService`, (2) dedup check against Firestore `university_files` by `fileHash`, (3) binary upload to Supabase `university-pdfs` bucket, (4) Firestore `UniversityFile` document creation with page count extraction via `pdfrx`.
+        - Download pipeline (`downloadPdf`): 3-step process — (1) local Isar cache lookup by `fileHash` (reuses existing `PdfDocument` model), (2) Supabase download to `StudyFlowPdf/UniversityCache/sha256_<hash>.pdf`, (3) Isar `PdfDocument` record insertion.
+        - Cache check helpers: `isFileCachedLocally()`, `getCachedPath()` — look up by `fileHash`.
+        - Reading progress sync: `saveReadingProgress()`, `getReadingProgress()`, `streamReadingProgress()`, `deleteReadingProgress()` — Firestore `university_file_progress/{fileHash}_{userId}` documents with `lastPage`, `scrollTop`, `lastReadAt`, `deviceId`.
+        - Utility: `deleteFile()` (soft-delete), `_formatBytes()`.
+    - **architecture_map.md**: Added UniversityService to State and Services section with full description.
+- Architecture design decisions:
+    - Singleton pattern to match existing `FileManagerService` pattern.
+    - `init(AppUser user)` must be called before any operations — enforces university scoping at the service level.
+    - Role checks (`_assertAdmin()`) happen at the method level, not service level — same service handles both admin and student operations.
+    - Reading progress doc path `{fileHash}_{userId}` ensures per-user isolation per Firestore RLS.
+    - Uses existing `PdfDocument` Isar model for local cache — no new Isar schema needed.
+- Failed Attempts: First file had `scheduler` unused import + `null` comparison warnings on `originalPath` (non-nullable String). Fixed by removing the import and simplifying the `??` coalesce chain to skip the unnecessary null check.
+- No `build_runner` needed (no new Isar models).
+- `dart analyze` passes with zero issues.
+
+## 2026-05-08
+- Task: Phase 1 — Multi-Tenant University Database & Security (Architecture Implementation)
+- What changed:
+    - **firestore.rules**: Complete rewrite with strict multi-tenant RLS for `users`, `universities`, `university_folders`, `university_files`, and `university_file_progress` collections. Helper functions for `userUniversityId()`, `userRole()`, `isAdminOfUniversity()`, `isStudentOfUniversity()`, `belongsToSameUniversity()`.
+    - **supabase_setup.sql**: Created `university-pdfs` private bucket (50 MB limit, PDF only). Added RLS policies for SELECT (university members), INSERT/DELETE/UPDATE (admins only), keyed on first path segment matching user's `universityId`. Helper functions `storage.get_user_university_id()` and `storage.get_user_role()`.
+    - **AppUser model** (`lib/models/app_user.dart`): Added `universityId` field (String?), refined `role` to explicitly support 'admin' | 'student'. Added convenience getters `isAdmin` and `isStudent`.
+    - **UniversityFolder model** (`lib/models/university_folder.dart`): New Firestore model with `id`, `universityId`, `name`, `createdBy`, `createdAt`, `isDeleted`, `sortOrder`. Full `fromFirestore`, `toJson`, `fromJson`, `copyWith`.
+    - **UniversityFile model** (`lib/models/university_file.dart`): New Firestore model with `id`, `universityId`, `folderId`, `name`, `fileHash` (SHA-256 — primary cross-device sync key), `storagePath`, `sizeBytes`, `uploadedBy`, `uploadedAt`, `totalPages`, `isDeleted`. Full serialization support.
+    - **models.dart**: Added exports for new models.
+    - **architecture_map.md**: Updated with new Firestore collections table, Storage bucket table, key models section, cross-device sync strategy, and multi-tenant notes.
+- Architecture design decisions:
+    - File identity strictly uses SHA-256 fileHash (no random local IDs) to prevent ID desync.
+    - Data isolation enforced at Firestore RLS + Supabase Storage RLS, both keyed on `universityId`.
+    - Admins create/upload; students read-only — enforced at both DB and Storage layers.
+    - New models are pure Dart/Firestore serialization (no Isar annotations), so no `build_runner` generation needed.
+    - Existing `ClassItem`/`ClassFolder` local Isar models remain for legacy personal folders; new university content flows through new models.
+- Failed Attempts: None.
 
 ## 2026-05-08
 - Task: Stabilize PDF mutation sync delivery between peers.

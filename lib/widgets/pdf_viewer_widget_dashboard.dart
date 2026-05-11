@@ -17,12 +17,14 @@ Widget _buildDashboard(BuildContext context) {
         prev.isDarkMode != next.isDarkMode ||
         prev.pdfCount != next.pdfCount ||
         prev.highlightCount != next.highlightCount ||
-        prev.user?.uid != next.user?.uid,
+        prev.user?.uid != next.user?.uid ||
+        prev.user?.role != next.user?.role ||
+        prev.user?.universityId != next.user?.universityId,
     builder: (context, data, _) => _DashboardWrapper(
       isDarkMode: data.isDarkMode,
       app: context.read<AppProvider>(),
-      isAdmin: data.user?.role == 'developer' || data.user?.role == 'lecturer',
-      isDeveloper: data.user?.role == 'developer',
+      isAdmin: data.user?.isLecturer ?? false,
+      isDeveloper: data.user?.isAdmin ?? false,
     ),
   );
 }
@@ -142,10 +144,9 @@ class _DashboardWrapperState extends State<_DashboardWrapper> {
                         _buildSectionHeader(
                           isDeveloper
                               ? 'لوحة تحكم المطور - نشر الإعلانات'
-                              : (app.currentUser?.role == 'lecturer'
+                              : (app.currentUser?.isLecturer ?? false
                                     ? 'نشر إشعار للطلاب'
-                                    : ((app.currentUser?.role == 'student' ||
-                                              app.currentUser?.role == 'member')
+                                    : (app.currentUser?.isStudent ?? true
                                           ? 'نشر إشعار للطلاب والمبرمج'
                                           : 'الكتب الأخيرة')),
                           isDarkMode,
@@ -153,9 +154,8 @@ class _DashboardWrapperState extends State<_DashboardWrapper> {
                         const SizedBox(height: 20),
 
                         if (isDeveloper ||
-                            app.currentUser?.role == 'lecturer' ||
-                            app.currentUser?.role == 'student' ||
-                            app.currentUser?.role == 'member')
+                            (app.currentUser?.isLecturer ?? false) ||
+                            (app.currentUser?.isStudent ?? true))
                           _buildAdminAnnouncementSender(
                             isDarkMode,
                             app.currentUser?.displayName ?? 'User',
@@ -182,6 +182,63 @@ class _DashboardWrapperState extends State<_DashboardWrapper> {
   }
 }
 
+/// Temporary migration function to set up admin's university account.
+Future<void> _migrateAdminAccount(BuildContext context) async {
+  final app = context.read<AppProvider>();
+  final user = app.currentUser;
+  if (user == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('❌ No user logged in'), backgroundColor: Colors.red),
+    );
+    return;
+  }
+
+  final firestore = FirebaseFirestore.instance;
+  try {
+    // 1. Create university document
+    await firestore.collection('universities').doc('southern_technical_university').set({
+      'name': 'Southern Technical University',
+      'code': 'STU',
+      'adminUids': [user.uid],
+      'createdAt': FieldValue.serverTimestamp(),
+      'isActive': true,
+    });
+
+    // 2. Update current user to be admin of this university
+    await firestore.collection('users').doc(user.uid).update({
+      'universityId': 'southern_technical_university',
+      'role': 'admin',
+    });
+
+    // ── Optimistic local state update ─────────────────────────────
+    if (!context.mounted) return;
+
+    final updatedUser = user.copyWith(
+      role: 'admin',
+      universityId: 'southern_technical_university',
+    );
+
+    app.setCurrentUser(updatedUser);
+    await UniversityService().init(updatedUser);
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✅ University created! Welcome to the Cloud Library Hub.'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 4),
+        ),
+      );
+    }
+  } catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('❌ Migration failed: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+}
+
 Widget _buildMainContentArea(
   BuildContext context,
   AppProvider app,
@@ -191,11 +248,112 @@ Widget _buildMainContentArea(
   bool isWide,
   bool isTablet,
 ) {
+  // Determine if user has a university → show UniversityHub or personal folders
+  final user = app.currentUser;
+  final hasUniversity = user != null && user.universityId?.isNotEmpty == true;
+  debugPrint(
+    '🚀 [DASHBOARD] hasUniversity: $hasUniversity | '
+    'universityId: ${user?.universityId} | role: ${user?.role}',
+  );
+
+  // For university users: return a simple shrinkWrap Column with the Cloud Library
+  // and the announcements/todo in a vertical flow — no Row/Expanded to avoid
+  // RenderFlex overflow inside SingleChildScrollView.
+  if (hasUniversity) {
+    if (isWide) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Right Side: University Library & Quick Actions ──────────
+          Expanded(
+            flex: 5,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                UniversityCloudLibraryWidget(
+                  isDarkMode: isDarkMode,
+                  user: user,
+                ),
+                const SizedBox(height: 24),
+                _buildSectionHeader('إجراءات سريعة', isDarkMode),
+                const SizedBox(height: 12),
+                _buildQuickActionChips(context, isDarkMode),
+              ],
+            ),
+          ),
+          const SizedBox(width: 48),
+          // ── Left Side: Announcements & To-Do ──────────────────
+          Expanded(
+            flex: 2,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildSectionHeader('إعلانات هامة', isDarkMode),
+                const SizedBox(height: 20),
+                _buildAnnouncementsSection(isDarkMode),
+                const SizedBox(height: 48),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _buildSectionHeader('مهام اليوم', isDarkMode),
+                    IconButton(
+                      onPressed: () => _showAddTaskDialog(context),
+                      icon: const Icon(LucideIcons.plusCircle, size: 18),
+                      color: Colors.indigo,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                _buildToDoListMock(isDarkMode),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Narrow layout (Tablet/Mobile)
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        UniversityCloudLibraryWidget(
+          isDarkMode: isDarkMode,
+          user: user,
+        ),
+        const SizedBox(height: 24),
+        _buildSectionHeader('إجراءات سريعة', isDarkMode),
+        const SizedBox(height: 12),
+        _buildQuickActionChips(context, isDarkMode),
+        const SizedBox(height: 48),
+        _buildSectionHeader('إعلانات هامة', isDarkMode),
+        const SizedBox(height: 20),
+        _buildAnnouncementsSection(isDarkMode),
+        const SizedBox(height: 32),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _buildSectionHeader('مهام اليوم', isDarkMode),
+            IconButton(
+              onPressed: () => _showAddTaskDialog(context),
+              icon: const Icon(LucideIcons.plusCircle, size: 18),
+              color: Colors.indigo,
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        _buildToDoListMock(isDarkMode),
+      ],
+    );
+  }
+
+  // Legacy layout for non-university users
   final content = [
     // Left/Primary Column Logic
     Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // ── Legacy Personal Folders ──────────────────────────────────
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -211,6 +369,26 @@ Widget _buildMainContentArea(
         const SizedBox(height: 16),
         _buildRealFolderGrid(isDarkMode),
         const SizedBox(height: 32),
+        // ── Setup University button (for legacy admins without universityId) ──
+        if (user != null && !hasUniversity && user.isAdmin)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => _migrateAdminAccount(context),
+                icon: const Icon(LucideIcons.graduationCap, size: 18),
+                label: const Text('Setup University (Admin Migration)'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.indigo,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+          ),
         _buildSectionHeader('إجراءات سريعة', isDarkMode),
         const SizedBox(height: 16),
         _buildQuickActionChips(context, isDarkMode),
@@ -307,8 +485,8 @@ class _AdminAnnouncementSenderState extends State<_AdminAnnouncementSender> {
   String _selectedAudience = 'all';
   bool _isSending = false;
 
-  bool get _isDeveloper => widget.userRole == 'developer';
-  bool get _isLecturer => widget.userRole == 'lecturer';
+  bool get _isDeveloper => widget.userRole == 'developer' || widget.userRole == 'admin';
+  bool get _isLecturer => widget.userRole == 'lecturer' || _isDeveloper;
 
   @override
   void initState() {

@@ -1246,7 +1246,8 @@ class SyncService {
         .collection('pdfs')
         .doc(fileHash)
         .collection('mutations')
-        .orderBy('seqNum', descending: false)
+        .where('seqNum', isGreaterThan: _lastProcessedSeqNum[fileHash])
+        .orderBy('seqNum')
         .snapshots()
         .listen((snapshot) async {
           for (var change in snapshot.docChanges) {

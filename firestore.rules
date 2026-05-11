@@ -1,23 +1,153 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // 1. USERS COLLECTION: 
-    // Allow anyone to register/update their own device binding.
-    // In production, consider adding more specific checks if needed.
-    match /users/{userId} {
-      allow read, write: if true;
+
+    // ================================================================
+    // HELPER FUNCTIONS
+    // ================================================================
+    function isAuthenticated() {
+      return request.auth != null;
     }
-    
-    // 2. SYNC SESSIONS COLLECTION:
-    // Allow host (lecturer) to create/update the session.
-    // Allow participants to join and sync drawings.
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function userUniversityId() {
+      return getUserData().universityId;
+    }
+
+    function userRole() {
+      return getUserData().role;
+    }
+
+    function isAdminOfUniversity(universityId) {
+      return isAuthenticated()
+        && userRole() == 'admin'
+        && userUniversityId() == universityId;
+    }
+
+    function isStudentOfUniversity(universityId) {
+      return isAuthenticated()
+        && userRole() == 'student'
+        && userUniversityId() == universityId;
+    }
+
+    function belongsToSameUniversity(universityId) {
+      return isAuthenticated()
+        && userUniversityId() == universityId;
+    }
+
+    // ================================================================
+    // 1. USERS COLLECTION
+    //    - Users read/write only their own record
+    //    - Create is allowed during registration
+    // ================================================================
+    match /users/{userId} {
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isAuthenticated() && request.auth.uid == userId;
+      allow delete: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // ================================================================
+    // 2. UNIVERSITIES COLLECTION
+    //    - Read: Any authenticated member of that university
+    //    - Write: Only admins of that university
+    //    - Delete: Only admins (with isDeleted soft-delete flag)
+    // ================================================================
+    match /universities/{universityId} {
+      allow read: if isAuthenticated() && userUniversityId() == universityId;
+      allow create: if isAuthenticated() && request.resource.data.adminUids.hasAny([request.auth.uid]);
+      allow update: if isAuthenticated()
+        && userUniversityId() == universityId
+        && userRole() == 'admin';
+      allow delete: if isAuthenticated()
+        && userUniversityId() == universityId
+        && userRole() == 'admin';
+    }
+
+    // ================================================================
+    // 3. UNIVERSITY_FOLDERS COLLECTION
+    //    - Read: Any member of the folder's university
+    //    - Create: Admin of that university only
+    //    - Update: Admin of that university only
+    //    - Delete: Admin of that university only (soft delete preferred)
+    // ================================================================
+    match /university_folders/{folderId} {
+      allow read: if isAuthenticated()
+        && resource.data.universityId == userUniversityId();
+
+      allow create: if isAuthenticated()
+        && userRole() == 'admin'
+        && request.resource.data.universityId == userUniversityId()
+        && request.resource.data.createdBy == request.auth.uid;
+
+      allow update: if isAuthenticated()
+        && userRole() == 'admin'
+        && resource.data.universityId == userUniversityId();
+
+      allow delete: if isAuthenticated()
+        && userRole() == 'admin'
+        && resource.data.universityId == userUniversityId();
+    }
+
+    // ================================================================
+    // 4. UNIVERSITY_FILES COLLECTION
+    //    - Read: Any member of the file's university
+    //    - Create: Admin of that university only
+    //    - Update: Admin only (for soft delete or metadata updates)
+    //    - Delete: Admin only
+    // ================================================================
+    match /university_files/{fileId} {
+      allow read: if isAuthenticated()
+        && resource.data.universityId == userUniversityId();
+
+      allow create: if isAuthenticated()
+        && userRole() == 'admin'
+        && request.resource.data.universityId == userUniversityId()
+        && request.resource.data.uploadedBy == request.auth.uid;
+
+      allow update: if isAuthenticated()
+        && userRole() == 'admin'
+        && resource.data.universityId == userUniversityId();
+
+      allow delete: if isAuthenticated()
+        && userRole() == 'admin'
+        && resource.data.universityId == userUniversityId();
+    }
+
+    // ================================================================
+    // 5. UNIVERSITY FILE MUTATIONS (existing mutation sync system)
+    //    Subcollection under each university_file
+    //    - Read: Any authenticated user
+    //    - Write: Must belong to the file's university (admin or student)
+    // ================================================================
+    match /university_files/{fileId}/mutations/{mutationId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated()
+        && get(/databases/$(database)/documents/university_files/$(fileId)).data.universityId == userUniversityId();
+    }
+
+    // ================================================================
+    // 6. UNIVERSITY_FILE_PROGRESS (reading progress sync)
+    //    - Users read/write only their own progress documents
+    // ================================================================
+    match /university_file_progress/{progressId} {
+      allow read: if isAuthenticated()
+        && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated()
+        && request.resource.data.userId == request.auth.uid;
+      allow update: if isAuthenticated()
+        && resource.data.userId == request.auth.uid;
+      allow delete: if false; // Prevent accidental deletion of progress data
+    }
+
+    // ================================================================
+    // 7. SYNC SESSIONS (existing — kept for backward compatibility)
+    // ================================================================
     match /sync_sessions/{sessionCode} {
-      allow read, write: if true;
-      
-      // Optional: More restrictive rules if using partial Auth
-      // allow create: if request.resource.data.createdBy != null;
-      // allow update: if true; 
+      allow read, write: if isAuthenticated();
     }
   }
 }

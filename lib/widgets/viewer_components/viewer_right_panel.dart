@@ -1516,7 +1516,7 @@ class StudyFlowRightPanel extends StatelessWidget {
     Color textMuted,
   ) {
     final role = app.currentUser?.role ?? 'member';
-    final isPrivileged = role == 'lecturer' || role == 'developer';
+    final isPrivileged = app.currentUser?.isLecturer ?? false;
 
     return Container(
       decoration: BoxDecoration(
@@ -1654,8 +1654,7 @@ class StudyFlowRightPanel extends StatelessWidget {
                     Divider(color: panelBorder, height: 1),
                 itemBuilder: (ctx, i) {
                   final item = items[i];
-                  final isOwner = app.currentUser?.role == 'lecturer' ||
-                      app.currentUser?.role == 'developer';
+                  final isOwner = app.currentUser?.isLecturer ?? false;
                   final isCreator = item.deletedBy == app.currentUser?.username;
 
                   // Restore button logic

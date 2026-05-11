@@ -772,6 +772,23 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
                     _mediaHeight = val;
                   });
                 },
+                onChangeEnd: (val) {
+                  // Persist the new height to the comment model immediately
+                  // so it survives tool switches and widget rebuilds.
+                  final app = context.read<AppProvider>();
+                  final pdf = app.activePdf;
+                  if (pdf == null) return;
+                  for (final comment in pdf.comments) {
+                    if (comment.id == widget.commentId) {
+                      final updated = comment.copyWith(
+                        attachedMediaUrl: _attachedMediaUrl,
+                        mediaHeight: val,
+                      );
+                      app.updateComment(pdf.id, comment, updated);
+                      break;
+                    }
+                  }
+                },
               ),
             ],
           ],

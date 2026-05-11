@@ -4,10 +4,11 @@ class AppUser {
   final String uid;
   final String username;
   final String displayName;
-  final String role;
+  final String role; // 'admin' | 'student' (refined from generic 'member')
   final String hardwareId;
   final String? primaryDeviceFingerprint;
   final String? primaryDeviceId;
+  final String? universityId; // NEW: Links user to their university
   final bool isBanned;
   final String? banReason;
   final DateTime? bannedAt;
@@ -20,6 +21,7 @@ class AppUser {
     required this.hardwareId,
     this.primaryDeviceFingerprint,
     this.primaryDeviceId,
+    this.universityId, // NEW
     this.isBanned = false,
     this.banReason,
     this.bannedAt,
@@ -30,14 +32,15 @@ class AppUser {
       uid: uid,
       username: (data['username'] ?? '').toString(),
       displayName: (data['displayName'] ?? data['username'] ?? '').toString(),
-      role: (data['role'] ?? 'member').toString(),
+      role: (data['role'] ?? 'student').toString(),
       hardwareId: (data['hardwareId'] ?? '').toString(),
       primaryDeviceFingerprint: data['primaryDeviceFingerprint']?.toString(),
       primaryDeviceId: data['primaryDeviceId']?.toString(),
+      universityId: data['universityId']?.toString(), // NEW
       isBanned: data['isBanned'] ?? false,
       banReason: data['banReason']?.toString(),
-      bannedAt: data['bannedAt'] is Timestamp 
-          ? (data['bannedAt'] as Timestamp).toDate() 
+      bannedAt: data['bannedAt'] is Timestamp
+          ? (data['bannedAt'] as Timestamp).toDate()
           : null,
     );
   }
@@ -51,6 +54,7 @@ class AppUser {
       'hardwareId': hardwareId,
       'primaryDeviceFingerprint': primaryDeviceFingerprint,
       'primaryDeviceId': primaryDeviceId,
+      'universityId': universityId, // NEW
       'isBanned': isBanned,
       'banReason': banReason,
       'bannedAt': bannedAt != null ? Timestamp.fromDate(bannedAt!) : null,
@@ -66,11 +70,48 @@ class AppUser {
       hardwareId: json['hardwareId'] as String,
       primaryDeviceFingerprint: json['primaryDeviceFingerprint'] as String?,
       primaryDeviceId: json['primaryDeviceId'] as String?,
+      universityId: json['universityId'] as String?, // NEW
       isBanned: json['isBanned'] as bool? ?? false,
       banReason: json['banReason'] as String?,
-      bannedAt: json['bannedAt'] != null 
-          ? DateTime.parse(json['bannedAt'] as String) 
+      bannedAt: json['bannedAt'] != null
+          ? DateTime.parse(json['bannedAt'] as String)
           : null,
+    );
+  }
+
+  /// Convenience getters for role checking
+  bool get isAdmin => role == 'admin' || role == 'developer';
+  bool get isLecturer => role == 'lecturer' || isAdmin;
+  bool get isDeveloper => role == 'developer' || role == 'admin';
+  bool get isStudent => role == 'student' || role == 'member';
+
+  /// Creates a copy of this AppUser with the given fields replaced.
+  AppUser copyWith({
+    String? uid,
+    String? username,
+    String? displayName,
+    String? role,
+    String? hardwareId,
+    String? primaryDeviceFingerprint,
+    String? primaryDeviceId,
+    String? universityId,
+    bool? isBanned,
+    String? banReason,
+    DateTime? bannedAt,
+  }) {
+    return AppUser(
+      uid: uid ?? this.uid,
+      username: username ?? this.username,
+      displayName: displayName ?? this.displayName,
+      role: role ?? this.role,
+      hardwareId: hardwareId ?? this.hardwareId,
+      primaryDeviceFingerprint:
+          primaryDeviceFingerprint ?? this.primaryDeviceFingerprint,
+      primaryDeviceId: primaryDeviceId ?? this.primaryDeviceId,
+      universityId: universityId ?? this.universityId,
+      isBanned: isBanned ?? this.isBanned,
+      banReason: banReason ?? this.banReason,
+      bannedAt: bannedAt ?? this.bannedAt,
     );
   }
 }
