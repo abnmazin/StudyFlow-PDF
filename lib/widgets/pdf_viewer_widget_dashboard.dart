@@ -251,10 +251,6 @@ Widget _buildMainContentArea(
   // Determine if user has a university → show UniversityHub or personal folders
   final user = app.currentUser;
   final hasUniversity = user != null && user.universityId?.isNotEmpty == true;
-  debugPrint(
-    '🚀 [DASHBOARD] hasUniversity: $hasUniversity | '
-    'universityId: ${user?.universityId} | role: ${user?.role}',
-  );
 
   // For university users: return a simple shrinkWrap Column with the Cloud Library
   // and the announcements/todo in a vertical flow — no Row/Expanded to avoid

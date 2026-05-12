@@ -157,6 +157,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   String? _forcedLogoutReason;
   bool _isGlobalLogout = false;
   bool _isKicked = false;
+  bool _isKeyboardLocked = false;
+  bool get isKeyboardLocked => _isKeyboardLocked;
 
   // UI State
   bool _isMobileOpen = false;
@@ -230,6 +232,13 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   Timer? _syncDebounce; // Debouncer for background sync
   ToolType _currentTool = ToolType.cursor;
   ToolType get currentTool => _currentTool;
+
+  void setKeyboardLock(bool isLocked) {
+    if (_isKeyboardLocked != isLocked) {
+      _isKeyboardLocked = isLocked;
+      notifyListeners();
+    }
+  }
 
   final Completer<void> _initCompleter = Completer<void>();
   Future<void>? get initialized => _initCompleter.future;
@@ -1467,9 +1476,6 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
                 );
                 p.fileHash = currentHash;
                 needsUpdate = true;
-                debugPrint(
-                  '💧 [Hydration] Backfilled hash for PDF: ${p.uuid} -> $currentHash',
-                );
               }
             } catch (e) {
               debugPrint('⚠️ [Hydration] Failed to backfill hash: $e');
@@ -1484,9 +1490,6 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
                 await pdfDoc.dispose();
                 p.totalPages = currentTotalPages;
                 needsUpdate = true;
-                debugPrint(
-                  '💧 [Hydration] Backfilled pages for PDF: ${p.uuid} -> $currentTotalPages',
-                );
               }
             } catch (e) {
               debugPrint('⚠️ [Hydration] Failed to backfill pages: $e');
@@ -1593,10 +1596,6 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
             iBookmarks.map(
               (ib) => PdfBookmark(id: ib.uuid, page: ib.page, name: ib.name),
             ),
-          );
-
-          debugPrint(
-            '💧 [Hydration] Restored [highlights: ${item.highlights.length}, comments: ${item.comments.length}, bookmarks: ${item.bookmarks.length}] for PDF: ${p.uuid}',
           );
 
           pdfItems.add(item);
@@ -1829,20 +1828,20 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
           '💾 [Isar Flush] Starting flush for ${idsToFlush.length} dirty PDFs...',
         );
 
-        for (final pdfId in idsToFlush) {
-          final pdf = _findPdfById(pdfId);
-          if (pdf == null) continue;
+          for (final pdfId in idsToFlush) {
+            final pdf = _findPdfById(pdfId);
+            if (pdf == null) continue;
 
-          try {
-            await _fileManager.saveHighlights(pdf.id, pdf.highlights);
-            await _fileManager.saveComments(pdf.id, pdf.comments);
-            await _fileManager.saveBookmarks(pdf.id, pdf.bookmarks);
-            debugPrint('✅ [Isar Flush] Completed for PDF: $pdfId');
-          } catch (e) {
-            debugPrint('❌ [Isar Flush] Failed for PDF: $pdfId - Error: $e');
-            _dirtyPdfIds.add(pdfId);
+            try {
+              await _fileManager.saveHighlights(pdf.id, pdf.highlights);
+              await _fileManager.saveComments(pdf.id, pdf.comments);
+              await _fileManager.saveBookmarks(pdf.id, pdf.bookmarks);
+            } catch (e) {
+              debugPrint('❌ [Isar Flush] Failed for PDF: $pdfId - Error: $e');
+              _dirtyPdfIds.add(pdfId);
+            }
           }
-        }
+          debugPrint('✅ [Isar Flush] Completed flush for ${idsToFlush.length} PDFs.');
       }
     } catch (e) {
       debugPrint('Error saving state: $e');

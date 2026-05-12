@@ -212,7 +212,6 @@ Future<void> _bootstrapApp(List<String> args) async {
     );
   }
 }
-
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   await _bootstrapApp(args);

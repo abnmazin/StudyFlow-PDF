@@ -24,9 +24,7 @@ class HardwareService {
       final digest = sha256.convert(bytes);
       final fingerprint = digest.toString();
 
-      debugPrint('🛡️ [Security] Device Fingerprint Generated Successfully');
-      // debugPrint('DEBUG: raw=$normalized');
-      // debugPrint('DEBUG: fingerprint=$fingerprint');
+      // Security fingerprint generation
 
       return fingerprint;
     } catch (e) {

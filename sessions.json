@@ -1,0 +1,30 @@
+{
+    "321173824": {
+        "state": "waiting_company",
+        "stage": "3"
+    },
+    "1119896672": {
+        "state": "waiting_stage"
+    },
+    "493667893": {
+        "state": "waiting_company",
+        "stage": "3"
+    },
+    "272377394": {
+        "state": "waiting_month",
+        "stage": "3",
+        "company": "المديرية العامة لإنتاج الطاقة"
+    },
+    "385713228": {
+        "state": "waiting_stage"
+    },
+    "6382645701": {
+        "state": "waiting_company",
+        "stage": "3"
+    },
+    "1360000077": {
+        "state": "admin_home",
+        "stage": "3",
+        "company": "المديرية العامة لإنتاج الطاقة"
+    }
+}

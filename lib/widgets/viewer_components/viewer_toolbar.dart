@@ -350,6 +350,7 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                         backgroundColor: chipBg,
                         borderColor: inputBorder,
                         onTap: () {
+                          if (!widget.pdfController.isReady) return;
                           setState(() {
                             _isEditingPage = true;
                             _pageInputController.text =
@@ -362,7 +363,7 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                             padding: const EdgeInsets.symmetric(horizontal: 10),
                             child: Text(
                               widget.pdfController.isReady
-                                  ? '${widget.pdfController.pageNumber} / ${widget.pdfController.pages.length}'
+                                  ? '${widget.pdfController.pageNumber ?? 1} / ${widget.pdfController.pages.length}'
                                   : '...',
                               style: TextStyle(
                                 fontSize: 13,
@@ -395,10 +396,12 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                                 ),
                               ),
                               onSubmitted: (val) {
+                                if (!widget.pdfController.isReady) return;
                                 final int? page = int.tryParse(val);
+                                final pageCount = widget.pdfController.pages.length;
                                 if (page != null &&
                                     page >= 1 &&
-                                    page <= widget.pdfController.pages.length) {
+                                    page <= pageCount) {
                                   widget.pdfController.goToPage(
                                     pageNumber: page,
                                   );

@@ -226,7 +226,7 @@ extension _PDFViewerWidgetStateOverlay on _PDFViewerWidgetState {
                   if (styles != null) {
                     appProvider.updateEditingStyle(
                       commentId: c.id,
-                      isLatex: false,
+                      isLatex: !(styles['isLatex'] as bool),
                     );
                   }
                 },

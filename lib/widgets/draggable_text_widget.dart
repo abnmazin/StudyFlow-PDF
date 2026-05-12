@@ -148,19 +148,18 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
   void initState() {
     super.initState();
     _textController = TextEditingController(text: widget.content);
-    _focusNode = FocusNode(
-      onKeyEvent: (node, event) {
-        if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.keyV) {
-          final isControlPressed = HardwareKeyboard.instance.isControlPressed || HardwareKeyboard.instance.isMetaPressed;
-          if (isControlPressed) {
-            // Intercept and handle manually to prevent Windows clipboard locking
-            _handleClipboardPasteManually();
-            return KeyEventResult.handled;
-          }
-        }
-        return KeyEventResult.ignored;
-      },
-    );
+    _focusNode = FocusNode();
+    
+    // FIX: Initialize media height from the widget property
+    _mediaHeight = widget.mediaHeight ?? 150.0;
+
+    // Lock keyboard when text field has focus to prevent Space/Arrow from scrolling the PDF
+    _focusNode.addListener(() {
+      if (mounted) {
+        context.read<AppProvider>().setKeyboardLock(_focusNode.hasFocus);
+      }
+    });
+    
     _attachedMediaUrl = widget.attachedMediaUrl;
     // When a brand-new widget is built already in editing mode (e.g. _addTextAt),
     // didUpdateWidget never fires, so we must request focus here.
@@ -168,7 +167,10 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           _focusNode.requestFocus();
-          if (widget.isLatex) _showOverlay();
+          // FIX: Only show math overlay for LaTeX notes
+          if (widget.isLatex) {
+            _showOverlay();
+          }
         }
       });
     }
@@ -410,6 +412,7 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
           onToggleBorder: widget.onToggleBorder,
           onToggleLatex: widget.onToggleLatex,
           showBorder: widget.showBorder,
+          isLatex: widget.isLatex,
         );
       },
     );
@@ -420,6 +423,44 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
   void _removeOverlay() {
     _overlayEntry?.remove();
     _overlayEntry = null;
+  }
+
+  void _increaseImageSize() {
+    if (_attachedMediaUrl == null) return;
+    final newHeight = (_mediaHeight + 20).clamp(50.0, 800.0);
+    setState(() => _mediaHeight = newHeight);
+    _persistMediaHeight(newHeight);
+  }
+
+  void _decreaseImageSize() {
+    if (_attachedMediaUrl == null) return;
+    final newHeight = (_mediaHeight - 20).clamp(50.0, 800.0);
+    setState(() => _mediaHeight = newHeight);
+    _persistMediaHeight(newHeight);
+  }
+
+  void _removeImage() {
+    if (_attachedMediaUrl == null) return;
+    _persistAttachmentUrl(null);
+    if (mounted) {
+      setState(() => _attachedMediaUrl = null);
+    }
+  }
+
+  void _persistMediaHeight(double newHeight) {
+    final app = context.read<AppProvider>();
+    final pdf = app.activePdf;
+    if (pdf == null) return;
+    for (final comment in pdf.comments) {
+      if (comment.id == widget.commentId) {
+        final updated = comment.copyWith(
+          attachedMediaUrl: _attachedMediaUrl,
+          mediaHeight: newHeight,
+        );
+        app.updateComment(pdf.id, comment, updated);
+        break;
+      }
+    }
   }
 
   // ✅ هذا هو الإصلاح: تصفير الإزاحة عند تحديث الودجت من الخارج
@@ -445,6 +486,9 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
           TextPosition(offset: _textController.text.length),
         );
         _focusNode.requestFocus();
+        // FIX: Lock keyboard immediately when entering edit mode
+        context.read<AppProvider>().setKeyboardLock(true);
+        // FIX: Only show math overlay for LaTeX notes
         if (widget.isLatex) {
           _showOverlay();
         }
@@ -453,6 +497,8 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
       // Transitioning OUT of editing mode — sync read-only display
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
+        // FIX: Unlock keyboard when exiting edit mode
+        context.read<AppProvider>().setKeyboardLock(false);
         _removeOverlay();
         if (_textController.text != widget.content) {
           _textController.text = widget.content;
@@ -470,10 +516,12 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
 
     if (widget.isEditing && oldWidget.isEditing) {
       if (widget.isLatex && !oldWidget.isLatex) {
+        // Entering LaTeX mode while staying in edit mode
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _showOverlay();
         });
       } else if (!widget.isLatex && oldWidget.isLatex) {
+        // Exiting LaTeX mode — always remove overlay (image controls are in TextFormattingToolbar)
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _removeOverlay();
         });
@@ -559,83 +607,68 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
 
       return Padding(
         padding: EdgeInsets.only(bottom: 8 * widget.scale),
-        child: Stack(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(scaledBorderRadius),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  minWidth: scaledMinWidth,
-                  maxWidth: scaledMaxWidth,
-                  maxHeight: scaledHeight,
-                ),
-                child: CachedNetworkImage(
-                  imageUrl: url,
-                  cacheKey: stableCacheKey, // Force stable disk cache
-                  key: ValueKey('${stableCacheKey}_$_imageRetryCount'),
-                  height: scaledHeight,
-                  fit: BoxFit.contain,
-                  placeholder:
-                      (context, url) => const Center(
-                        child: CircularProgressIndicator(),
-                      ),
-                  errorWidget: (context, url, error) {
-                    print('❌ [CachedNetworkImage] rendering failed: $error');
-                    return Container(
-                      height: 150 * widget.scale,
-                      width: double.infinity,
-                      color: Colors.grey.withOpacity(0.2),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.broken_image,
-                            color: Colors.redAccent,
-                            size: 40 * widget.scale,
-                          ),
-                          SizedBox(height: 8 * widget.scale),
-                          Text(
-                            'فشل تحميل الصورة',
-                            style: TextStyle(
-                              color: Colors.redAccent,
-                              fontSize: 14 * widget.scale,
-                            ),
-                          ),
-                          TextButton.icon(
-                            onPressed: () => setState(() => _imageRetryCount++),
-                            icon: Icon(Icons.refresh, size: 16 * widget.scale),
-                            label: Text(
-                              'إعادة المحاولة',
-                              style: TextStyle(fontSize: 12 * widget.scale),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
-            if (editable)
-              Positioned(
-                top: 6 * widget.scale,
-                right: 6 * widget.scale,
-                child: IconButton(
-                  tooltip: 'إزالة الصورة',
-                  icon: Icon(
-                    Icons.cancel,
-                    color: Colors.red,
-                    size: 24 * widget.scale,
+        child: SizedBox(
+          height: scaledHeight,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(scaledBorderRadius),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minWidth: scaledMinWidth,
+                    maxWidth: scaledMaxWidth,
+                    maxHeight: scaledHeight,
                   ),
-                  onPressed: () {
-                    _persistAttachmentUrl(null);
-                    if (mounted) {
-                      setState(() => _attachedMediaUrl = null);
-                    }
-                  },
+                  child: CachedNetworkImage(
+                    imageUrl: url,
+                    cacheKey: stableCacheKey, // Force stable disk cache
+                    key: ValueKey('${stableCacheKey}_$_imageRetryCount'),
+                    height: scaledHeight,
+                    fit: BoxFit.contain,
+                    placeholder: (context, url) =>
+                        const Center(child: CircularProgressIndicator()),
+                    errorWidget: (context, url, error) {
+                      print('❌ [CachedNetworkImage] rendering failed: $error');
+                      return Container(
+                        height: 150 * widget.scale,
+                        width: double.infinity,
+                        color: Colors.grey.withOpacity(0.2),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.broken_image,
+                              color: Colors.redAccent,
+                              size: 40 * widget.scale,
+                            ),
+                            SizedBox(height: 8 * widget.scale),
+                            Text(
+                              'فشل تحميل الصورة',
+                              style: TextStyle(
+                                color: Colors.redAccent,
+                                fontSize: 14 * widget.scale,
+                              ),
+                            ),
+                            TextButton.icon(
+                              onPressed: () =>
+                                  setState(() => _imageRetryCount++),
+                              icon:
+                                  Icon(Icons.refresh, size: 16 * widget.scale),
+                              label: Text(
+                                'إعادة المحاولة',
+                                style: TextStyle(fontSize: 12 * widget.scale),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
                 ),
               ),
-          ],
+            ],
+          ),
         ),
       );
     }
@@ -669,6 +702,12 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
                     isDense: true,
                     contentPadding: EdgeInsets.zero,
                   ),
+                  onTap: () {
+                    // FIX: Lock keyboard immediately when tapping on comment text field
+                    if (mounted) {
+                      context.read<AppProvider>().setKeyboardLock(true);
+                    }
+                  },
                   contentInsertionConfiguration: ContentInsertionConfiguration(
                     allowedMimeTypes: const <String>['image/png', 'image/jpeg', 'image/gif', 'image/webp'],
                     onContentInserted: (KeyboardInsertedContent content) async {
@@ -753,44 +792,6 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
                 ),
               ],
             ),
-            if (_attachedMediaUrl != null && _attachedMediaUrl!.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              const Text(
-                "حجم الصورة",
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blueGrey,
-                ),
-              ),
-              Slider(
-                value: _mediaHeight,
-                min: 50.0,
-                max: 500.0,
-                onChanged: (val) {
-                  setState(() {
-                    _mediaHeight = val;
-                  });
-                },
-                onChangeEnd: (val) {
-                  // Persist the new height to the comment model immediately
-                  // so it survives tool switches and widget rebuilds.
-                  final app = context.read<AppProvider>();
-                  final pdf = app.activePdf;
-                  if (pdf == null) return;
-                  for (final comment in pdf.comments) {
-                    if (comment.id == widget.commentId) {
-                      final updated = comment.copyWith(
-                        attachedMediaUrl: _attachedMediaUrl,
-                        mediaHeight: val,
-                      );
-                      app.updateComment(pdf.id, comment, updated);
-                      break;
-                    }
-                  }
-                },
-              ),
-            ],
           ],
         ),
       );
@@ -925,6 +926,7 @@ class _MathOverlayWidget extends StatelessWidget {
   final VoidCallback? onToggleBorder;
   final VoidCallback? onToggleLatex;
   final bool showBorder;
+  final bool isLatex;
 
   const _MathOverlayWidget({
     required this.textController,
@@ -934,6 +936,7 @@ class _MathOverlayWidget extends StatelessWidget {
     this.onToggleBorder,
     this.onToggleLatex,
     required this.showBorder,
+    required this.isLatex,
   });
 
   Widget _buildMathButton(BuildContext context, String tooltip, String label, VoidCallback onTap) {
@@ -1010,7 +1013,8 @@ class _MathOverlayWidget extends StatelessWidget {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // ─── 1. LIVE PREVIEW AREA (Top Section) ───
+                      // ─── 1. LIVE PREVIEW AREA (Top Section) — LaTeX only ───
+                      if (isLatex)
                       ValueListenableBuilder<TextEditingValue>(
                         valueListenable: textController,
                         builder: (context, value, child) {
@@ -1091,7 +1095,8 @@ class _MathOverlayWidget extends StatelessWidget {
                               margin: const EdgeInsets.symmetric(horizontal: 12),
                             ),
 
-                            // MATH BUTTONS
+                            // MATH BUTTONS (LaTeX only)
+                            if (isLatex)
                             Flexible( // Allows scrolling only if it overflows
                               child: SingleChildScrollView(
                                 scrollDirection: Axis.horizontal,

@@ -22,12 +22,17 @@
 - **`UniversityHub`** (`lib/widgets/university_hub.dart`): Legacy university dashboard component, replaced by `UniversityCloudLibraryWidget`.
 - **`FolderViewScreen`** (`lib/widgets/university_folder_view.dart`): File listing inside a university folder. Role-adaptive: admin sees "Upload PDF" button + swipe-to-delete on files; student sees "Open" download/button only. Restores reading progress from Firestore on open.
 - **`UploadPdfDialog`** (`lib/widgets/university_upload_dialog.dart`): Admin-only dialog for picking and uploading a PDF. Uses `file_picker` for file selection, shows progress during hash computation → upload → Firestore record creation.
+
 ## App Structure
 - `lib/main.dart`: app bootstrap, provider setup, Supabase/Firebase initialization, PDF viewer shell, floating window overlay.
 - `lib/widgets/floating_window_manager.dart`: floating window lifecycle, stacking, drag, close, and z-order management.
 - `lib/widgets/mini_apps_menu.dart`: launcher grid for mini apps with constraint-aware card internals (adaptive icon/text sizing and expanded text slot) to prevent bottom overflow on narrow tiles.
 - `lib/widgets/pdf_viewer_widget_w.dart`: main PDF workspace shell, now split-aware with independent primary and secondary PDF controllers. Enforces **primary-only context** for tools (Chat, Bookmarks, Page Counter) and navigation state.
-- `lib/widgets/draggable_text_widget.dart`: editable PDF note/comment bubbles, now with image attachment upload support and in-note image previews.
+- `lib/widgets/draggable_text_widget.dart`: editable PDF note/comment bubbles, now with image attachment upload support and in-note image previews. Contains `_MathOverlayWidget` — a unified floating toolbar that adapts its content based on note type:
+  - **LaTeX notes**: Shows formatting controls + image controls (if image present) + math buttons + live LaTeX preview
+  - **Text notes with image**: Shows formatting controls + image controls only — NO math buttons or LaTeX preview
+  - **Plain text notes**: No floating toolbar
+- `lib/widgets/pdf_viewer_widget_overlay.dart`: Page overlay that renders `DraggableTextWidget` instances. Contains `onToggleLatex` callback that properly toggles isLatex ON/OFF.
 - `lib/widgets/viewer_components/viewer_toolbar.dart`: responsive toolbar with horizontally scrollable action clusters. Page counter and tools are strictly bound to the **primary PDF controller**.
 - `lib/widgets/sidebar_w.dart`: navigation sidebar with dual-highlighting for active (blue) and secondary (gray) documents in split-screen mode.
 

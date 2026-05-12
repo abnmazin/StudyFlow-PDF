@@ -67,10 +67,6 @@ class UniversityService {
     _currentUser = user;
     await _fileManager.init();
     _isInitialized = true;
-    debugPrint(
-      '🏛️ [UniversityService] Initialized for user ${user.uid}'
-      ' (university: ${user.universityId}, role: ${user.role})',
-    );
   }
 
   /// Update the current user (e.g., after profile refresh).

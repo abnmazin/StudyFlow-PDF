@@ -2058,6 +2058,7 @@ class _AiChatWidgetState extends State<_AiChatWidget>
   ];
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final FocusNode _chatFocusNode = FocusNode();
   bool _isLoading = false;
   bool _wasAtBottom = true;
 
@@ -2087,6 +2088,11 @@ class _AiChatWidgetState extends State<_AiChatWidget>
     super.initState();
     _aiConversationRevision.addListener(_onConversationRevisionChanged);
     _scrollController.addListener(_trackScrollPosition);
+    _chatFocusNode.addListener(() {
+      if (mounted) {
+        context.read<AppProvider>().setKeyboardLock(_chatFocusNode.hasFocus);
+      }
+    });
     _loadConversationForCurrentPdf();
   }
 
@@ -2380,6 +2386,7 @@ class _AiChatWidgetState extends State<_AiChatWidget>
   void dispose() {
     _scrollController.removeListener(_trackScrollPosition);
     _aiConversationRevision.removeListener(_onConversationRevisionChanged);
+    _chatFocusNode.dispose();
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -2689,6 +2696,7 @@ class _AiChatWidgetState extends State<_AiChatWidget>
                 Expanded(
                   child: TextField(
                     controller: _controller,
+                    focusNode: _chatFocusNode,
                     enabled: !_isLoading,
                     style: TextStyle(color: inputTextColor, fontSize: 14),
                     cursorColor: inputTextColor,
@@ -2805,7 +2813,14 @@ class _ScrollableMathState extends State<_ScrollableMath> {
         physics: const BouncingScrollPhysics(),
         child: Padding(
           padding: const EdgeInsets.only(bottom: 3),
-          child: mathWidget,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 400),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: mathWidget,
+            ),
+          ),
         ),
       ),
     );

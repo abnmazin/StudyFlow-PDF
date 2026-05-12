@@ -143,6 +143,8 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   Size? _lastPdfViewSize;
   bool _isAutoFitting = false;
   bool _autoFitEnabled = true;
+  final GlobalKey _primaryViewerKey = GlobalKey();
+  final GlobalKey _secondaryViewerKey = GlobalKey();
 
   String? _editingCommentId;
 
@@ -252,6 +254,13 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     // Phase 11: Real-time Session Status Listener
     _app = context.read<AppProvider>();
     _app.addListener(_onAppStatusChanged);
+
+    // FIX: Lock keyboard when search field has focus to prevent Space/Arrow key navigation
+    _searchFocusNode.addListener(() {
+      if (mounted) {
+        context.read<AppProvider>().setKeyboardLock(_searchFocusNode.hasFocus);
+      }
+    });
   }
 
   void _onAppStatusChanged() {
@@ -636,32 +645,16 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     return author;
   }
 
-  bool _isTypingInTextField() {
-    try {
-      final focused = FocusManager.instance.primaryFocus;
-      final context = focused?.context;
-      if (context == null || !context.mounted) return false;
 
-      if (context.widget is EditableText) return true;
-      if (context.findAncestorWidgetOfExactType<EditableText>() != null) {
-        return true;
-      }
-
-      final renderObject = context.findRenderObject();
-      if (renderObject == null) return false;
-      final renderType = renderObject.runtimeType.toString();
-      return renderType.toLowerCase().contains('editable');
-    } catch (e) {
-      // Safety: in case of "Looking up a deactivated widget's ancestor is unsafe"
-      // or other transient errors during context lookup.
-      return false;
-    }
-  }
 
   void _runShortcut(VoidCallback action, {bool ignoreTyping = true}) {
+    // Check global keyboard lock from AppProvider
+    final isLocked = context.read<AppProvider>().isKeyboardLocked;
+    if (isLocked) return;
+
     // By default, run shortcuts even when typing (ignoreTyping=true)
     // Some single-letter shortcuts (H, E, P, T) should NOT run when typing
-    if (!ignoreTyping && _isTypingInTextField()) return;
+    if (!ignoreTyping && _editingCommentId != null) return;
     action();
   }
 
@@ -746,34 +739,31 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     }
 
     return AnimatedBuilder(
-      animation: FocusManager.instance,
+      animation: Listenable.merge([FocusManager.instance, app]),
       builder: (context, _) {
-        final isTypingNow = _isTypingInTextField();
-        // Only disable shortcuts if no PDF or editing comment
-        // Allow shortcuts even when typing - individual shortcuts can override this
-        final shortcutsDisabled = _editingCommentId != null || pdf == null;
+        // Only disable shortcuts if no PDF or editing comment, or if keyboard is locked (TextField has focus)
+        final shortcutsDisabled = _editingCommentId != null || pdf == null || app.isKeyboardLocked;
 
         return CallbackShortcuts(
           bindings: shortcutsDisabled
               ? <ShortcutActivator, VoidCallback>{}
               : {
-                  const SingleActivator(LogicalKeyboardKey.keyH): () =>
+                  // Ctrl+H → Highlight tool
+                  const SingleActivator(LogicalKeyboardKey.keyH, control: true): () =>
                       _runShortcut(() => _activateTool(ToolType.highlight), ignoreTyping: false),
-                  const SingleActivator(LogicalKeyboardKey.keyE): () =>
+                  // Ctrl+E → Eraser tool
+                  const SingleActivator(LogicalKeyboardKey.keyE, control: true): () =>
                       _runShortcut(() => _activateTool(ToolType.eraser), ignoreTyping: false),
-                  const SingleActivator(LogicalKeyboardKey.keyP): () =>
-                      _runShortcut(() => _activateTool(ToolType.pen), ignoreTyping: false),
-                  const SingleActivator(LogicalKeyboardKey.keyT): () =>
+                  // Ctrl+T → Text tool
+                  const SingleActivator(LogicalKeyboardKey.keyT, control: true): () =>
                       _runShortcut(() => _activateTool(ToolType.text), ignoreTyping: false),
+                  // Escape → Cursor/Hand tool
                   const SingleActivator(LogicalKeyboardKey.escape): () =>
                       _runShortcut(() => _activateTool(ToolType.cursor), ignoreTyping: true),
-                  const SingleActivator(LogicalKeyboardKey.keyV): () =>
+                  // Ctrl+V → Cursor/Hand tool
+                  const SingleActivator(LogicalKeyboardKey.keyV, control: true): () =>
                       _runShortcut(() => _activateTool(ToolType.cursor), ignoreTyping: true),
-                  const SingleActivator(
-                    LogicalKeyboardKey.keyP,
-                    control: true,
-                  ): () =>
-                      _runShortcut(() => _showPrintDialog(pdf), ignoreTyping: true),
+                  // Ctrl+F → Search
                   const SingleActivator(
                     LogicalKeyboardKey.keyF,
                     control: true,
@@ -849,6 +839,13 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                 },
           child: Focus(
             autofocus: true,
+            onKeyEvent: (node, event) {
+              // we MUST ignore all events to allow them to propagate to the TextField.
+              if (app.isKeyboardLocked) {
+                return KeyEventResult.ignored;
+              }
+              return KeyEventResult.ignored;
+            },
             child: Column(
               children: [
                 // 1. Toolbar (Top)
@@ -936,6 +933,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                                     pdf,
                                                     primaryController,
                                                     showOverlays: true,
+                                                    isSecondary: false,
                                                   ),
                                                 ),
                                                 Container(
@@ -949,14 +947,24 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                                     secondaryPdf,
                                                     secondaryController,
                                                     showOverlays: false,
+                                                    isSecondary: true,
                                                   ),
                                                 ),
                                               ],
                                             )
-                                          : _buildPdfViewerCore(
-                                              pdf,
-                                              primaryController,
-                                              showOverlays: true,
+                                          : Selector<AppProvider, bool>(
+                                              selector: (context, provider) => provider.isKeyboardLocked,
+                                              builder: (context, isLocked, child) {
+                                                // DIAGNOSTIC: Log when the viewer rebuilds due to lock state change
+                                                // debugPrint('📄 [PDF VIEWER BUILD] Rebuilding due to isLocked: $isLocked');
+                                                return _buildPdfViewerCore(
+                                                  pdf,
+                                                  primaryController,
+                                                  showOverlays: true,
+                                                  isSecondary: false,
+                                                  isKeyboardLocked: isLocked,
+                                                );
+                                              },
                                             ),
                                     ),
 
@@ -975,6 +983,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                                 SizedBox(
                                                   width: 200,
                                                   child: TextField(
+                                                    focusNode: _searchFocusNode,
                                                     autofocus: true,
                                                     contextMenuBuilder:
                                                         (
@@ -1559,6 +1568,53 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                               });
                                               _updateCurrentEditingText();
                                             },
+                                            // Image controls
+                                            hasAttachedImage: (pdf != null &&
+                                                _editingCommentId != null &&
+                                                pdf.comments.any((c) =>
+                                                    c.id == _editingCommentId &&
+                                                    c.attachedMediaUrl != null &&
+                                                    c.attachedMediaUrl!.isNotEmpty)),
+                                            onIncreaseImageSize: () {
+                                              if (pdf == null || _editingCommentId == null) return;
+                                              final comment = pdf.comments.firstWhere(
+                                                (c) => c.id == _editingCommentId,
+                                                orElse: () => pdf.comments.first,
+                                              );
+                                              if (comment.id != _editingCommentId) return;
+                                              final newHeight = ((comment.mediaHeight ?? 150.0) + 20).clamp(50.0, 800.0);
+                                              app.updateComment(pdf.id, comment, comment.copyWith(
+                                                mediaHeight: newHeight,
+                                                attachedMediaUrl: comment.attachedMediaUrl,
+                                              ));
+                                              if (mounted) setState(() {});
+                                            },
+                                            onDecreaseImageSize: () {
+                                              if (pdf == null || _editingCommentId == null) return;
+                                              final comment = pdf.comments.firstWhere(
+                                                (c) => c.id == _editingCommentId,
+                                                orElse: () => pdf.comments.first,
+                                              );
+                                              if (comment.id != _editingCommentId) return;
+                                              final newHeight = ((comment.mediaHeight ?? 150.0) - 20).clamp(50.0, 800.0);
+                                              app.updateComment(pdf.id, comment, comment.copyWith(
+                                                mediaHeight: newHeight,
+                                                attachedMediaUrl: comment.attachedMediaUrl,
+                                              ));
+                                              if (mounted) setState(() {});
+                                            },
+                                            onRemoveImage: () {
+                                              if (pdf == null || _editingCommentId == null) return;
+                                              final comment = pdf.comments.firstWhere(
+                                                (c) => c.id == _editingCommentId,
+                                                orElse: () => pdf.comments.first,
+                                              );
+                                              if (comment.id != _editingCommentId) return;
+                                              app.updateComment(pdf.id, comment, comment.copyWith(
+                                                attachedMediaUrl: null,
+                                              ));
+                                              if (mounted) setState(() {});
+                                            },
                                           ),
                                         ),
                                       ),
@@ -1664,6 +1720,8 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     PdfItem pdf,
     PdfViewerController controller, {
     required bool showOverlays,
+    required bool isSecondary,
+    bool isKeyboardLocked = false, // NEW: Receive lock state
   }) {
     final app = context.read<AppProvider>();
     return Listener(
@@ -1689,9 +1747,19 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
           _activateTool(ToolType.cursor);
         }
       },
-      child: PdfViewer.file(
+      child: Focus(
+        onKeyEvent: (node, event) {
+          // When keyboard is locked (TextField has focus), only prevent Space
+          // from scrolling the PDF. Other keys should work normally in TextField.
+          if (app.isKeyboardLocked && 
+              event.logicalKey == LogicalKeyboardKey.space) {
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: PdfViewer.file(
         pdf.path,
-        key: ValueKey('${pdf.path}_${pdf.lastModified}'),
+        key: isSecondary ? _secondaryViewerKey : _primaryViewerKey,
         controller: controller,
         params: PdfViewerParams(
           maxImageBytesCachedOnMemory: 100 * 1024 * 1024,
@@ -1708,7 +1776,10 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
           loadingBannerBuilder: (context, bytesDownloaded, totalBytes) =>
               const SizedBox.shrink(),
           enableKeyboardNavigation:
-              showOverlays && _editingCommentId == null && !_isSearchVisible,
+              showOverlays &&
+              _editingCommentId == null &&
+              !_isSearchVisible &&
+              !isKeyboardLocked,
           textSelectionParams: showOverlays
               ? PdfTextSelectionParams(
                   onTextSelectionChange: (selection) {
@@ -1779,8 +1850,9 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
         ),
         initialPageNumber: pdf.lastPage ?? 1,
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildNoFilePlaceholder() {
     return Builder(builder: (ctx) => _buildDashboard(ctx));
@@ -1799,6 +1871,11 @@ class TextFormattingToolbar extends StatelessWidget {
   final VoidCallback onDecreaseFont;
   final ValueChanged<bool> onToggleLatex;
   final ValueChanged<bool> onToggleBorder;
+  // NEW: Image controls
+  final bool hasAttachedImage;
+  final VoidCallback? onIncreaseImageSize;
+  final VoidCallback? onDecreaseImageSize;
+  final VoidCallback? onRemoveImage;
 
   const TextFormattingToolbar({
     super.key,
@@ -1810,6 +1887,10 @@ class TextFormattingToolbar extends StatelessWidget {
     required this.onDecreaseFont,
     required this.onToggleLatex,
     required this.onToggleBorder,
+    this.hasAttachedImage = false,
+    this.onIncreaseImageSize,
+    this.onDecreaseImageSize,
+    this.onRemoveImage,
   });
 
   @override
@@ -1879,6 +1960,32 @@ class TextFormattingToolbar extends StatelessWidget {
                   color: borderColor,
                   margin: const EdgeInsets.symmetric(horizontal: 8),
                 ),
+                if (hasAttachedImage) ...[
+                  IconButton(
+                    icon: const Icon(LucideIcons.imageMinus, size: 18),
+                    onPressed: onDecreaseImageSize,
+                    tooltip: 'تصغير الصورة',
+                    color: Colors.orangeAccent,
+                  ),
+                  IconButton(
+                    icon: const Icon(LucideIcons.imagePlus, size: 18),
+                    onPressed: onIncreaseImageSize,
+                    tooltip: 'تكبير الصورة',
+                    color: Colors.orangeAccent,
+                  ),
+                  IconButton(
+                    icon: const Icon(LucideIcons.trash, size: 18),
+                    onPressed: onRemoveImage,
+                    tooltip: 'إزالة الصورة',
+                    color: Colors.redAccent,
+                  ),
+                  Container(
+                    width: 1,
+                    height: 24,
+                    color: borderColor,
+                    margin: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                ],
                 IconButton(
                   icon: Icon(
                     Icons.functions,
