@@ -144,6 +144,59 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
     );
   }
 
+  int _moveForward(String text, int offset) {
+    if (offset >= text.length) return text.length;
+    final codeUnit = text.codeUnitAt(offset);
+    if (codeUnit >= 0xD800 && codeUnit <= 0xDBFF && offset + 1 < text.length) {
+      return offset + 2;
+    }
+    return offset + 1;
+  }
+
+  int _moveBackward(String text, int offset) {
+    if (offset <= 0) return 0;
+    final codeUnit = text.codeUnitAt(offset - 1);
+    if (codeUnit >= 0xDC00 && codeUnit <= 0xDFFF && offset - 2 >= 0) {
+      return offset - 2;
+    }
+    return offset - 1;
+  }
+
+  KeyEventResult _handleRtlArrowKeys(KeyEvent event) {
+    if (_textController.text.isEmpty) return KeyEventResult.ignored;
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+
+    final selection = _textController.selection;
+    if (!selection.isValid) return KeyEventResult.ignored;
+
+    final text = _textController.text;
+    final shiftPressed = HardwareKeyboard.instance.isShiftPressed;
+
+    if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      final nextOffset = _moveForward(text, selection.extentOffset);
+      if (nextOffset == selection.extentOffset) return KeyEventResult.ignored;
+
+      _textController.selection = shiftPressed
+          ? selection.copyWith(extentOffset: nextOffset)
+          : TextSelection.collapsed(offset: nextOffset);
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+      final nextOffset = _moveBackward(text, selection.extentOffset);
+      if (nextOffset == selection.extentOffset) return KeyEventResult.ignored;
+
+      _textController.selection = shiftPressed
+          ? selection.copyWith(extentOffset: nextOffset)
+          : TextSelection.collapsed(offset: nextOffset);
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -686,65 +739,75 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
                 maxWidth: MediaQuery.of(context).size.width * 0.85,
               ),
               child: IntrinsicWidth(
-                child: TextField(
-                  controller: _textController,
-                  focusNode: _focusNode,
-                  autofocus: true,
-                  maxLines: null,
-                  minLines: 1,
-                  style: editingStyle,
-                  textDirection: editingDirection,
-                  textAlign: editingDirection == TextDirection.rtl
-                      ? TextAlign.right
-                      : TextAlign.left,
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    isDense: true,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  onTap: () {
-                    // FIX: Lock keyboard immediately when tapping on comment text field
-                    if (mounted) {
-                      context.read<AppProvider>().setKeyboardLock(true);
+                child: Focus(
+                  canRequestFocus: false,
+                  descendantsAreFocusable: true,
+                  onKeyEvent: (node, event) {
+                    if (editingDirection != TextDirection.rtl) {
+                      return KeyEventResult.ignored;
                     }
+                    return _handleRtlArrowKeys(event);
                   },
-                  contentInsertionConfiguration: ContentInsertionConfiguration(
-                    allowedMimeTypes: const <String>['image/png', 'image/jpeg', 'image/gif', 'image/webp'],
-                    onContentInserted: (KeyboardInsertedContent content) async {
-                      if (content.hasData) {
-                        final bytes = content.data!;
-                        setState(() => _isUploadingMedia = true);
-                        try {
-                          final storage = SupabaseStorageService();
-                          String ext = '.png'; // Default
-                          if (content.mimeType == 'image/jpeg') ext = '.jpg';
-                          if (content.mimeType == 'image/gif') ext = '.gif';
-                          if (content.mimeType == 'image/webp') ext = '.webp';
-                          
-                          final url = await storage.uploadBytes(bytes, ext);
-                          if (url != null) {
-                            _persistAttachmentUrl(url);
-                            if (mounted) setState(() => _attachedMediaUrl = url);
-                          }
-                        } finally {
-                          if (mounted) setState(() => _isUploadingMedia = false);
-                        }
+                  child: TextField(
+                    controller: _textController,
+                    focusNode: _focusNode,
+                    autofocus: true,
+                    maxLines: null,
+                    minLines: 1,
+                    style: editingStyle,
+                    textDirection: editingDirection,
+                    textAlign: editingDirection == TextDirection.rtl
+                        ? TextAlign.right
+                        : TextAlign.left,
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    onTap: () {
+                      // FIX: Lock keyboard immediately when tapping on comment text field
+                      if (mounted) {
+                        context.read<AppProvider>().setKeyboardLock(true);
                       }
                     },
+                    contentInsertionConfiguration: ContentInsertionConfiguration(
+                      allowedMimeTypes: const <String>['image/png', 'image/jpeg', 'image/gif', 'image/webp'],
+                      onContentInserted: (KeyboardInsertedContent content) async {
+                        if (content.hasData) {
+                          final bytes = content.data!;
+                          setState(() => _isUploadingMedia = true);
+                          try {
+                            final storage = SupabaseStorageService();
+                            String ext = '.png'; // Default
+                            if (content.mimeType == 'image/jpeg') ext = '.jpg';
+                            if (content.mimeType == 'image/gif') ext = '.gif';
+                            if (content.mimeType == 'image/webp') ext = '.webp';
+                            
+                            final url = await storage.uploadBytes(bytes, ext);
+                            if (url != null) {
+                              _persistAttachmentUrl(url);
+                              if (mounted) setState(() => _attachedMediaUrl = url);
+                            }
+                          } finally {
+                            if (mounted) setState(() => _isUploadingMedia = false);
+                          }
+                        }
+                      },
+                    ),
+                    onChanged: (val) {
+                      _tryAutoSolveLatex(val);
+                      // Re-evaluate direction while typing so mixed-language text feels natural.
+                      setState(() {});
+                    },
+                    onSubmitted: (value) {
+                      widget.onEditComplete(
+                        value,
+                        _attachedMediaUrl,
+                        _mediaHeight,
+                        null,
+                      );
+                    },
                   ),
-                  onChanged: (val) {
-                    _tryAutoSolveLatex(val);
-                    // Re-evaluate direction while typing so mixed-language text feels natural.
-                    setState(() {});
-                  },
-                  onSubmitted: (value) {
-                    widget.onEditComplete(
-                      value,
-                      _attachedMediaUrl,
-                      _mediaHeight,
-                      null,
-                    );
-                  },
                 ),
               ),
             ),
