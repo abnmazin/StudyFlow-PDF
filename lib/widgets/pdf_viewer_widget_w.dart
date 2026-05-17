@@ -1602,7 +1602,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                                 attachedMediaUrl: comment.attachedMediaUrl,
                                               ));
                                               if (mounted) setState(() {});
-                                            },
+                                            },  
                                             onRemoveImage: () {
                                               if (pdf == null || _editingCommentId == null) return;
                                               final comment = pdf.comments.firstWhere(

@@ -9,8 +9,7 @@ import traceback
 
 # ── الإعدادات الأساسية ──────────────────────────────────────────────────
 ADMIN_IDS = [1360000077, 6382645701,7238142091] 
-#BOT_TOKEN = '1644721136:AAGswGqerNZntSvp9-yEZKF_SMjg1PgQ8VM'  
-BOT_TOKEN = '8629204913:AAFP5IZN9JC5BHXPv-ljm5BZ-NnQvl51OtM'  
+BOT_TOKEN = '8629204913:AAGaYkyLpxXJNplZtQCKjVBcdQBKbcuK4d8'  
 
 FILE_STAGE_2 = 'stage_2.xlsx'
 FILE_STAGE_3 = 'stage_3.xlsx'
@@ -32,6 +31,7 @@ COMPANIES_DATA = [
     {"name": "شركة تعبئة وخدمات الغاز", "s2m7": 1, "s2m8": 1, "s3m7": 1, "s3m8": 2}, # الإجمالي 5 (3+2)
     {"name": "معهد التدريب النفطي", "s2m7": 0, "s2m8": 1, "s3m7": 1, "s3m8": 0}, # الإجمالي 2
     {"name": "شركة ابن ماجد", "s2m7": 4, "s2m8": 4, "s3m7": 6, "s3m8": 6}, # الإجمالي 20
+    {"name":"شركة مصافي الجنوب" ,"s2m7": 2, "s2m8": 2, "s3m7": 2, "s3m8": 2},
 ]
 
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -171,7 +171,8 @@ def admin_kb():
 
 def stage_kb():
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    kb.add("المرحلة الثانية", "المرحلة الثالثة")
+    kb.add( "المرحلة الثالثة")
+    kb.add( "المرحلة الثانية")
     return kb
 
 def companies_kb(available_names):
