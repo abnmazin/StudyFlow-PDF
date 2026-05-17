@@ -968,6 +968,12 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                             ),
                                     ),
 
+                                    // 🆕 Annotation overlay (DraggableTextWidget) 
+                                    // rendered ABOVE PdfViewer so keyboard events 
+                                    // are NOT intercepted by pdfrx
+                                    if (pdf != null && primaryController.isReady)
+                                      _buildAnnotationOverlay(pdf, primaryController),
+
                                     // Search Bar Overlay
                                     if (_isSearchVisible && pdf != null)
                                       Positioned(
@@ -1721,20 +1727,16 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     PdfViewerController controller, {
     required bool showOverlays,
     required bool isSecondary,
-    bool isKeyboardLocked = false, // NEW: Receive lock state
+    bool isKeyboardLocked = false,
   }) {
     final app = context.read<AppProvider>();
     return Listener(
-      // Auto-switch to Hand tool when the user scrolls while a drawing tool
-      // is active, so pdfrx handles navigation naturally.
       onPointerSignal: (pointerSignal) {
         if (!showOverlays || _isPointerOverAiChat) return;
         if (pointerSignal is PointerScrollEvent && _tool != ToolType.cursor) {
           _activateTool(ToolType.cursor);
         }
       },
-      // Windows/macOS touchpads emit pan/zoom pointer events for two-finger
-      // scrolling. Handle them the same way as mouse wheel scrolling.
       onPointerPanZoomStart: (_) {
         if (!showOverlays || _isPointerOverAiChat) return;
         if (_tool != ToolType.cursor) {
@@ -1749,110 +1751,269 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
       },
       child: Focus(
         onKeyEvent: (node, event) {
-          // When keyboard is locked (TextField has focus), only prevent Space
-          // from scrolling the PDF. Other keys should work normally in TextField.
-          if (app.isKeyboardLocked && 
-              event.logicalKey == LogicalKeyboardKey.space) {
-            return KeyEventResult.handled;
-          }
+          // 👇 ExcludeFocus handles keyboard isolation during text editing.
+          // This Focus only passes events through. No Space/Arrow trapping needed.
           return KeyEventResult.ignored;
         },
-        child: PdfViewer.file(
-        pdf.path,
-        key: isSecondary ? _secondaryViewerKey : _primaryViewerKey,
-        controller: controller,
-        params: PdfViewerParams(
-          maxImageBytesCachedOnMemory: 100 * 1024 * 1024,
-          maxScale: 8.0,
-          minScale: 0.1,
-          scrollByMouseWheel: _isPointerOverAiChat ? 0.0 : 0.8,
-          pageOverlaysBuilder: (context, pageRect, page) {
-            return [
-              RepaintBoundary(
-                child: _buildPageOverlay(context, pageRect, page, pdf),
-              ),
-            ];
-          },
-          loadingBannerBuilder: (context, bytesDownloaded, totalBytes) =>
-              const SizedBox.shrink(),
-          enableKeyboardNavigation:
-              showOverlays &&
-              _editingCommentId == null &&
-              !_isSearchVisible &&
-              !isKeyboardLocked,
-          textSelectionParams: showOverlays
-              ? PdfTextSelectionParams(
-                  onTextSelectionChange: (selection) {
-                    _handleTextSelectionChange(selection);
-                  },
-                )
-              : null,
-          onInteractionStart: showOverlays
-              ? (details) {
-                  app.cancelDebouncedSync();
+        child: ExcludeFocus(
+          excluding: isKeyboardLocked,
+          child: PdfViewer.file(
+            pdf.path,
+            key: isSecondary ? _secondaryViewerKey : _primaryViewerKey,
+            controller: controller,
+            params: PdfViewerParams(
+              maxImageBytesCachedOnMemory: 100 * 1024 * 1024,
+              maxScale: 8.0,
+              minScale: 0.1,
+              scrollByMouseWheel: _isPointerOverAiChat ? 0.0 : 0.8,
+              pageOverlaysBuilder: (context, pageRect, page) {
+                return [
+                  RepaintBoundary(
+                    child: _buildPageOverlay(context, pageRect, page, pdf),
+                  ),
+                ];
+              },
+              loadingBannerBuilder: (context, bytesDownloaded, totalBytes) =>
+                  const SizedBox.shrink(),
+              enableKeyboardNavigation:
+                  showOverlays &&
+                  _editingCommentId == null &&
+                  !_isSearchVisible,
+              textSelectionParams: showOverlays
+                  ? PdfTextSelectionParams(
+                      onTextSelectionChange: (selection) {
+                        _handleTextSelectionChange(selection);
+                      },
+                    )
+                  : null,
+              onInteractionStart: showOverlays
+                  ? (details) {
+                      app.cancelDebouncedSync();
+                    }
+                  : null,
+              onInteractionUpdate: showOverlays
+                  ? (details) {
+                      if (_tool != ToolType.cursor &&
+                          (details.scale != 1.0 || details.pointerCount > 1)) {
+                        _activateTool(ToolType.cursor);
+                      }
+                    }
+                  : null,
+              onInteractionEnd: showOverlays
+                  ? (details) {
+                      if (_tool == ToolType.cursor &&
+                          app.currentSessionCode != null) {
+                        app.triggerDebouncedSync(silent: true);
+                      }
+                    }
+                  : null,
+              onViewerReady: (document, viewerController) {
+                if (mounted && showOverlays) {
+                  setState(() {
+                    _isProcessing = false;
+                    _textSearcher ??= PdfTextSearcher(viewerController)
+                      ..addListener(_onControllerChanged);
+                  });
+                  _requestAutoFit(
+                    delay: const Duration(milliseconds: 120),
+                    force: true,
+                  );
                 }
-              : null,
-          onInteractionUpdate: showOverlays
-              ? (details) {
-                  // Auto-switch to Hand tool during multi-touch gestures
-                  if (_tool != ToolType.cursor &&
-                      (details.scale != 1.0 || details.pointerCount > 1)) {
-                    _activateTool(ToolType.cursor);
+              },
+              onPageChanged: (page) {
+                final currentPage = page ?? _lastReportedPage;
+
+                if (showOverlays) {
+                  _lastReportedPage = currentPage;
+                }
+
+                if (_scrollDebounce?.isActive ?? false) {
+                  _scrollDebounce!.cancel();
+                }
+
+                _scrollDebounce = Timer(const Duration(milliseconds: 300), () {
+                  if (mounted) {
+                    context.read<AppProvider>().updatePdfScroll(
+                      pdf.id,
+                      pageNumber: currentPage,
+                    );
                   }
+                });
+
+                if (showOverlays) {
+                  _schedulePostScrollMaintenance();
                 }
-              : null,
-          onInteractionEnd: showOverlays
-              ? (details) {
-                  // Trigger bidirectional sync after pan/zoom ends (with debounce in AppProvider)
-                  if (_tool == ToolType.cursor &&
-                      app.currentSessionCode != null) {
-                    app.triggerDebouncedSync(silent: true);
-                  }
-                }
-              : null,
-          onViewerReady: (document, viewerController) {
-            if (mounted && showOverlays) {
-              setState(() {
-                _isProcessing = false;
-                _textSearcher ??= PdfTextSearcher(viewerController)
-                  ..addListener(_onControllerChanged);
-              });
-              _requestAutoFit(
-                delay: const Duration(milliseconds: 120),
-                force: true,
-              );
-            }
-          },
-          onPageChanged: (page) {
-            final currentPage = page ?? _lastReportedPage;
+              },
+            ),
+            initialPageNumber: pdf.lastPage ?? 1,
+          ),
+        ),
+      ),
+    );
+  }
 
-            if (showOverlays) {
-              _lastReportedPage = currentPage;
-            }
+  /// 🆕 Builds DraggableTextWidget annotations in a top-level Stack layer
+  /// outside pageOverlaysBuilder, so pdfrx does NOT intercept keyboard events
+  /// (Space, Arrows) during text editing.
+  Widget _buildAnnotationOverlay(PdfItem pdf, PdfViewerController controller) {
+    final appProvider = context.watch<AppProvider>();
+    final layout = controller.layout;
+    if (layout == null || layout.pageLayouts.isEmpty) return const SizedBox.shrink();
 
-            if (_scrollDebounce?.isActive ?? false) {
-              _scrollDebounce!.cancel();
-            }
+    final List<Widget> commentWidgets = [];
 
-            _scrollDebounce = Timer(const Duration(milliseconds: 300), () {
-              if (mounted) {
-                context.read<AppProvider>().updatePdfScroll(
-                  pdf.id,
-                  pageNumber: currentPage,
+    for (final c in pdf.comments) {
+      final pageIndex = c.page - 1; // 0-indexed
+      if (pageIndex < 0 || pageIndex >= layout.pageLayouts.length) continue;
+      if (pageIndex >= controller.pages.length) continue;
+
+      final pageRect = layout.pageLayouts[pageIndex];
+      final page = controller.pages[pageIndex];
+      final scale = pageRect.width / page.width;
+
+      final liveStyles = appProvider.getEditingStyles(c.id);
+      final effectiveColor = liveStyles != null
+          ? Color(liveStyles['color'] as int)
+          : c.color;
+      final effectiveFontSize = liveStyles != null
+          ? (liveStyles['fontSize'] as num).toDouble()
+          : c.fontSize;
+      final effectiveIsBold = liveStyles != null
+          ? (liveStyles['isBold'] as bool)
+          : c.isBold;
+      final effectiveIsLatex = liveStyles != null
+          ? (liveStyles['isLatex'] as bool)
+          : c.isLatex;
+      final effectiveFontFamily = liveStyles != null
+          ? (liveStyles['fontFamily'] as String)
+          : c.fontFamily;
+      final effectiveShowBorder = liveStyles != null
+          ? (liveStyles['showBorder'] as bool)
+          : c.showBorder;
+      final effectiveBorderColor = liveStyles != null
+          ? Color(liveStyles['borderColor'] as int)
+          : c.borderColor;
+      final effectiveBgColor = liveStyles != null
+          ? Color(liveStyles['bgColor'] as int)
+          : c.bgColor;
+
+      commentWidgets.add(
+        Positioned(
+          left: pageRect.left + c.position.dx * scale,
+          top: pageRect.top + c.position.dy * scale,
+          child: DraggableTextWidget(
+            commentId: c.id,
+            content: c.content,
+            attachedMediaUrl: c.attachedMediaUrl,
+            color: effectiveColor,
+            fontSize: effectiveFontSize,
+            isBold: effectiveIsBold,
+            isLatex: effectiveIsLatex,
+            fontFamily: effectiveFontFamily,
+            showBorder: effectiveShowBorder,
+            borderColor: effectiveBorderColor,
+            bgColor: effectiveBgColor,
+            mediaHeight: c.mediaHeight,
+            scale: scale,
+            isEditing: c.id == _editingCommentId,
+            enableDrag:
+                !(_tool == ToolType.eraser) && (c.id != _editingCommentId),
+            onEditComplete: (newText, mediaUrl, mediaHeight, event) {
+              final hasText = newText.trim().isNotEmpty;
+              final hasMedia = mediaUrl != null && mediaUrl.isNotEmpty;
+
+              if (!hasText && !hasMedia) {
+                appProvider.cancelEditing(c.id);
+                appProvider.removeComment(pdf.id, c);
+              } else {
+                appProvider.endEditing(
+                  c.id,
+                  newText,
+                  attachedMediaUrl: mediaUrl,
+                  mediaHeight: mediaHeight,
                 );
               }
-            });
-
-            if (showOverlays) {
-              _schedulePostScrollMaintenance();
-            }
-          },
+              setState(() => _editingCommentId = null);
+            },
+            onIncreaseSize: () {
+              final styles = appProvider.getEditingStyles(c.id);
+              if (styles != null) {
+                appProvider.updateEditingStyle(
+                  commentId: c.id,
+                  fontSize: (styles['fontSize'] as double) + 2,
+                );
+              }
+            },
+            onDecreaseSize: () {
+              final styles = appProvider.getEditingStyles(c.id);
+              if (styles != null && (styles['fontSize'] as double) > 8) {
+                appProvider.updateEditingStyle(
+                  commentId: c.id,
+                  fontSize: (styles['fontSize'] as double) - 2,
+                );
+              }
+            },
+            onToggleBorder: () {
+              final styles = appProvider.getEditingStyles(c.id);
+              if (styles != null) {
+                appProvider.updateEditingStyle(
+                  commentId: c.id,
+                  showBorder: !(styles['showBorder'] as bool),
+                );
+              }
+            },
+            onToggleLatex: () {
+              final styles = appProvider.getEditingStyles(c.id);
+              if (styles != null) {
+                appProvider.updateEditingStyle(
+                  commentId: c.id,
+                  isLatex: !(styles['isLatex'] as bool),
+                );
+              }
+            },
+            onTap: () {
+              if (_tool == ToolType.text) {
+                context.read<AppProvider>().startEditing(c.id, c);
+                setState(() {
+                  _editingCommentId = c.id;
+                  final styles = context
+                      .read<AppProvider>()
+                      .getEditingStyles(c.id);
+                  if (styles != null) {
+                    _textColor = Color(styles['color']);
+                    _fontSize = styles['fontSize'];
+                    _isBold = styles['isBold'];
+                    _isLatex = styles['isLatex'];
+                    _textFontFamily = styles['fontFamily'];
+                    _showBorder = styles['showBorder'];
+                    _borderColor = Color(styles['borderColor']);
+                    _textBgColor = Color(styles['bgColor']);
+                  }
+                });
+              } else if (_tool == ToolType.eraser) {
+                context.read<AppProvider>().removeComment(pdf.id, c);
+              }
+              if (mounted) setState(() {});
+            },
+            onDragEnd: (offset) {
+              if (_tool == ToolType.text ||
+                  _tool == ToolType.cursor ||
+                  _tool == ToolType.select) {
+                final newPos = c.position + offset / scale;
+                context.read<AppProvider>().updateComment(
+                  pdf.id,
+                  c,
+                  c.copyWith(position: newPos),
+                );
+              }
+            },
+          ),
         ),
-        initialPageNumber: pdf.lastPage ?? 1,
-      ),
-    ),
-  );
-}
+      );
+    }
+
+    return Stack(children: commentWidgets);
+  }
 
   Widget _buildNoFilePlaceholder() {
     return Builder(builder: (ctx) => _buildDashboard(ctx));
@@ -1860,7 +2021,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Text Formatting Floating Toolbar
+// Text Formatting Floating Toolbar (with image controls)
 // ─────────────────────────────────────────────────────────────────────────────
 class TextFormattingToolbar extends StatelessWidget {
   final double fontSize;
@@ -1871,7 +2032,6 @@ class TextFormattingToolbar extends StatelessWidget {
   final VoidCallback onDecreaseFont;
   final ValueChanged<bool> onToggleLatex;
   final ValueChanged<bool> onToggleBorder;
-  // NEW: Image controls
   final bool hasAttachedImage;
   final VoidCallback? onIncreaseImageSize;
   final VoidCallback? onDecreaseImageSize;
