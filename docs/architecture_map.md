@@ -33,7 +33,8 @@
   - **Text notes with image**: Shows formatting controls + image controls only — NO math buttons or LaTeX preview
   - **Plain text notes**: No floating toolbar
 - `lib/widgets/pdf_viewer_widget_overlay.dart`: Page overlay that renders `DraggableTextWidget` instances. Contains `onToggleLatex` callback that properly toggles isLatex ON/OFF.
-- `lib/widgets/viewer_components/viewer_toolbar.dart`: responsive toolbar with horizontally scrollable action clusters. Page counter and tools are strictly bound to the **primary PDF controller**.
+- `lib/widgets/viewer_components/viewer_toolbar.dart`: responsive top toolbar with horizontally scrollable action clusters. Contains Hand, Select, and a **ToolSelectorButton** that toggles the floating `DrawingToolbar` (popup menu replaced). Page counter and tools are strictly bound to the **primary PDF controller**.
+- `lib/widgets/viewer_components/drawing_toolbar.dart`: Floating bottom toolbar (toggleable) with horizontal scroll single-row layout (`SingleChildScrollView` + `Row(mainAxisSize: MainAxisSize.min)`). Contains tool chips (Pen, Highlight, Eraser, Arrow, Rectangle, Circle), stroke width slider, color picker, fill toggle, and eraser actions. Visibility governed by `_floatingToolbarSelectedTool` state in `pdf_viewer_widget_w.dart`.
 - `lib/widgets/sidebar_w.dart`: navigation sidebar with dual-highlighting for active (blue) and secondary (gray) documents in split-screen mode.
 
 ## Mini Apps

@@ -2751,11 +2751,6 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       markPdfDirty(pdfId);
       _markUnsavedChanges();
       triggerDebouncedSync(silent: true);
-      if (currentSessionCode != null && activePdf?.fileHash != null) {
-        _syncService
-            .clearAnnotationsForHash(currentSessionCode!, activePdf!.fileHash!)
-            .then((_) => clearDeletionIntent(pdfId));
-      }
       return;
     }
   }
@@ -2791,6 +2786,60 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
       _actionHistory.removeWhere((a) => a.pdfId == pdfId);
       _redoHistory.removeWhere((a) => a.pdfId == pdfId);
+
+      _notify();
+      markPdfDirty(pdfId);
+      _markUnsavedChanges();
+      triggerDebouncedSync(silent: true);
+      if (currentSessionCode != null && activePdf?.fileHash != null) {
+        _syncService
+            .clearAnnotationsForHash(currentSessionCode!, activePdf!.fileHash!)
+            .then((_) => clearDeletionIntent(pdfId));
+      }
+      return;
+    }
+  }
+
+  void clearDrawingsOnPage(String pdfId, int pageNumber) {
+    for (var cls in _classes) {
+      final pdf = cls.pdfs.firstWhere(
+        (p) => p.id == pdfId,
+        orElse: () => PdfItem(id: '', name: '', path: ''),
+      );
+      if (pdf.id.isEmpty) continue;
+
+      final drawingIds = pdf.highlights
+          .where(
+            (h) =>
+                h.page == pageNumber &&
+                (h.type == HighlightType.pen ||
+                    h.type == HighlightType.arrow ||
+                    h.type == HighlightType.rectangle ||
+                    h.type == HighlightType.circle),
+          )
+          .map((h) => h.id)
+          .toList();
+
+      if (drawingIds.isEmpty) return;
+
+      _intentionallyDeletedIds.addAll(drawingIds);
+
+      pdf.highlights.removeWhere(
+        (h) =>
+            h.page == pageNumber &&
+            (h.type == HighlightType.pen ||
+                h.type == HighlightType.arrow ||
+                h.type == HighlightType.rectangle ||
+                h.type == HighlightType.circle),
+      );
+
+      _lockedLocalOnlyHighlightIds.remove(pdf.fileHash);
+      _actionHistory.removeWhere(
+        (a) => a.pdfId == pdfId && drawingIds.contains(a.itemId),
+      );
+      _redoHistory.removeWhere(
+        (a) => a.pdfId == pdfId && drawingIds.contains(a.itemId),
+      );
 
       _notify();
       markPdfDirty(pdfId);

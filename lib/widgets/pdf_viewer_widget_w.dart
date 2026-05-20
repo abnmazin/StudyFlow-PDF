@@ -20,6 +20,7 @@ import '../models/print_settings.dart'; // NEW
 import '../services/print_service.dart'; // NEW
 import 'viewer_components/viewer_toolbar.dart';
 import 'viewer_components/viewer_right_panel.dart';
+import 'viewer_components/drawing_toolbar.dart';
 import 'viewer_components/print_dialog.dart';
 import '../painters/highlight_painter.dart';
 import 'draggable_text_widget.dart';
@@ -60,7 +61,6 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
 
   bool _isRightPanelOpen = false;
   bool _isPointerOverAiChat = false;
-  bool _isShapesPaletteVisible = false;
   bool _isSettingsMode = false;
   int _rightPanelTabIndex = 0; // 0: Tools, 1: AI, 2: Translate
   String? _currentListeningCode;
@@ -147,6 +147,9 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   final GlobalKey _secondaryViewerKey = GlobalKey();
 
   String? _editingCommentId;
+  
+  // 🆕 Floating toolbar state: null = hidden, non-null = visible with that tool
+  ToolType? _floatingToolbarSelectedTool;
 
   // Hard Reload Tracking
   bool _needsReload = false;
@@ -531,10 +534,22 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
         _endShapeTransform();
         _shapeHoverCursor = SystemMouseCursors.basic;
       }
+
+      // If activating Text tool, hide floating toolbar (Text uses its own TextFormattingToolbar)
+      if (nextTool == ToolType.text) {
+        _floatingToolbarSelectedTool = null;
+      }
+      // If activating a drawing tool via floating toolbar, deactivate Text tool
+      // (covered by app.setCurrentTool below)
     });
 
     // Delegate to Provider for global tool state & sync triggering
     app.setCurrentTool(nextTool);
+  }
+
+  void _deselectShape() {
+    if (!mounted) return;
+    setState(() => _selectedHighlightId = null);
   }
 
   void _setAiChatPointerHover(bool isHovering) {
@@ -856,17 +871,11 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                   selectedCommentAuthor: selectedCommentAuthor,
                   isRightPanelOpen: _isRightPanelOpen,
                   isSplitMode: isSplitMode,
-                  isShapesPaletteVisible: _isShapesPaletteVisible,
                   isDarkMode: isDarkMode,
                   isSearchVisible: _isSearchVisible,
                   isSyncing: app.isSyncing,
                   activePdf: pdf,
                   pdfController: primaryController,
-                  onToggleShapesPalette: () {
-                    setState(() {
-                      _isShapesPaletteVisible = !_isShapesPaletteVisible;
-                    });
-                  },
                   onToolChanged: (t) {
                     _activateTool(t);
                   },
@@ -904,6 +913,17 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                   },
                   onSyncPressed: _syncNow,
                   onAddBookmark: (pdf) => _showAddBookmarkDialog(pdf),
+                  floatingToolbarSelectedTool: _floatingToolbarSelectedTool,
+                  onFloatingToolbarToggle: (tool) {
+                    setState(() {
+                      _floatingToolbarSelectedTool = tool;
+                    });
+                    if (tool != null) {
+                      _activateTool(tool);
+                    } else {
+                      _activateTool(ToolType.cursor);
+                    }
+                  },
                 ),
                 // 2. Main Content Area (Viewer + Right Panel)
                 Expanded(
@@ -955,8 +975,6 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                           : Selector<AppProvider, bool>(
                                               selector: (context, provider) => provider.isKeyboardLocked,
                                               builder: (context, isLocked, child) {
-                                                // DIAGNOSTIC: Log when the viewer rebuilds due to lock state change
-                                                // debugPrint('📄 [PDF VIEWER BUILD] Rebuilding due to isLocked: $isLocked');
                                                 return _buildPdfViewerCore(
                                                   pdf,
                                                   primaryController,
@@ -967,12 +985,6 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                               },
                                             ),
                                     ),
-
-                                    // 🆕 Annotation overlay (DraggableTextWidget) 
-                                    // rendered ABOVE PdfViewer so keyboard events 
-                                    // are NOT intercepted by pdfrx
-                                    if (pdf != null && primaryController.isReady)
-                                      _buildAnnotationOverlay(pdf, primaryController),
 
                                     // Search Bar Overlay
                                     if (_isSearchVisible && pdf != null)
@@ -1049,128 +1061,114 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                         ),
                                       ),
 
-                                    if (_isShapesPaletteVisible)
+                                    if (_floatingToolbarSelectedTool != null)
                                       Positioned(
-                                        left: 20,
-                                        bottom: 50,
-                                        child: TapRegion(
-                                          onTapOutside: (_) {
-                                            // Only auto-dismiss when in cursor mode.
-                                            // When a shape tool is active the user is
-                                            // likely drawing, so keep the palette visible.
-                                            if (mounted &&
-                                                _tool != ToolType.arrow &&
-                                                _tool != ToolType.rectangle &&
-                                                _tool != ToolType.circle &&
-                                                _tool != ToolType.pen &&
-                                                _tool != ToolType.highlight) {
+                                        left: 0,
+                                        right: 0,
+                                        bottom: 32,
+                                        child: Center(
+                                          child: DrawingToolbar(
+                                            activeTool: _floatingToolbarSelectedTool!,
+                                            onToolChanged: (tool) {
                                               setState(() {
-                                                _isShapesPaletteVisible = false;
+                                                _floatingToolbarSelectedTool = tool;
                                               });
-                                            }
-                                          },
-                                          child: Material(
-                                            elevation: 4,
-                                            color: Colors.transparent,
-                                            borderRadius: BorderRadius.circular(
-                                              14,
-                                            ),
-                                            child: Container(
-                                              padding: const EdgeInsets.all(8),
-                                              decoration: BoxDecoration(
-                                                color: isDarkMode
-                                                    ? const Color(0xFF1E293B)
-                                                    : Colors.white,
-                                                borderRadius:
-                                                    BorderRadius.circular(14),
-                                                border: Border.all(
-                                                  color: isDarkMode
-                                                      ? const Color(0xFF334155)
-                                                      : const Color(0xFFE2E8F0),
-                                                ),
-                                              ),
-                                              child: Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  IconButton(
-                                                    tooltip: 'مستطيل',
-                                                    icon: const Icon(
-                                                      LucideIcons.square,
-                                                    ),
-                                                    color:
-                                                        _tool ==
-                                                            ToolType.rectangle
-                                                        ? const Color(
-                                                            0xFF3B82F6,
-                                                          )
-                                                        : (isDarkMode
-                                                              ? const Color(
-                                                                  0xFF94A3B8,
-                                                                )
-                                                              : const Color(
-                                                                  0xFF64748B,
-                                                                )),
-                                                    onPressed: () {
-                                                      setState(() {
-                                                        _activateTool(
-                                                          ToolType.rectangle,
-                                                        );
-                                                      });
-                                                    },
-                                                  ),
-                                                  IconButton(
-                                                    tooltip: 'دائرة',
-                                                    icon: const Icon(
-                                                      LucideIcons.circle,
-                                                    ),
-                                                    color:
-                                                        _tool == ToolType.circle
-                                                        ? const Color(
-                                                            0xFF3B82F6,
-                                                          )
-                                                        : (isDarkMode
-                                                              ? const Color(
-                                                                  0xFF94A3B8,
-                                                                )
-                                                              : const Color(
-                                                                  0xFF64748B,
-                                                                )),
-                                                    onPressed: () {
-                                                      setState(() {
-                                                        _activateTool(
-                                                          ToolType.circle,
-                                                        );
-                                                      });
-                                                    },
-                                                  ),
-                                                  IconButton(
-                                                    tooltip: 'سهم',
-                                                    icon: const Icon(
-                                                      LucideIcons.arrowUpRight,
-                                                    ),
-                                                    color:
-                                                        _tool == ToolType.arrow
-                                                        ? const Color(
-                                                            0xFF3B82F6,
-                                                          )
-                                                        : (isDarkMode
-                                                              ? const Color(
-                                                                  0xFF94A3B8,
-                                                                )
-                                                              : const Color(
-                                                                  0xFF64748B,
-                                                                )),
-                                                    onPressed: () {
-                                                      setState(() {
-                                                        _activateTool(
-                                                          ToolType.arrow,
-                                                        );
-                                                      });
-                                                    },
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
+                                              _activateTool(tool);
+                                            },
+                                            activeColor: panelTool == ToolType.highlight
+                                                ? _highlightColor
+                                                : panelTool == ToolType.text
+                                                    ? _textColor
+                                                    : (panelTool == ToolType.pen
+                                                        ? _penColor
+                                                        : _shapeStrokeColor),
+                                            strokeWidth:
+                                                _toolStrokeWidths[panelTool] ??
+                                                2.0,
+                                            fillColor: _shapeFillColor,
+                                            showFill:
+                                                panelTool == ToolType.rectangle ||
+                                                panelTool == ToolType.circle,
+                                            isDarkMode: isDarkMode,
+                                            onStrokeWidthChanged: (value) {
+                                              _onStrokeWidthChanged(value);
+                                            },
+                                            onColorChanged: (color) {
+                                              _onColorChanged(color);
+                                            },
+                                            onFillColorChanged:
+                                                (panelTool == ToolType.rectangle ||
+                                                        panelTool ==
+                                                            ToolType.circle)
+                                                    ? (color) {
+                                                        setState(() {
+                                                          _shapeFillColor = color;
+                                                        });
+                                                      }
+                                                    : null,
+                                            onToggleFill:
+                                                (panelTool == ToolType.rectangle ||
+                                                        panelTool ==
+                                                            ToolType.circle)
+                                                    ? () {
+                                                        setState(() {
+                                                          _shapeFillColor = _shapeFillColor ==
+                                                                  Colors.transparent
+                                                              ? _shapeStrokeColor
+                                                              : Colors.transparent;
+                                                        });
+                                                      }
+                                                    : null,
+                                            onClearAll: panelTool == ToolType.eraser
+                                                ? () {
+                                                    if (pdf != null) {
+                                                      context
+                                                          .read<AppProvider>()
+                                                          .clearAllDrawingsOnly(
+                                                            pdf.id,
+                                                          );
+                                                    }
+                                                  }
+                                                : null,
+                                            onClearPage: panelTool == ToolType.eraser
+                                                ? () {
+                                                    if (pdf != null &&
+                                                        primaryController
+                                                            .pageNumber !=
+                                                        null) {
+                                                      context
+                                                          .read<AppProvider>()
+                                                          .clearDrawingsOnPage(
+                                                            pdf.id,
+                                                            primaryController
+                                                                .pageNumber!,
+                                                          );
+                                                    }
+                                                  }
+                                                : null,
+                                            onDeleteSelected:
+                                                (_selectedHighlightId != null &&
+                                                        panelTool ==
+                                                            ToolType.select)
+                                                    ? () {
+                                                        if (pdf == null) return;
+                                                        final selectedShape = pdf.highlights
+                                                            .where(
+                                                              (h) =>
+                                                                  h.id ==
+                                                                  _selectedHighlightId,
+                                                            )
+                                                            .firstOrNull;
+                                                        if (selectedShape == null) return;
+                                                        context
+                                                            .read<AppProvider>()
+                                                            .removeHighlight(
+                                                              pdf.id,
+                                                              selectedShape,
+                                                            );
+                                                        _deselectShape();
+                                                      }
+                                                    : null,
                                           ),
                                         ),
                                       ),
@@ -1850,169 +1848,6 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
         ),
       ),
     );
-  }
-
-  /// 🆕 Builds DraggableTextWidget annotations in a top-level Stack layer
-  /// outside pageOverlaysBuilder, so pdfrx does NOT intercept keyboard events
-  /// (Space, Arrows) during text editing.
-  Widget _buildAnnotationOverlay(PdfItem pdf, PdfViewerController controller) {
-    final appProvider = context.watch<AppProvider>();
-    final layout = controller.layout;
-    if (layout == null || layout.pageLayouts.isEmpty) return const SizedBox.shrink();
-
-    final List<Widget> commentWidgets = [];
-
-    for (final c in pdf.comments) {
-      final pageIndex = c.page - 1; // 0-indexed
-      if (pageIndex < 0 || pageIndex >= layout.pageLayouts.length) continue;
-      if (pageIndex >= controller.pages.length) continue;
-
-      final pageRect = layout.pageLayouts[pageIndex];
-      final page = controller.pages[pageIndex];
-      final scale = pageRect.width / page.width;
-
-      final liveStyles = appProvider.getEditingStyles(c.id);
-      final effectiveColor = liveStyles != null
-          ? Color(liveStyles['color'] as int)
-          : c.color;
-      final effectiveFontSize = liveStyles != null
-          ? (liveStyles['fontSize'] as num).toDouble()
-          : c.fontSize;
-      final effectiveIsBold = liveStyles != null
-          ? (liveStyles['isBold'] as bool)
-          : c.isBold;
-      final effectiveIsLatex = liveStyles != null
-          ? (liveStyles['isLatex'] as bool)
-          : c.isLatex;
-      final effectiveFontFamily = liveStyles != null
-          ? (liveStyles['fontFamily'] as String)
-          : c.fontFamily;
-      final effectiveShowBorder = liveStyles != null
-          ? (liveStyles['showBorder'] as bool)
-          : c.showBorder;
-      final effectiveBorderColor = liveStyles != null
-          ? Color(liveStyles['borderColor'] as int)
-          : c.borderColor;
-      final effectiveBgColor = liveStyles != null
-          ? Color(liveStyles['bgColor'] as int)
-          : c.bgColor;
-
-      commentWidgets.add(
-        Positioned(
-          left: pageRect.left + c.position.dx * scale,
-          top: pageRect.top + c.position.dy * scale,
-          child: DraggableTextWidget(
-            commentId: c.id,
-            content: c.content,
-            attachedMediaUrl: c.attachedMediaUrl,
-            color: effectiveColor,
-            fontSize: effectiveFontSize,
-            isBold: effectiveIsBold,
-            isLatex: effectiveIsLatex,
-            fontFamily: effectiveFontFamily,
-            showBorder: effectiveShowBorder,
-            borderColor: effectiveBorderColor,
-            bgColor: effectiveBgColor,
-            mediaHeight: c.mediaHeight,
-            scale: scale,
-            isEditing: c.id == _editingCommentId,
-            enableDrag:
-                !(_tool == ToolType.eraser) && (c.id != _editingCommentId),
-            onEditComplete: (newText, mediaUrl, mediaHeight, event) {
-              final hasText = newText.trim().isNotEmpty;
-              final hasMedia = mediaUrl != null && mediaUrl.isNotEmpty;
-
-              if (!hasText && !hasMedia) {
-                appProvider.cancelEditing(c.id);
-                appProvider.removeComment(pdf.id, c);
-              } else {
-                appProvider.endEditing(
-                  c.id,
-                  newText,
-                  attachedMediaUrl: mediaUrl,
-                  mediaHeight: mediaHeight,
-                );
-              }
-              setState(() => _editingCommentId = null);
-            },
-            onIncreaseSize: () {
-              final styles = appProvider.getEditingStyles(c.id);
-              if (styles != null) {
-                appProvider.updateEditingStyle(
-                  commentId: c.id,
-                  fontSize: (styles['fontSize'] as double) + 2,
-                );
-              }
-            },
-            onDecreaseSize: () {
-              final styles = appProvider.getEditingStyles(c.id);
-              if (styles != null && (styles['fontSize'] as double) > 8) {
-                appProvider.updateEditingStyle(
-                  commentId: c.id,
-                  fontSize: (styles['fontSize'] as double) - 2,
-                );
-              }
-            },
-            onToggleBorder: () {
-              final styles = appProvider.getEditingStyles(c.id);
-              if (styles != null) {
-                appProvider.updateEditingStyle(
-                  commentId: c.id,
-                  showBorder: !(styles['showBorder'] as bool),
-                );
-              }
-            },
-            onToggleLatex: () {
-              final styles = appProvider.getEditingStyles(c.id);
-              if (styles != null) {
-                appProvider.updateEditingStyle(
-                  commentId: c.id,
-                  isLatex: !(styles['isLatex'] as bool),
-                );
-              }
-            },
-            onTap: () {
-              if (_tool == ToolType.text) {
-                context.read<AppProvider>().startEditing(c.id, c);
-                setState(() {
-                  _editingCommentId = c.id;
-                  final styles = context
-                      .read<AppProvider>()
-                      .getEditingStyles(c.id);
-                  if (styles != null) {
-                    _textColor = Color(styles['color']);
-                    _fontSize = styles['fontSize'];
-                    _isBold = styles['isBold'];
-                    _isLatex = styles['isLatex'];
-                    _textFontFamily = styles['fontFamily'];
-                    _showBorder = styles['showBorder'];
-                    _borderColor = Color(styles['borderColor']);
-                    _textBgColor = Color(styles['bgColor']);
-                  }
-                });
-              } else if (_tool == ToolType.eraser) {
-                context.read<AppProvider>().removeComment(pdf.id, c);
-              }
-              if (mounted) setState(() {});
-            },
-            onDragEnd: (offset) {
-              if (_tool == ToolType.text ||
-                  _tool == ToolType.cursor ||
-                  _tool == ToolType.select) {
-                final newPos = c.position + offset / scale;
-                context.read<AppProvider>().updateComment(
-                  pdf.id,
-                  c,
-                  c.copyWith(position: newPos),
-                );
-              }
-            },
-          ),
-        ),
-      );
-    }
-
-    return Stack(children: commentWidgets);
   }
 
   Widget _buildNoFilePlaceholder() {

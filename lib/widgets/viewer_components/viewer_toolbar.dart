@@ -14,13 +14,11 @@ class StudyFlowToolbar extends StatefulWidget {
   final String? selectedCommentAuthor;
   final bool isRightPanelOpen;
   final bool isSplitMode;
-  final bool isShapesPaletteVisible;
   final bool isDarkMode;
   final bool isSearchVisible;
   final PdfItem? activePdf;
   final PdfViewerController pdfController;
   final ValueChanged<ToolType> onToolChanged;
-  final VoidCallback onToggleShapesPalette;
   final VoidCallback onToggleRightPanel;
   final VoidCallback onToggleSplitMode;
   final VoidCallback onToggleSettings;
@@ -28,6 +26,22 @@ class StudyFlowToolbar extends StatefulWidget {
   final VoidCallback onSyncPressed;
   final bool isSyncing;
   final Function(PdfItem) onAddBookmark;
+  // 🆕 Floating toolbar toggle state
+  final ToolType? floatingToolbarSelectedTool;
+  final ValueChanged<ToolType?>? onFloatingToolbarToggle;
+
+  /// Helper: returns the icon for a given tool type.
+  static IconData iconForTool(ToolType tool) {
+    switch (tool) {
+      case ToolType.pen: return LucideIcons.penTool;
+      case ToolType.highlight: return LucideIcons.highlighter;
+      case ToolType.eraser: return LucideIcons.eraser;
+      case ToolType.arrow: return LucideIcons.arrowUpRight;
+      case ToolType.rectangle: return LucideIcons.square;
+      case ToolType.circle: return LucideIcons.circle;
+      default: return LucideIcons.shapes;
+    }
+  }
 
   const StudyFlowToolbar({
     super.key,
@@ -37,13 +51,11 @@ class StudyFlowToolbar extends StatefulWidget {
     this.selectedCommentAuthor,
     required this.isRightPanelOpen,
     required this.isSplitMode,
-    required this.isShapesPaletteVisible,
     required this.isDarkMode,
     required this.isSearchVisible,
     required this.activePdf,
     required this.pdfController,
     required this.onToolChanged,
-    required this.onToggleShapesPalette,
     required this.onToggleRightPanel,
     required this.onToggleSplitMode,
     required this.onToggleSettings,
@@ -51,6 +63,8 @@ class StudyFlowToolbar extends StatefulWidget {
     required this.onSyncPressed,
     required this.isSyncing,
     required this.onAddBookmark,
+    this.floatingToolbarSelectedTool,
+    this.onFloatingToolbarToggle,
   });
 
   @override
@@ -214,6 +228,7 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
 
   // ─── UNIFIED BUTTON BUILDER ───────────────────────────────────────
   Widget _buildToolButton({
+    Key? key,
     required IconData icon,
     required bool isActive,
     required VoidCallback onTap,
@@ -228,6 +243,7 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
     final fgColor = isActive ? effectiveActiveColor : iconMuted;
 
     final button = InkWell(
+      key: key,
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Container(
@@ -269,19 +285,6 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
     final inputBorder = widget.isDarkMode
         ? const Color(0xFF334155)
         : scheme.outlineVariant;
-    final selectedShapeType = widget.selectedAnnotationTool;
-    final hasSelectedShape =
-        widget.activeTool == ToolType.select && selectedShapeType != null;
-    final isSelectedShapeTool =
-        hasSelectedShape &&
-        [
-          ToolType.arrow,
-          ToolType.rectangle,
-          ToolType.circle,
-        ].contains(selectedShapeType);
-    final isSelectedHighlightTool =
-        hasSelectedShape && selectedShapeType == ToolType.highlight;
-
     return TextFieldTapRegion(
       child: Container(
         height: 64,
@@ -546,66 +549,37 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                               iconMuted: iconMuted,
                             ),
                             const SizedBox(width: 2),
-                            _buildToolButton(
-                              icon: LucideIcons.shapes,
-                              isActive:
-                                  widget.isShapesPaletteVisible ||
-                                  [
-                                    ToolType.arrow,
-                                    ToolType.rectangle,
-                                    ToolType.circle,
-                                  ].contains(widget.activeTool) ||
-                                  isSelectedShapeTool,
-                              onTap: () {
-                                if (!isSelectedShapeTool) {
-                                  widget.onToolChanged(ToolType.rectangle);
-                                }
-                                if (!widget.isShapesPaletteVisible) {
-                                  widget.onToggleShapesPalette();
-                                }
-                              },
-                              tooltip: 'أدوات الأشكال',
-                              iconMuted: iconMuted,
-                            ),
-                            const SizedBox(width: 2),
-                            _buildToolButton(
-                              icon: LucideIcons.highlighter,
-                              isActive:
-                                  widget.activeTool == ToolType.highlight ||
-                                  isSelectedHighlightTool,
-                              onTap: () {
-                                if (!isSelectedHighlightTool) {
-                                  widget.onToolChanged(ToolType.highlight);
-                                }
-                              },
-                              tooltip: 'هايلايت (H)',
-                              activeColor: const Color(0xFFEAB308),
-                              iconMuted: iconMuted,
-                            ),
-                            const SizedBox(width: 2),
-                            _buildToolButton(
-                              icon: LucideIcons.penTool,
-                              isActive: widget.activeTool == ToolType.pen,
-                              onTap: () => widget.onToolChanged(ToolType.pen),
-                              tooltip: 'قلم (P)',
-                              iconMuted: iconMuted,
-                            ),
-                            const SizedBox(width: 2),
+                            // Text tool — always in top toolbar
                             _buildToolButton(
                               icon: LucideIcons.type,
                               isActive: widget.activeTool == ToolType.text,
-                              onTap: () => widget.onToolChanged(ToolType.text),
-                              tooltip: 'نص (T)',
+                              onTap: () {
+                                widget.onToolChanged(ToolType.text);
+                              },
+                              tooltip: 'نص',
                               iconMuted: iconMuted,
                             ),
                             const SizedBox(width: 2),
+                            // 🆕 ToolSelectorButton — toggles floating DrawingToolbar
                             _buildToolButton(
-                              icon: LucideIcons.eraser,
-                              isActive: widget.activeTool == ToolType.eraser,
-                              onTap: () =>
-                                  widget.onToolChanged(ToolType.eraser),
-                              tooltip: 'ممحاة (E)',
-                              activeColor: const Color(0xFFEF4444),
+                              key: const ValueKey('tool_selector_btn'),
+                              icon: widget.floatingToolbarSelectedTool != null
+                                  ? StudyFlowToolbar.iconForTool(widget.floatingToolbarSelectedTool!)
+                                  : LucideIcons.shapes,
+                              isActive: widget.floatingToolbarSelectedTool != null,
+                              onTap: () {
+                                if (widget.floatingToolbarSelectedTool != null) {
+                                  // Toggle OFF: hide floating toolbar, reset to hand
+                                  widget.onFloatingToolbarToggle?.call(null);
+                                  widget.onToolChanged(ToolType.cursor);
+                                } else {
+                                  // Toggle ON: show floating toolbar with default tool (Pen)
+                                  widget.onFloatingToolbarToggle?.call(ToolType.pen);
+                                  widget.onToolChanged(ToolType.pen);
+                                }
+                              },
+                              tooltip: 'أدوات الرسم',
+                              activeColor: const Color(0xFF3B82F6),
                               iconMuted: iconMuted,
                             ),
                           ],
