@@ -388,11 +388,16 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     }
   }
 
+  // Debounce to avoid 1.5GB memory leak from calling setState on every scroll pixel.
+  // Throttles to at most once per 100ms.
+  Timer? _controllerUpdateDebounce;
+
   void _onControllerChanged() {
-    // MEMORY FIX: Removed blind setState(() {}).
-    // Firing setState on every scroll pixel causes a 1.5GB native memory leak.
-    // If specific UI elements (like the slider) need to update, they should use
-    // AnimatedBuilder or ValueListenableBuilder tied directly to the controller.
+    if (!mounted) return;
+    _controllerUpdateDebounce?.cancel();
+    _controllerUpdateDebounce = Timer(const Duration(milliseconds: 100), () {
+      if (mounted) setState(() {});
+    });
   }
 
   PdfViewerController _syncViewerController({
@@ -720,38 +725,8 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     final selectedCommentAuthor = _selectedCommentAuthor(pdf, app);
     final panelTool = _panelTool(pdf);
 
-    // Strict Controller Cycle Management
-    if (pdf != null) {
-      if (_currentPdfId == null) {
-        // First load
-        _currentPdfId = pdf.id;
-        _lastModified = pdf.lastModified;
-        if (app.currentSessionCode != null && pdf.fileHash != null) {
-          SchedulerBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _syncNow();
-          });
-        }
-      } else if (_currentPdfId != pdf.id || _lastModified != pdf.lastModified) {
-        // Detected change or modification - FORCE RESET
-        _pdfController.removeListener(_onControllerChanged);
-        // _pdfController.dispose(); // Not available in pdfrx controller
-        _pdfController = PdfViewerController();
-        _pdfController.addListener(_onControllerChanged);
-        _currentPdfId = pdf.id;
-        _lastModified = pdf.lastModified;
-        // Optionally reset processing lock to be safe
-        _isProcessing = false;
-        _textSearcher = null;
-        _isSearchVisible = false;
-        _textSelection = null;
-        _isTextSelectionMenuVisible = false;
-        if (app.currentSessionCode != null && pdf.fileHash != null) {
-          SchedulerBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _syncNow();
-          });
-        }
-      }
-    }
+    // Controller lifecycle handled entirely by _syncViewerController() above.
+    // This block is intentionally removed to avoid duplicate controller creation.
 
     return AnimatedBuilder(
       animation: Listenable.merge([FocusManager.instance, app]),
@@ -972,17 +947,11 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                                 ),
                                               ],
                                             )
-                                          : Selector<AppProvider, bool>(
-                                              selector: (context, provider) => provider.isKeyboardLocked,
-                                              builder: (context, isLocked, child) {
-                                                return _buildPdfViewerCore(
-                                                  pdf,
-                                                  primaryController,
-                                                  showOverlays: true,
-                                                  isSecondary: false,
-                                                  isKeyboardLocked: isLocked,
-                                                );
-                                              },
+                                          : _buildPdfViewerCore(
+                                              pdf,
+                                              primaryController,
+                                              showOverlays: true,
+                                              isSecondary: false,
                                             ),
                                     ),
 
@@ -1725,7 +1694,6 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     PdfViewerController controller, {
     required bool showOverlays,
     required bool isSecondary,
-    bool isKeyboardLocked = false,
   }) {
     final app = context.read<AppProvider>();
     return Listener(
@@ -1747,105 +1715,98 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
           _activateTool(ToolType.cursor);
         }
       },
-      child: Focus(
-        onKeyEvent: (node, event) {
-          // 👇 ExcludeFocus handles keyboard isolation during text editing.
-          // This Focus only passes events through. No Space/Arrow trapping needed.
-          return KeyEventResult.ignored;
-        },
-        child: ExcludeFocus(
-          excluding: isKeyboardLocked,
-          child: PdfViewer.file(
-            pdf.path,
-            key: isSecondary ? _secondaryViewerKey : _primaryViewerKey,
-            controller: controller,
-            params: PdfViewerParams(
-              maxImageBytesCachedOnMemory: 100 * 1024 * 1024,
-              maxScale: 8.0,
-              minScale: 0.1,
-              scrollByMouseWheel: _isPointerOverAiChat ? 0.0 : 0.8,
-              pageOverlaysBuilder: (context, pageRect, page) {
-                return [
-                  RepaintBoundary(
-                    child: _buildPageOverlay(context, pageRect, page, pdf),
-                  ),
-                ];
-              },
-              loadingBannerBuilder: (context, bytesDownloaded, totalBytes) =>
-                  const SizedBox.shrink(),
-              enableKeyboardNavigation:
-                  showOverlays &&
-                  _editingCommentId == null &&
-                  !_isSearchVisible,
-              textSelectionParams: showOverlays
-                  ? PdfTextSelectionParams(
-                      onTextSelectionChange: (selection) {
-                        _handleTextSelectionChange(selection);
-                      },
-                    )
-                  : null,
-              onInteractionStart: showOverlays
-                  ? (details) {
-                      app.cancelDebouncedSync();
-                    }
-                  : null,
-              onInteractionUpdate: showOverlays
-                  ? (details) {
-                      if (_tool != ToolType.cursor &&
-                          (details.scale != 1.0 || details.pointerCount > 1)) {
-                        _activateTool(ToolType.cursor);
-                      }
-                    }
-                  : null,
-              onInteractionEnd: showOverlays
-                  ? (details) {
-                      if (_tool == ToolType.cursor &&
-                          app.currentSessionCode != null) {
-                        app.triggerDebouncedSync(silent: true);
-                      }
-                    }
-                  : null,
-              onViewerReady: (document, viewerController) {
-                if (mounted && showOverlays) {
-                  setState(() {
-                    _isProcessing = false;
-                    _textSearcher ??= PdfTextSearcher(viewerController)
-                      ..addListener(_onControllerChanged);
-                  });
-                  _requestAutoFit(
-                    delay: const Duration(milliseconds: 120),
-                    force: true,
-                  );
-                }
-              },
-              onPageChanged: (page) {
-                final currentPage = page ?? _lastReportedPage;
-
-                if (showOverlays) {
-                  _lastReportedPage = currentPage;
-                }
-
-                if (_scrollDebounce?.isActive ?? false) {
-                  _scrollDebounce!.cancel();
-                }
-
-                _scrollDebounce = Timer(const Duration(milliseconds: 300), () {
-                  if (mounted) {
-                    context.read<AppProvider>().updatePdfScroll(
-                      pdf.id,
-                      pageNumber: currentPage,
-                    );
-                  }
-                });
-
-                if (showOverlays) {
-                  _schedulePostScrollMaintenance();
-                }
-              },
-            ),
-            initialPageNumber: pdf.lastPage ?? 1,
+      child: PdfViewer.file(
+        pdf.path,
+        key: isSecondary ? _secondaryViewerKey : _primaryViewerKey,
+        controller: controller,
+        params: PdfViewerParams(
+          maxImageBytesCachedOnMemory: 100 * 1024 * 1024,
+          maxScale: 8.0,
+          minScale: 0.1,
+          scrollByMouseWheel: _isPointerOverAiChat ? 0.0 : 0.8,
+          pageOverlaysBuilder: (context, pageRect, page) {
+            return [
+              RepaintBoundary(
+                child: _buildPageOverlay(context, pageRect, page, pdf),
+              ),
+            ];
+          },
+          keyHandlerParams: PdfViewerKeyHandlerParams(
+            enabled: !showOverlays || _editingCommentId == null,
           ),
+          loadingBannerBuilder: (context, bytesDownloaded, totalBytes) =>
+              const SizedBox.shrink(),
+          enableKeyboardNavigation:
+              showOverlays &&
+              _editingCommentId == null &&
+              !_isSearchVisible,
+          textSelectionParams: showOverlays
+              ? PdfTextSelectionParams(
+                  onTextSelectionChange: (selection) {
+                    _handleTextSelectionChange(selection);
+                  },
+                )
+              : null,
+          onInteractionStart: showOverlays
+              ? (details) {
+                  app.cancelDebouncedSync();
+                }
+              : null,
+          onInteractionUpdate: showOverlays
+              ? (details) {
+                  if (_tool != ToolType.cursor &&
+                      (details.scale != 1.0 || details.pointerCount > 1)) {
+                    _activateTool(ToolType.cursor);
+                  }
+                }
+              : null,
+          onInteractionEnd: showOverlays
+              ? (details) {
+                  if (_tool == ToolType.cursor &&
+                      app.currentSessionCode != null) {
+                    app.triggerDebouncedSync(silent: true);
+                  }
+                }
+              : null,
+          onViewerReady: (document, viewerController) {
+            if (mounted && showOverlays) {
+              setState(() {
+                _isProcessing = false;
+                _textSearcher ??= PdfTextSearcher(viewerController)
+                  ..addListener(_onControllerChanged);
+              });
+              _requestAutoFit(
+                delay: const Duration(milliseconds: 120),
+                force: true,
+              );
+            }
+          },
+          onPageChanged: (page) {
+            final currentPage = page ?? _lastReportedPage;
+
+            if (showOverlays) {
+              _lastReportedPage = currentPage;
+            }
+
+            if (_scrollDebounce?.isActive ?? false) {
+              _scrollDebounce!.cancel();
+            }
+
+            _scrollDebounce = Timer(const Duration(milliseconds: 300), () {
+              if (mounted) {
+                context.read<AppProvider>().updatePdfScroll(
+                  pdf.id,
+                  pageNumber: currentPage,
+                );
+              }
+            });
+
+            if (showOverlays) {
+              _schedulePostScrollMaintenance();
+            }
+          },
         ),
+        initialPageNumber: pdf.lastPage ?? 1,
       ),
     );
   }
