@@ -150,6 +150,8 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   
   // 🆕 Floating toolbar state: null = hidden, non-null = visible with that tool
   ToolType? _floatingToolbarSelectedTool;
+  bool _isFloatingToolbarOpen = false;
+  int _colorPaletteIndex = 0;
 
   // Hard Reload Tracking
   bool _needsReload = false;
@@ -413,16 +415,10 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     if (currentPdfId == null ||
         currentPdfId != pdf.id ||
         lastModified != pdf.lastModified) {
-      controller.removeListener(_onControllerChanged);
-      final nextController = PdfViewerController();
-      nextController.addListener(_onControllerChanged);
-
       if (isSecondary) {
-        _secondaryPdfController = nextController;
         _secondaryCurrentPdfId = pdf.id;
         _secondaryLastModified = pdf.lastModified;
       } else {
-        _pdfController = nextController;
         _currentPdfId = pdf.id;
         _lastModified = pdf.lastModified;
         _isProcessing = false;
@@ -431,8 +427,6 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
         _textSelection = null;
         _isTextSelectionMenuVisible = false;
       }
-
-      return nextController;
     }
 
     return controller;
@@ -544,8 +538,10 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
       if (nextTool == ToolType.text) {
         _floatingToolbarSelectedTool = null;
       }
-      // If activating a drawing tool via floating toolbar, deactivate Text tool
-      // (covered by app.setCurrentTool below)
+      // Update floating toolbar icon for drawing tools (shortcuts, toolbar selection)
+      if (nextTool.isDrawing) {
+        _floatingToolbarSelectedTool = nextTool;
+      }
     });
 
     // Delegate to Provider for global tool state & sync triggering
@@ -738,6 +734,9 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
           bindings: shortcutsDisabled
               ? <ShortcutActivator, VoidCallback>{}
               : {
+                  // Ctrl+P → Pen tool
+                  const SingleActivator(LogicalKeyboardKey.keyP, control: true): () =>
+                      _runShortcut(() => _activateTool(ToolType.pen), ignoreTyping: false),
                   // Ctrl+H → Highlight tool
                   const SingleActivator(LogicalKeyboardKey.keyH, control: true): () =>
                       _runShortcut(() => _activateTool(ToolType.highlight), ignoreTyping: false),
@@ -889,9 +888,15 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                   onSyncPressed: _syncNow,
                   onAddBookmark: (pdf) => _showAddBookmarkDialog(pdf),
                   floatingToolbarSelectedTool: _floatingToolbarSelectedTool,
+                  isFloatingToolbarOpen: _isFloatingToolbarOpen,
                   onFloatingToolbarToggle: (tool) {
                     setState(() {
-                      _floatingToolbarSelectedTool = tool;
+                      if (tool != null) {
+                        _floatingToolbarSelectedTool = tool;
+                        _isFloatingToolbarOpen = true;
+                      } else {
+                        _isFloatingToolbarOpen = false;
+                      }
                     });
                     if (tool != null) {
                       _activateTool(tool);
@@ -1030,7 +1035,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                         ),
                                       ),
 
-                                    if (_floatingToolbarSelectedTool != null)
+                                    if (_isFloatingToolbarOpen)
                                       Positioned(
                                         left: 0,
                                         right: 0,
@@ -1059,6 +1064,12 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                                 panelTool == ToolType.rectangle ||
                                                 panelTool == ToolType.circle,
                                             isDarkMode: isDarkMode,
+                                            colorPaletteIndex: _colorPaletteIndex,
+                                            onTogglePalette: () {
+                                              setState(() {
+                                                _colorPaletteIndex = (_colorPaletteIndex + 1) % 2;
+                                              });
+                                            },
                                             onStrokeWidthChanged: (value) {
                                               _onStrokeWidthChanged(value);
                                             },
@@ -1088,33 +1099,14 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                                         });
                                                       }
                                                     : null,
-                                            onClearAll: panelTool == ToolType.eraser
-                                                ? () {
-                                                    if (pdf != null) {
-                                                      context
-                                                          .read<AppProvider>()
-                                                          .clearAllDrawingsOnly(
-                                                            pdf.id,
-                                                          );
-                                                    }
-                                                  }
-                                                : null,
-                                            onClearPage: panelTool == ToolType.eraser
-                                                ? () {
-                                                    if (pdf != null &&
-                                                        primaryController
-                                                            .pageNumber !=
-                                                        null) {
-                                                      context
-                                                          .read<AppProvider>()
-                                                          .clearDrawingsOnPage(
-                                                            pdf.id,
-                                                            primaryController
-                                                                .pageNumber!,
-                                                          );
-                                                    }
-                                                  }
-                                                : null,
+                                            onUndo: () {
+                                              final app = context.read<AppProvider>();
+                                              _handleUndo(app, _editingCommentId);
+                                            },
+                                            onRedo: () {
+                                              final app = context.read<AppProvider>();
+                                              _handleRedo(app, _editingCommentId);
+                                            },
                                             onDeleteSelected:
                                                 (_selectedHighlightId != null &&
                                                         panelTool ==

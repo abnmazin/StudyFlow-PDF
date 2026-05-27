@@ -11,8 +11,10 @@ class DrawingToolbar extends StatelessWidget {
   final Color? fillColor;
   final bool showFill;
   final bool isDarkMode;
-  final VoidCallback? onClearAll;
-  final VoidCallback? onClearPage;
+  final int colorPaletteIndex;
+  final VoidCallback? onTogglePalette;
+  final VoidCallback? onUndo;
+  final VoidCallback? onRedo;
   final VoidCallback? onDeleteSelected;
   final ValueChanged<double> onStrokeWidthChanged;
   final ValueChanged<Color> onColorChanged;
@@ -28,8 +30,10 @@ class DrawingToolbar extends StatelessWidget {
     this.fillColor,
     this.showFill = false,
     required this.isDarkMode,
-    this.onClearAll,
-    this.onClearPage,
+    this.colorPaletteIndex = 0,
+    this.onTogglePalette,
+    this.onUndo,
+    this.onRedo,
     this.onDeleteSelected,
     required this.onStrokeWidthChanged,
     required this.onColorChanged,
@@ -82,13 +86,6 @@ class DrawingToolbar extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 _buildToolChip(
-                  icon: LucideIcons.eraser,
-                  label: 'ممحاة',
-                  tool: ToolType.eraser,
-                  iconColor: iconColor,
-                ),
-                const SizedBox(width: 6),
-                _buildToolChip(
                   icon: LucideIcons.arrowUpRight,
                   label: 'سهم',
                   tool: ToolType.arrow,
@@ -108,49 +105,58 @@ class DrawingToolbar extends StatelessWidget {
                   tool: ToolType.circle,
                   iconColor: iconColor,
                 ),
-                const SizedBox(width: 10),
-                Container(width: 1, height: 28, color: borderColor),
-                const SizedBox(width: 10),
-                Icon(LucideIcons.minus, size: 16, color: iconColor),
-                SizedBox(
-                  width: 120,
-                  child: SliderTheme(
-                    data: SliderTheme.of(context).copyWith(
-                      trackHeight: 3,
-                      thumbShape: const RoundSliderThumbShape(
-                        enabledThumbRadius: 7,
-                      ),
-                      overlayShape: const RoundSliderOverlayShape(
-                        overlayRadius: 12,
-                      ),
-                      activeTrackColor: activeBlue,
-                      inactiveTrackColor: iconColor.withOpacity(0.2),
-                      thumbColor: activeBlue,
-                    ),
-                    child: Slider(
-                      value: strokeWidth.clamp(
-                        activeTool == ToolType.highlight ? 1.0 : 1.0,
-                        activeTool == ToolType.highlight ? 30.0 : 12.0,
-                      ),
-                      min: activeTool == ToolType.highlight ? 1.0 : 1.0,
-                      max: activeTool == ToolType.highlight ? 30.0 : 12.0,
-                      divisions: activeTool == ToolType.highlight ? 29 : 11,
-                      onChanged: onStrokeWidthChanged,
-                    ),
-                  ),
-                ),
-                Icon(LucideIcons.plus, size: 16, color: iconColor),
                 const SizedBox(width: 6),
-                Text(
-                  strokeWidth.toStringAsFixed(1),
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: iconColor,
-                  ),
+                _buildToolChip(
+                  icon: LucideIcons.eraser,
+                  label: 'ممحاة',
+                  tool: ToolType.eraser,
+                  iconColor: iconColor,
                 ),
-                const SizedBox(width: 10),
-                Container(width: 1, height: 28, color: borderColor),
+                if (activeTool != ToolType.eraser) ...[
+                  const SizedBox(width: 10),
+                  Container(width: 1, height: 28, color: borderColor),
+                  const SizedBox(width: 10),
+                  Icon(LucideIcons.minus, size: 16, color: iconColor),
+                  SizedBox(
+                    width: 120,
+                    child: SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        trackHeight: 3,
+                        thumbShape: const RoundSliderThumbShape(
+                          enabledThumbRadius: 7,
+                        ),
+                        overlayShape: const RoundSliderOverlayShape(
+                          overlayRadius: 12,
+                        ),
+                        activeTrackColor: activeBlue,
+                        inactiveTrackColor: iconColor.withOpacity(0.2),
+                        thumbColor: activeBlue,
+                      ),
+                      child: Slider(
+                        value: strokeWidth.clamp(
+                          activeTool == ToolType.highlight ? 1.0 : 1.0,
+                          activeTool == ToolType.highlight ? 30.0 : 12.0,
+                        ),
+                        min: activeTool == ToolType.highlight ? 1.0 : 1.0,
+                        max: activeTool == ToolType.highlight ? 30.0 : 12.0,
+                        divisions: activeTool == ToolType.highlight ? 29 : 11,
+                        onChanged: onStrokeWidthChanged,
+                      ),
+                    ),
+                  ),
+                  Icon(LucideIcons.plus, size: 16, color: iconColor),
+                  const SizedBox(width: 6),
+                  Text(
+                    strokeWidth.toStringAsFixed(1),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: iconColor,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Container(width: 1, height: 28, color: borderColor),
+                ],
                 const SizedBox(width: 10),
                 _buildColorPills(),
                 if (showFill && onFillColorChanged != null) ...[
@@ -164,17 +170,17 @@ class DrawingToolbar extends StatelessWidget {
                   Container(width: 1, height: 28, color: borderColor),
                   const SizedBox(width: 10),
                   _buildActionButton(
-                    icon: LucideIcons.trash2,
-                    label: 'مسح الكل',
-                    color: activeRed,
-                    onTap: onClearAll,
+                    icon: LucideIcons.undo2,
+                    label: 'تراجع',
+                    color: const Color(0xFF3B82F6),
+                    onTap: onUndo,
                   ),
                   const SizedBox(width: 6),
                   _buildActionButton(
-                    icon: LucideIcons.fileX,
-                    label: 'مسح الصفحة',
-                    color: const Color(0xFFF59E0B),
-                    onTap: onClearPage,
+                    icon: LucideIcons.redo2,
+                    label: 'تقدم',
+                    color: const Color(0xFF3B82F6),
+                    onTap: onRedo,
                   ),
                 ],
                 if (activeTool == ToolType.select && onDeleteSelected != null) ...[
@@ -237,51 +243,101 @@ class DrawingToolbar extends StatelessWidget {
   }
 
   Widget _buildColorPills() {
+    final basicColors = const [
+      Color(0xFFFFFFFF),
+      Color(0xFF000000),
+      Color(0xFFEF4444),
+      Color(0xFFF59E0B),
+      Color(0xFF10B981),
+      Color(0xFF3B82F6),
+      Color(0xFF8B5CF6),
+    ];
+    final extendedColors = const [
+      Color(0xFFFFFFFF),
+      Color(0xFF78716C),
+      Color(0xFFEC4899),
+      Color(0xFFFBBF24),
+      Color(0xFF84CC16),
+      Color(0xFF06B6D4),
+      Color(0xFF6366F1),
+    ];
+
+    final basicHighlight = const [
+      Color(0xFFFFFFFF),
+      Color(0xFFFBEA7A),
+      Color(0xFFA4D376),
+      Color(0xFF84C0F2),
+      Color(0xFFF59EB9),
+      Color(0xFFC9A6D8),
+    ];
+    final extendedHighlight = const [
+      Color(0xFFFFFFFF),
+      Color(0xFFFBD38D),
+      Color(0xFFA7F3D0),
+      Color(0xFFBAE6FD),
+      Color(0xFFFECDD3),
+      Color(0xFFDDD6FE),
+    ];
+
     final colors = switch (activeTool) {
-      ToolType.highlight => const [
-          Color(0xFFFBEA7A),
-          Color(0xFFA4D376),
-          Color(0xFF84C0F2),
-          Color(0xFFF59EB9),
-          Color(0xFFC9A6D8),
-        ],
+      ToolType.highlight => colorPaletteIndex == 0 ? basicHighlight : extendedHighlight,
       ToolType.eraser => const <Color>[],
-      _ => const [
-          Color(0xFF000000),
-          Color(0xFFEF4444),
-          Color(0xFF3B82F6),
-          Color(0xFF10B981),
-          Color(0xFFF59E0B),
-          Color(0xFF8B5CF6),
-        ],
+      _ => colorPaletteIndex == 0 ? basicColors : extendedColors,
     };
 
     return Row(
       mainAxisSize: MainAxisSize.min,
-      children: colors.map((color) {
-        final selected = color.value == activeColor.value;
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: GestureDetector(
-            onTap: () => onColorChanged(color),
+      children: [
+        ...colors.map((color) {
+          final selected = color.value == activeColor.value;
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: GestureDetector(
+              onTap: () => onColorChanged(color),
+              child: Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  color: color,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: selected ? Colors.white : Colors.white.withOpacity(0.0),
+                    width: 2,
+                  ),
+                  boxShadow: selected
+                      ? [BoxShadow(color: color.withOpacity(0.4), blurRadius: 5)]
+                      : null,
+                ),
+              ),
+            ),
+          );
+        }),
+        if (colors.isNotEmpty && onTogglePalette != null) ...[
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: onTogglePalette,
             child: Container(
               width: 22,
               height: 22,
               decoration: BoxDecoration(
-                color: color,
+                color: activeTool == ToolType.highlight
+                    ? const Color(0xFFA78BFA)
+                    : (colorPaletteIndex == 0
+                        ? const Color(0xFFA78BFA)
+                        : const Color(0xFF34D399)),
                 shape: BoxShape.circle,
-                border: Border.all(
-                  color: selected ? Colors.white : Colors.white.withOpacity(0.0),
-                  width: 2,
-                ),
-                boxShadow: selected
-                    ? [BoxShadow(color: color.withOpacity(0.4), blurRadius: 5)]
-                    : null,
+              ),
+              child: Icon(
+                colorPaletteIndex == 0
+                    ? LucideIcons.chevronDown
+                    : LucideIcons.chevronUp,
+                size: 14,
+                color: Colors.white,
               ),
             ),
           ),
-        );
-      }).toList(),
+        ],
+      ],
     );
   }
 

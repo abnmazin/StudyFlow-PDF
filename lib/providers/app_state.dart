@@ -2467,6 +2467,17 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
             .add(highlight.id);
       }
 
+      // Record deletion in action history for Ctrl+Z
+      _actionHistory.add(
+        ActionRecord(
+          pdfId: pdfId,
+          actionType: ActionTypes.ACTION_DELETE_HIGHLIGHT,
+          itemId: highlight.id,
+          newState: highlight.toJson(),
+        ),
+      );
+      _redoHistory.clear();
+
       _notify();
       markPdfDirty(pdfId);
 
@@ -2646,6 +2657,17 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
             .putIfAbsent(pdf.fileHash!, () => <String>{})
             .add(comment.id);
       }
+
+      // Record deletion in action history for Ctrl+Z
+      _actionHistory.add(
+        ActionRecord(
+          pdfId: pdfId,
+          actionType: ActionTypes.ACTION_DELETE_COMMENT,
+          itemId: comment.id,
+          newState: comment.toJson(),
+        ),
+      );
+      _redoHistory.clear();
 
       _notify();
       markPdfDirty(pdfId);

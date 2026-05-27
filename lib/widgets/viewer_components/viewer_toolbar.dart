@@ -28,6 +28,7 @@ class StudyFlowToolbar extends StatefulWidget {
   final Function(PdfItem) onAddBookmark;
   // 🆕 Floating toolbar toggle state
   final ToolType? floatingToolbarSelectedTool;
+  final bool isFloatingToolbarOpen;
   final ValueChanged<ToolType?>? onFloatingToolbarToggle;
 
   /// Helper: returns the icon for a given tool type.
@@ -64,6 +65,7 @@ class StudyFlowToolbar extends StatefulWidget {
     required this.isSyncing,
     required this.onAddBookmark,
     this.floatingToolbarSelectedTool,
+    this.isFloatingToolbarOpen = false,
     this.onFloatingToolbarToggle,
   });
 
@@ -566,9 +568,9 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                               icon: widget.floatingToolbarSelectedTool != null
                                   ? StudyFlowToolbar.iconForTool(widget.floatingToolbarSelectedTool!)
                                   : LucideIcons.shapes,
-                              isActive: widget.floatingToolbarSelectedTool != null,
+                              isActive: widget.isFloatingToolbarOpen,
                               onTap: () {
-                                if (widget.floatingToolbarSelectedTool != null) {
+                                if (widget.isFloatingToolbarOpen) {
                                   // Toggle OFF: hide floating toolbar, reset to hand
                                   widget.onFloatingToolbarToggle?.call(null);
                                   widget.onToolChanged(ToolType.cursor);
