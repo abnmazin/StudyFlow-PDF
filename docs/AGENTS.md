@@ -57,6 +57,7 @@ There are **no tests** (`test/widget_test.dart` is empty). Do not attempt to run
 | `university_service.dart` | Multi-tenant university folders/files, Supabase upload/download |
 | `pdf_mutation_service.dart` | Add/delete PDF pages via Syncfusion isolates |
 | `math_engine.dart` | Dart-native math evaluation (replaced old Python bridge) |
+| `mcp_client_service.dart` | Optional 3rd AI provider — bridges to `gemini-app-mcp` (Node.js) using the user's personal Google account via browser automation, no API key. Fallback ring: `gemini → groq → mcp` |
 
 ### File Identity
 
@@ -89,6 +90,7 @@ There are **no tests** (`test/widget_test.dart` is empty). Do not attempt to run
 - `developer_dashboard_v.dart` had a shadowed duplicate `GlobalSettingsModal` — only `DeveloperDashboardView` is live (canonical `GlobalSettingsModal` is in `global_settings_modal.dart`)
 - `university_hub.dart` is deprecated — replaced by `university_cloud_library_w.dart` for university users
 - The CI workflow (`.github/workflows/deploy.yml`) deploys to GitHub Pages; Flutter version pinned to `3.10.7` in CI (may drift from local)
+- `mcp_client_service.dart` needs Node.js + a Chromium browser; MCP auth expires after ~24h (re-link in Settings). It is unofficial/reverse-engineered — `gemini-app-mcp` may break if Google changes the web UI
 
 ## Docs Directory
 

@@ -12,6 +12,7 @@ import 'package:syncfusion_flutter_pdf/pdf.dart' hide PdfBookmark;
 import 'package:pdfrx/pdfrx.dart' as pdfrx;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 
@@ -25,6 +26,7 @@ import '../services/file_hash_service.dart';
 import '../services/sync_service.dart';
 import '../services/pdf_mutation_service.dart';
 import '../services/hardware_service.dart';
+import '../services/mcp_client_service.dart';
 import '../screens/auth/login_screen.dart';
 
 enum DrawingSyncStrategy { disabled, immediate, buffered, isolate }
@@ -125,6 +127,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       }
     }
 
+    McpClientService.instance.stop();
     super.dispose();
   }
 
@@ -212,10 +215,15 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     'llama-3.1-8b-instant',
     'mixtral-8x7b-32768',
   ];
+  static const List<String> mcpModelsList = [
+    'gemini-2.5 (personal)',
+    'gemini-2.0 (personal)',
+  ];
 
   String _aiProvider = 'groq';
   String _geminiModel = 'gemini-2.5-flash';
   String _groqModel = 'llama-3.3-70b-versatile';
+  String _mcpModel = 'gemini-2.5 (personal)';
   String _geminiApiKey = '';
   String _groqApiKey = '';
   int _fallbackAttempts = 0;
@@ -660,6 +668,18 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
 
     _initCompleter.complete();
+    _warmUpMcpIfSelected();
+  }
+
+  void _warmUpMcpIfSelected() {
+    if (_aiProvider != 'mcp') return;
+    McpClientService.instance.isNodeAvailable.then((available) {
+      if (available) {
+        McpClientService.instance.start().catchError((e) {
+          debugPrint('[Mcp] background start failed: $e');
+        });
+      }
+    });
   }
 
   // Getters
@@ -678,12 +698,15 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   String get aiProvider => _aiProvider;
   String get geminiModel => _geminiModel;
   String get groqModel => _groqModel;
+  String get mcpModel => _mcpModel;
   String get geminiApiKey => _geminiApiKey;
   String get groqApiKey => _groqApiKey;
 
   /// The currently-active model name (whichever provider is selected).
-  String get currentModel =>
-      _aiProvider == 'gemini' ? _geminiModel : _groqModel;
+  String get currentModel {
+    if (_aiProvider == 'mcp') return _mcpModel;
+    return _aiProvider == 'gemini' ? _geminiModel : _groqModel;
+  }
 
   // Session / User getters
   AppUser? get currentUser => _currentUser;
@@ -1288,6 +1311,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   static const String _prefsKeyAiProvider = 'studyflowpdf_ai_provider';
   static const String _prefsKeyGeminiModel = 'studyflowpdf_gemini_model';
   static const String _prefsKeyGroqModel = 'studyflowpdf_groq_model';
+  static const String _prefsKeyMcpModel = 'studyflowpdf_mcp_model';
   static const String _prefsKeyGeminiApiKey = 'studyflowpdf_gemini_api_key';
   static const String _prefsKeyGroqApiKey = 'studyflowpdf_groq_api_key';
   static const String _prefsKeyPdfSessionCodes = 'studyflowpdf_session_codes';
@@ -1381,6 +1405,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
           prefs.getString(_prefsKeyGeminiModel) ?? 'gemini-2.5-flash';
       _groqModel =
           prefs.getString(_prefsKeyGroqModel) ?? 'llama-3.3-70b-versatile';
+      _mcpModel =
+          prefs.getString(_prefsKeyMcpModel) ?? 'gemini-2.5 (personal)';
       _geminiApiKey = prefs.getString(_prefsKeyGeminiApiKey) ?? '';
       _groqApiKey = prefs.getString(_prefsKeyGroqApiKey) ?? '';
 
@@ -1885,8 +1911,11 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void setAiProvider(String provider) {
-    if (provider != 'gemini' && provider != 'groq') return;
+    if (provider != 'gemini' && provider != 'groq' && provider != 'mcp') {
+      return;
+    }
     _aiProvider = provider;
+    if (provider == 'mcp') _warmUpMcpIfSelected();
     _notify();
     _persistAiSettings();
   }
@@ -1899,6 +1928,12 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   void setGroqModel(String model) {
     _groqModel = model;
+    _notify();
+    _persistAiSettings();
+  }
+
+  void setMcpModel(String model) {
+    _mcpModel = model;
     _notify();
     _persistAiSettings();
   }
@@ -1920,6 +1955,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       await prefs.setString(_prefsKeyAiProvider, _aiProvider);
       await prefs.setString(_prefsKeyGeminiModel, _geminiModel);
       await prefs.setString(_prefsKeyGroqModel, _groqModel);
+      await prefs.setString(_prefsKeyMcpModel, _mcpModel);
       await prefs.setString(_prefsKeyGeminiApiKey, _geminiApiKey);
       await prefs.setString(_prefsKeyGroqApiKey, _groqApiKey);
     });
@@ -1951,15 +1987,17 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         return true;
       }
       // All Gemini models exhausted → try Groq
-      final groqKey = _groqApiKey.isNotEmpty
-          ? _groqApiKey
-          : (const String.fromEnvironment('GROQ_API_KEY'));
+      final groqKey = _effectiveKey(_groqApiKey, 'GROQ_API_KEY');
       if (groqKey.isNotEmpty) {
         debugPrint('[AI Fallback] Gemini exhausted → switching to Groq');
         setAiProvider('groq');
         setGroqModel(groqModelsList.first);
         return true;
       }
+      // No Groq key → try MCP (personal account)
+      debugPrint('[AI Fallback] Gemini exhausted → switching to MCP');
+      setAiProvider('mcp');
+      return true;
     } else if (_aiProvider == 'groq') {
       final idx = groqModelsList.indexOf(_groqModel);
       if (idx != -1 && idx < groqModelsList.length - 1) {
@@ -1970,19 +2008,48 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         return true;
       }
       // All Groq models exhausted → try Gemini
-      final geminiKey = _geminiApiKey.isNotEmpty
-          ? _geminiApiKey
-          : (const String.fromEnvironment('GEMINI_API_KEY'));
+      final geminiKey = _effectiveKey(_geminiApiKey, 'GEMINI_API_KEY');
       if (geminiKey.isNotEmpty) {
         debugPrint('[AI Fallback] Groq exhausted → switching to Gemini');
         setAiProvider('gemini');
         setGeminiModel(geminiModelsList.first);
         return true;
       }
+      // No Gemini key → try MCP (personal account)
+      debugPrint('[AI Fallback] Groq exhausted → switching to MCP');
+      setAiProvider('mcp');
+      return true;
+    } else if (_aiProvider == 'mcp') {
+      // MCP has no model rotation; immediately fall to Gemini (preferred),
+      // then Groq as a last resort.
+      final geminiKey = _effectiveKey(_geminiApiKey, 'GEMINI_API_KEY');
+      if (geminiKey.isNotEmpty) {
+        debugPrint('[AI Fallback] MCP exhausted → switching to Gemini');
+        setAiProvider('gemini');
+        setGeminiModel(geminiModelsList.first);
+        return true;
+      }
+      final groqKey = _effectiveKey(_groqApiKey, 'GROQ_API_KEY');
+      if (groqKey.isNotEmpty) {
+        debugPrint('[AI Fallback] MCP exhausted → switching to Groq');
+        setAiProvider('groq');
+        setGroqModel(groqModelsList.first);
+        return true;
+      }
     }
 
     debugPrint('[AI Fallback] No more options available.');
     return false;
+  }
+
+  /// Resolves a provider API key: settings-prefs value first, then the
+  /// `.env` value (loaded by flutter_dotenv), then compile-time defines.
+  String _effectiveKey(String prefsValue, String envKey) {
+    final settingsKey = prefsValue.trim();
+    if (settingsKey.isNotEmpty) return settingsKey;
+    final dotenvKey = (dotenv.env[envKey] ?? '').trim();
+    if (dotenvKey.isNotEmpty) return dotenvKey;
+    return String.fromEnvironment(envKey).trim();
   }
 
   void setActiveClass(String id) {

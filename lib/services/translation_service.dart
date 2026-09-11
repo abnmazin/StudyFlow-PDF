@@ -4,6 +4,7 @@ import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../providers/app_state.dart';
+import 'mcp_client_service.dart';
 
 class TranslationService {
   static final TranslationService _instance = TranslationService._();
@@ -19,7 +20,9 @@ class TranslationService {
       try {
         final result = app.aiProvider == 'gemini'
             ? await _translateGemini(text, app)
-            : await _translateGroq(text, app);
+            : app.aiProvider == 'mcp'
+                ? await _translateMcp(text, app)
+                : await _translateGroq(text, app);
         return result;
       } catch (e) {
         debugPrint(
@@ -167,5 +170,13 @@ class TranslationService {
     final message = (choices.first as Map<String, dynamic>)['message'] as Map<String, dynamic>?;
     final content = (message?['content'] ?? '').toString().trim();
     return content.isEmpty ? "لم أتمكن من الترجمة." : content;
+  }
+
+  Future<String> _translateMcp(String text, AppProvider app) async {
+    final prompt =
+        "Translate the following text to Arabic (or English if it is already Arabic). Only return the translated text without any conversational filler:\n\n$text";
+    final answer = await McpClientService.instance.askQuestion(prompt);
+    final translated = answer.trim();
+    return translated.isEmpty ? "لم أتمكن من الترجمة." : translated;
   }
 }

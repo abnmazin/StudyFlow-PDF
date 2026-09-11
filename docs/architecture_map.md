@@ -43,6 +43,7 @@
 ## Mini Apps
 - `lib/widgets/viewer_components/mini_calculator_widget.dart`: scientific calculator with LaTeX display, texpr-powered calculations, and undo support.
 - `lib/services/math_engine.dart`: unified mathematics engine combining texpr (symbolic & numerical), constant injection (`e`, `pi`), a UI-expression normalization filter, a nested AST formatter for readable derivatives, and equations package support for higher-degree polynomials.
+- `lib/services/mcp_client_service.dart`: MCP bridge to `gemini-app-mcp` (Node.js MCP server). Third AI provider (`'mcp'`) driving the user's personal Gemini web app via browser automation — no API key. Spawns `npx gemini-app-mcp` child process, JSON-RPC 2.0 over stdio, session continuity, watchdog auto-restart. API: `start()`, `stop()`, `askQuestion()`, `getHealth()`, `setupAuth()`, `resetConversation()`, `isNodeAvailable`. AI fallback ring: `gemini → groq → mcp`.
 - `lib/widgets/mini_apps/translator/mini_translator.dart`: translation mini app with AI and fast modes.
 - `lib/widgets/mini_apps/power/power_calculator.dart`: short transmission line and 3-phase solver.
 - `lib/widgets/mini_apps/matrix/matrix_calculator.dart`: matrix calculator for algebra and circuit analysis, using LTR matrix layout, compact glassmorphism cells, and bracket-style framing.

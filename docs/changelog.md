@@ -1,5 +1,45 @@
 # Changelog
 
+## [2026-09-11] MCP Integration: Third AI Provider (Personal Gemini Account)
+
+### Feature
+Added **`mcp`** as a third AI provider alongside `gemini` and `groq`. MCP bridges the app to `gemini-app-mcp` (Node.js MCP server) via browser automation, using the user's **personal Google account** — **no API key required**.
+
+### Architecture
+- **NEW `lib/services/mcp_client_service.dart`** (singleton `McpClientService.instance`):
+  - Spawns `npx -y gemini-app-mcp@latest` as a child process (stdin/stdout line-delimited JSON-RPC 2.0)
+  - Implements MCP handshake: `initialize` → `notifications/initialized` → `tools/call`
+  - Methods: `start()`, `stop()`, `askQuestion()`, `getHealth()`, `setupAuth()`, `resetConversation()`, `isNodeAvailable`, `isRunning`
+  - Process watchdog: auto-restart on next call after crash; 90s request timeout (11min for `setup_auth` due to browser login)
+  - Keeps `session_id` in memory for multi-turn conversation continuity
+  - Detects Windows `npx.cmd` via `where.exe` (Dart's `Process.start` can't resolve `.cmd`)
+  - Throws typed `McpException(code, message)` with codes `MCP_UNAVAILABLE`, `MCP_DIED`, `MCP_TIMEOUT`, `MCP_NOT_AUTHENTICATED`
+
+### Files Modified
+- `lib/providers/app_state.dart`:
+  - Added `mcpModelsList`, `_mcpModel`, `_mcpSessionId`, getters, `setMcpModel()`, prefs key `studyflowpdf_mcp_model`
+  - `currentModel` now ternary for all three providers
+  - `setAiProvider()` accepts `'mcp'`; warms up MCP server when selected
+  - `triggerAiFallback()` fallback ring now: `gemini → groq → mcp` / `groq → gemini → mcp` / `mcp → gemini → groq`
+  - `dispose()` stops the MCP server
+- `lib/services/translation_service.dart`: `translate()` dispatcher handles `'mcp'` via new `_translateMcp()`
+- `lib/widgets/viewer_components/viewer_right_panel.dart`: `_generateAiReply()` dispatcher routes `'mcp'` → new `_generateMcpReply()` (system prompt + 8-message history concatenated into single question); error bubbles distinguish MCP auth/unavailable errors
+- `lib/widgets/global_settings_modal.dart`: added `Gemini (الحساب الشخصي)` dropdown item, MCP model list, and a live status card with Node.js status, auth status, "ربط حساب Google" (calls `setupAuth`) and "قطع الاتصال" (calls `stop`) buttons
+
+### Design Decisions
+- MCP server starts **lazily** (on selecting provider or on boot if provider is `'mcp'`), never at app startup unless selected
+- Chat history is passed inside the single `question` argument (MCP has no system-role support)
+- Translation uses the same shared MCP session instance
+
+### Known Limitations / Failed Attempts
+- MCP auth expires after ~24h (server stores session on disk); requires re-linking via Settings
+- Browser automation is slower than direct API calls (refresh of the web app per turn)
+- `gemini-app-mcp` is unofficial/reverse-engineered — Google can change the web UI and break it (mitigated by `@latest` and fallback ring)
+- Uses the user's personal Gemini account quota — ToS risk exists
+- Requires Node.js + a Chromium browser on the machine; option auto-disables if `isNodeAvailable` is false
+
+---
+
 ## [2026-09-11] Project Cleanup: Unused Files, Dead Code, Config Fixes
 
 ### Files Deleted (4 orphaned Dart files)

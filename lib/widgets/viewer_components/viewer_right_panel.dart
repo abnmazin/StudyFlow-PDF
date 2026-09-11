@@ -16,6 +16,7 @@ import 'package:markdown/markdown.dart' as md;
 import '../../models/models.dart';
 import '../../providers/app_state.dart';
 import '../../services/sync_service.dart';
+import '../../services/mcp_client_service.dart';
 import '../../utils/responsive_utils.dart';
 import '../mini_apps_menu.dart';
 import 'session_cards.dart';
@@ -2352,17 +2353,57 @@ class _AiChatWidgetState extends State<_AiChatWidget>
     return content.isEmpty ? 'لم أتمكن من توليد إجابة.' : content;
   }
 
+  Future<String> _generateMcpReply(String prompt) async {
+    if (!await McpClientService.instance.isNodeAvailable) {
+      throw const McpException(
+        'MCP_UNAVAILABLE',
+        'Node.js is not installed.',
+      );
+    }
+    final pageText = await _getActivePageText();
+    final systemPrompt = _buildSystemPrompt(pageText);
+
+    final history = _messages.length > 8
+        ? _messages.sublist(_messages.length - 8)
+        : _messages;
+    final historyBlock = history
+        .map((m) => '${m['role'] == 'ai' ? 'AI' : 'User'}: ${m['content']}')
+        .join('\n');
+
+    final fullPrompt = [
+      'Instructions:',
+      systemPrompt,
+      '',
+      'History:',
+      historyBlock,
+      '',
+      'User: $prompt',
+      'AI:',
+    ].join('\n');
+
+    final answer =
+        await McpClientService.instance.askQuestion(fullPrompt);
+    return answer.isEmpty ? 'لم أتمكن من توليد إجابة.' : answer;
+  }
+
   Future<String> _generateAiReply(String prompt) async {
     final app = context.read<AppProvider>();
     app.resetFallbackAttempts();
 
     while (true) {
       final provider = app.aiProvider;
-      final model = provider == 'gemini' ? app.geminiModel : app.groqModel;
+      final model =
+          provider == 'gemini'
+              ? app.geminiModel
+              : provider == 'mcp'
+                  ? app.mcpModel
+                  : app.groqModel;
 
       try {
         if (provider == 'gemini') {
           return await _generateGeminiReply(prompt, model);
+        } else if (provider == 'mcp') {
+          return await _generateMcpReply(prompt);
         } else {
           return await _generateGroqReply(prompt, model);
         }
@@ -2464,10 +2505,21 @@ class _AiChatWidgetState extends State<_AiChatWidget>
           errorText.contains('not supported') ||
           errorText.contains('404');
 
+      final isMcpUnavailable =
+          errorText.contains('MCP_UNAVAILABLE') ||
+          errorText.contains('MCP_DIED') ||
+          errorText.contains('MCP_TIMEOUT');
+
+      final isMcpAuthIssue = errorText.contains('MCP_NOT_AUTHENTICATED');
+
       setState(() {
         _messages.add({
           'role': 'ai',
-          'content': isAuthIssue
+          'content': isMcpAuthIssue
+              ? 'لم يتم تسجيل الدخول إلى حساب Gemini الشخصي. افتح الإعدادات واضغط "ربط حساب Google" لإعادة الربط.'
+              : isMcpUnavailable
+              ? 'مزود MCP غير متاح. تأكد من تثبيت Node.js أو أعد المحاولة لاحقاً.'
+              : isAuthIssue
               ? (provider == 'groq'
                     ? 'فشل التحقق من مفتاح Groq. تأكد أن المفتاح صحيح.'
                     : 'فشل التحقق من مفتاح Gemini. تأكد أن المفتاح صحيح ومفعّل على مشروع Google AI Studio.')

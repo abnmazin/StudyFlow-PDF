@@ -5,6 +5,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../screens/auth/login_screen.dart';
+import '../services/mcp_client_service.dart';
 import '../utils/sync_naming_utils.dart';
 import 'developer_dashboard_v.dart';
 
@@ -21,15 +22,74 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
   String? _generatedMasterCode;
   bool _showDevDashboard = false;
 
+  bool _mcpChecking = false;
+  bool _mcpNodeInstalled = false;
+  bool _mcpAuthenticated = false;
+
   final TextEditingController _joinCodeController = TextEditingController();
   bool _isJoining = false;
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final app = context.read<AppProvider>();
+      if (app.aiProvider == 'mcp') await _checkMcpStatus();
+    });
+  }
+
+  @override
   void dispose() {
     _joinCodeController.dispose();
     super.dispose();
+  }
+
+  Future<void> _checkMcpStatus() async {
+    setState(() => _mcpChecking = true);
+    bool nodeOk = false;
+    bool auth = false;
+    try {
+      nodeOk = await McpClientService.instance.isNodeAvailable;
+      if (nodeOk) {
+        final health = await McpClientService.instance.getHealth();
+        final data = health['data'];
+        if (data is Map<String, dynamic>) {
+          auth = data['authenticated'] == true;
+        }
+      }
+    } catch (_) {
+      // Server may be off or crashing; still report node availability.
+    }
+    if (!mounted) return;
+    setState(() {
+      _mcpNodeInstalled = nodeOk;
+      _mcpAuthenticated = auth;
+      _mcpChecking = false;
+    });
+  }
+
+  Future<void> _connectMcp() async {
+    setState(() => _mcpChecking = true);
+    try {
+      await McpClientService.instance.setupAuth();
+      await _checkMcpStatus();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('فشل ربط حساب MCP: ${e.toString()}')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _mcpChecking = false);
+    }
+  }
+
+  Future<void> _disconnectMcp() async {
+    await McpClientService.instance.stop();
+    if (mounted) await _checkMcpStatus();
   }
 
   // ─── ميثودات التحكم بالحزم (قفل، حظر، حذف) ──────────────────────────────────
@@ -1336,9 +1396,19 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
   ) {
     const geminiModels = ['gemini-2.5-flash', 'gemini-2.0-flash'];
     const groqModels = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
-    final selectedModel = app.aiProvider == 'groq'
-        ? app.groqModel
-        : app.geminiModel;
+    const mcpModels = ['gemini-2.5 (personal)', 'gemini-2.0 (personal)'];
+    final isMcp = app.aiProvider == 'mcp';
+    final selectedModel = isMcp
+        ? app.mcpModel
+        : app.aiProvider == 'groq'
+            ? app.groqModel
+            : app.geminiModel;
+    final modelOptions = isMcp
+        ? mcpModels
+        : app.aiProvider == 'groq'
+            ? groqModels
+            : geminiModels;
+
     return Card(
       elevation: 0,
       margin: EdgeInsets.zero,
@@ -1350,6 +1420,7 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             DropdownButtonFormField<String>(
               value: app.aiProvider,
@@ -1363,6 +1434,10 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
               items: const [
                 DropdownMenuItem(value: 'gemini', child: Text('Gemini')),
                 DropdownMenuItem(value: 'groq', child: Text('Groq')),
+                DropdownMenuItem(
+                  value: 'mcp',
+                  child: Text('Gemini (الحساب الشخصي)'),
+                ),
               ],
               onChanged: (v) => v != null ? app.setAiProvider(v) : null,
             ),
@@ -1376,26 +1451,117 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                   borderRadius: BorderRadius.circular(8),
                 ),
               ),
-              items: (app.aiProvider == 'groq' ? groqModels : geminiModels)
+              items: modelOptions
                   .map((m) => DropdownMenuItem(value: m, child: Text(m)))
                   .toList(),
               onChanged: (v) => v == null
                   ? null
-                  : (app.aiProvider == 'groq'
-                        ? app.setGroqModel(v)
-                        : app.setGeminiModel(v)),
+                  : isMcp
+                        ? app.setMcpModel(v)
+                        : app.aiProvider == 'groq'
+                            ? app.setGroqModel(v)
+                            : app.setGeminiModel(v),
             ),
-            _buildKeyRow(
-              context,
-              app.aiProvider == 'groq' ? 'Groq API Key' : 'Gemini API Key',
-              app.aiProvider == 'groq' ? app.groqApiKey : app.geminiApiKey,
-              (v) => app.aiProvider == 'groq'
-                  ? app.setGroqApiKey(v)
-                  : app.setGeminiApiKey(v),
-              textMuted,
-            ),
+            if (isMcp) ...[
+              const SizedBox(height: 12),
+              _buildMcpStatusCard(textMuted, panelBorder),
+            ] else
+              _buildKeyRow(
+                context,
+                app.aiProvider == 'groq' ? 'Groq API Key' : 'Gemini API Key',
+                app.aiProvider == 'groq' ? app.groqApiKey : app.geminiApiKey,
+                (v) => app.aiProvider == 'groq'
+                    ? app.setGroqApiKey(v)
+                    : app.setGeminiApiKey(v),
+                textMuted,
+              ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildMcpStatusCard(Color textMuted, Color panelBorder) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: panelBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.cloud_sync_outlined,
+                size: 16,
+                color: Color(0xFF3B82F6),
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Gemini — الحساب الشخصي',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+              if (_mcpChecking)
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _mcpNodeInstalled
+                ? 'Node.js: متوفر'
+                : 'Node.js: غير متوفر — ثبّت Node.js لاستخدام هذا المزود',
+            style: TextStyle(
+              color: _mcpNodeInstalled ? textMuted : Colors.redAccent,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            !_mcpNodeInstalled
+                ? '—'
+                : _mcpAuthenticated
+                    ? 'الحساب: متصل'
+                    : 'الحساب: غير متصل',
+            style: TextStyle(
+              color: _mcpAuthenticated
+                  ? const Color(0xFF22C55E)
+                  : Colors.orangeAccent,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              OutlinedButton.icon(
+                onPressed: _mcpChecking ? null : _disconnectMcp,
+                icon: const Icon(Icons.link_off, size: 16),
+                label: const Text('قطع الاتصال'),
+                style: OutlinedButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                onPressed: _mcpChecking ? null : _connectMcp,
+                icon: const Icon(Icons.link, size: 16),
+                label: const Text('ربط حساب Google'),
+                style: FilledButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
