@@ -3,7 +3,7 @@ part of 'pdf_viewer_widget_w.dart';
 extension _PDFViewerWidgetStateGestures on _PDFViewerWidgetState {
   void _handlePanStart(Offset position, PdfPage page, double scale) {
     // Guard: only drawing tools reach here (Listener in overlay enforces this)
-    if (!_tool.isDrawingTool()) return;
+    if (!_tool.isDrawing) return;
 
     // SESSION LOCK: If lecturer locked drawing, block it for students.
     final app = context.read<AppProvider>();
@@ -28,7 +28,7 @@ extension _PDFViewerWidgetStateGestures on _PDFViewerWidgetState {
 
   void _handlePanUpdate(Offset position, PdfPage page, double scale) {
     // Guard: only drawing tools reach here (Listener in overlay enforces this)
-    if (!_tool.isDrawingTool()) return;
+    if (!_tool.isDrawing) return;
     if (_tool == ToolType.eraser) {
       _eraseAt(position / scale, page.pageNumber, scale);
     } else {

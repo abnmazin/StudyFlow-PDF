@@ -198,25 +198,27 @@ class _UniversityCloudLibraryWidgetState
       if (filePath == null) return;
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
                 ),
-              ),
-              SizedBox(width: 12),
-              Text('جاري رفع الملف...'),
-            ],
+                SizedBox(width: 12),
+                Text('جاري رفع الملف...'),
+              ],
+            ),
+            duration: Duration(seconds: 30),
           ),
-          duration: Duration(seconds: 30),
-        ),
-      );
+        );
 
       await _universityService.uploadPdf(
         filePath: filePath,
@@ -224,19 +226,43 @@ class _UniversityCloudLibraryWidgetState
       );
 
       if (mounted) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ تم رفع الملف بنجاح'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text('✅ تم رفع الملف بنجاح'),
+              backgroundColor: Colors.green,
+            ),
+          );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ $e'), backgroundColor: Colors.red),
+        // Shown as a dialog so it always renders on top of any open window
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            title: const Row(
+              children: [
+                Icon(LucideIcons.alertCircle, color: Colors.red, size: 22),
+                SizedBox(width: 10),
+                Text('فشل رفع الملف'),
+              ],
+            ),
+            content: Text(
+              '$e',
+              style: const TextStyle(fontSize: 13, height: 1.5),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('حسناً'),
+              ),
+            ],
+          ),
         );
       }
     }
@@ -605,6 +631,9 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
   bool _isLoading = true;
   String? _error;
   final Set<String> _downloadingHashes = {};
+  bool _isUploading = false;
+  String? _uploadError;
+  bool _uploadSuccess = false;
 
   @override
   void initState() {
@@ -819,24 +848,112 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
                         ),
                       ),
                     ),
-                    child: Row(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Spacer(),
-                        ElevatedButton.icon(
-                          onPressed: _adminUpload,
-                          icon: const Icon(LucideIcons.upload, size: 18),
-                          label: const Text('رفع ملف جديد'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.indigo,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 20,
-                              vertical: 12,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                        // ── Upload progress (inline, always visible) ────
+                        if (_isUploading)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: Row(
+                              children: [
+                                const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.indigo,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Text(
+                                  'جاري رفع الملف...',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    color: textMuted,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
+                        // ── Upload error banner (inline) ─────────────────
+                        if (_uploadError != null)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.red.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    LucideIcons.alertCircle,
+                                    color: Colors.red,
+                                    size: 16,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'فشل الرفع: $_uploadError',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.red,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                  InkWell(
+                                    onTap: () =>
+                                        setState(() => _uploadError = null),
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: const Padding(
+                                      padding: EdgeInsets.all(4),
+                                      child: Icon(
+                                        LucideIcons.x,
+                                        color: Colors.red,
+                                        size: 16,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        Row(
+                          children: [
+                            if (_uploadSuccess)
+                              const Text(
+                                '✅ تم رفع الملف بنجاح',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.green,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            const Spacer(),
+                            ElevatedButton.icon(
+                              onPressed: _isUploading ? null : _adminUpload,
+                              icon: const Icon(LucideIcons.upload, size: 18),
+                              label: const Text('رفع ملف جديد'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.indigo,
+                                foregroundColor: Colors.white,
+                                disabledBackgroundColor:
+                                    Colors.indigo.withOpacity(0.5),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 20,
+                                  vertical: 12,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -1010,12 +1127,11 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
       if (filePath == null) return;
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('جاري رفع ملف PDF الجديد...'),
-          duration: Duration(seconds: 30),
-        ),
-      );
+      setState(() {
+        _isUploading = true;
+        _uploadError = null;
+        _uploadSuccess = false;
+      });
 
       await widget.universityService.uploadPdf(
         filePath: filePath,
@@ -1023,23 +1139,20 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
       );
 
       if (mounted) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ تم رفع الملف'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        setState(() {
+          _isUploading = false;
+          _uploadSuccess = true;
+        });
+        Future.delayed(const Duration(seconds: 4), () {
+          if (mounted) setState(() => _uploadSuccess = false);
+        });
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ فشل الرفع: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        setState(() {
+          _isUploading = false;
+          _uploadError = e.toString();
+        });
       }
     }
   }

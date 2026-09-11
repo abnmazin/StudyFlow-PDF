@@ -182,7 +182,4 @@ class AuthService {
     debugPrint('📢 [Security] Security announcement published for ${user.username}');
   }
 
-  // Legacy method kept for internal use if needed, but all logins should use secureLogin
-  @Deprecated('Use secureLogin for production security')
-  Future<AppUser> loginAndBind(String username) => secureLogin(username);
-}
+  }

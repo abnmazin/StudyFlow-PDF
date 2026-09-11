@@ -1,5 +1,44 @@
 # Changelog
 
+## [2026-09-11] Project Cleanup: Unused Files, Dead Code, Config Fixes
+
+### Files Deleted (4 orphaned Dart files)
+- `lib/screens/admin/dev_dashboard.dart` — empty deprecated placeholder
+- `lib/services/python_equation_service.dart` — replaced by `math_engine.dart`, zero imports
+- `lib/services/isolate_worker.dart` — `computePdfMetadataIsolate()` never called
+- `lib/widgets/viewer_components/join_master_modal.dart` — superseded by inline join UI in `global_settings_modal.dart`
+
+### Root Clutter Removed (~30 files)
+- Python scripts (Telegram bots, Instagram scrapers)
+- Academic PDFs, Excel data files, JSON artifacts
+- Instagram session artifacts (security risk)
+- `Final.tex`, `processes.txt`, `log.txt`, `pdf.png`
+- `__pycache__/` directory
+
+### Dead Code Removed from `developer_dashboard_v.dart`
+- Removed dead duplicate `GlobalSettingsModal` class (lines 13–1664) shadowed by `global_settings_modal.dart`
+- Removed dead `_buildAdminSectionHeader`, `_buildClearButton`, `_confirmWipe` methods
+- File: 2708 → 974 lines
+- Cleaned unused imports (services.dart, gestures.dart, package_info_plus, login_screen)
+
+### Code Deduplication
+- `lib/models/enums.dart`: Merged duplicate `ToolTypeExtension` + `ToolTypeX` into single `ToolTypeX` (getters)
+- `lib/widgets/pdf_viewer_widget_gestures.dart`: Migrated `.isDrawingTool()` → `.isDrawing`
+- `lib/services/auth_service.dart`: Removed deprecated `loginAndBind()` method (never called)
+
+### Config Fixes
+- `.gitignore`: Resolved git merge conflict (HEAD vs `55e3659`); added ignore rules for `__pycache__/`, `/*.pdf`, `/*.py`, `/*.xlsx`, `/*.tex`
+
+### New Documentation
+- `docs/performance_and_ram.md` — RAM usage research (migrated from `فف/RAM_NAVIGATION_RESEARCH.md`)
+- `docs/gesture_conflict.md` — pdfrx vs overlay gesture conflict documentation
+- `docs/deploy_guide.md` — GitHub Pages deployment guide (corrected paths)
+
+### Scratch Directory Deleted
+- `فف/` folder removed (old analyses, stale function index, code archives)
+
+---
+
 ## [2026-05-17] Toolbar Redesign: ToolSelectorButton + Floating DrawingToolbar
 
 ### Changes Made

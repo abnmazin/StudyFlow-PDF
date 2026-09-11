@@ -28,7 +28,10 @@
 - `lib/widgets/floating_window_manager.dart`: floating window lifecycle, stacking, drag, close, and z-order management.
 - `lib/widgets/mini_apps_menu.dart`: launcher grid for mini apps with constraint-aware card internals (adaptive icon/text sizing and expanded text slot) to prevent bottom overflow on narrow tiles.
 - `lib/widgets/pdf_viewer_widget_w.dart`: main PDF workspace shell, now split-aware with independent primary and secondary PDF controllers. Enforces **primary-only context** for tools (Chat, Bookmarks, Page Counter) and navigation state.
-- `lib/widgets/draggable_text_widget.dart`: editable PDF note/comment bubbles, now with image attachment upload support and in-note image previews. Contains `_MathOverlayWidget` — a unified floating toolbar that adapts its content based on note type:
+- `lib/widgets/developer_modal_w.dart`: developer modal with diagnostics and version info.
+- `lib/widgets/developer_dashboard_v.dart`: admin control panel — user management, device blacklisting, session/master bundle management, global stats. Contains `DeveloperDashboardView` only (legacy `GlobalSettingsModal` duplicate was removed).
+- `lib/widgets/global_settings_modal.dart`: settings panel — master bundle join, version controls, logout. Canonical `GlobalSettingsModal`.
+- `lib/widgets/draggable_text_widget.dart`: editable PDF note/comment bubbles, now with image attachment upload support and in-note image previews.
   - **LaTeX notes**: Shows formatting controls + image controls (if image present) + math buttons + live LaTeX preview
   - **Text notes with image**: Shows formatting controls + image controls only — NO math buttons or LaTeX preview
   - **Plain text notes**: No floating toolbar
