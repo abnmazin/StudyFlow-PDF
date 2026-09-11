@@ -4,6 +4,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../providers/app_state.dart';
 import '../models/models.dart';
 import '../utils/responsive_utils.dart';
+import 'viewer_components/college_collection_widget.dart';
 
 class Sidebar extends StatefulWidget {
   const Sidebar({super.key});
@@ -377,6 +378,20 @@ class _SidebarState extends State<Sidebar> {
                     // Class List (custom drag/drop for folders)
                     Column(
                       children: [
+                        // College Collection — a special folder inside
+                        // "أقسامك". Tap a PDF → open (no save); the تثبيت
+                        // button → folder-picker install.
+                        CollegeCollectionWidget(
+                          isDarkMode: isDarkMode,
+                          panelBg: sidebarBg,
+                          panelBorder: separatorColor,
+                          surfaceAlt: isDarkMode
+                              ? const Color(0xFF1E293B)
+                              : scheme.surfaceContainerHighest,
+                          textPrimary: textPrimary,
+                          textMuted: textMuted,
+                          folderStyle: true,
+                        ),
                         for (final entry in classes.asMap().entries)
                           _buildClassItem(context, entry.value, app, entry.key),
                       ],

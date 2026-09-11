@@ -558,6 +558,16 @@ class FileManagerService extends ChangeNotifier {
     return _isar.classFolders.where().sortByOrderIndex().findAll();
   }
 
+  /// Returns the "Quick Access" folder, creating it if missing.
+  Future<ClassFolder> getOrCreateQuickAccessFolder() async {
+    if (!_isInitialized) await init();
+    final folders = await getFoldersOrdered();
+    for (final f in folders) {
+      if (f.name == 'Quick Access' || f.uuid == 'quick_access') return f;
+    }
+    return createFolder(name: 'Quick Access');
+  }
+
   // ── 8. Migration ──────────────────────────────────────────────────────────
 
   /// Merges legacy data from SharedPreferences classes into Isar.

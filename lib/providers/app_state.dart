@@ -147,6 +147,10 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   String? _activeClassId;
   String? _activePdfId;
   String? _secondaryPdfId;
+
+  /// PDF opened from the college collection without saving to any folder.
+  /// Not persisted to Isar; view-only ephemeral reader.
+  PdfItem? _ephemeralPdf;
   bool _isSplitMode = false;
   AppUser? _currentUser;
   Map<String, String> _pdfSessionCodes =
@@ -1205,6 +1209,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   PdfItem? get activePdf {
+    if (_ephemeralPdf != null && _activePdfId == _ephemeralPdf!.id) {
+      return _ephemeralPdf;
+    }
     final cls = _activeClass();
     if (cls == null || _activePdfId == null) return null;
     for (final pdf in cls.pdfs) {
@@ -2054,6 +2061,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   void setActiveClass(String id) {
     _activeClassId = id;
+    _clearEphemeralPdf();
 
     // In split mode, preserve the current primary PDF and only refresh the secondary pane.
     final cls = _classes.firstWhere(
@@ -2090,6 +2098,10 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void setActivePdf(String id) {
+    // Switching to a real, folder-managed PDF: drop any ephemeral viewer.
+    if (_ephemeralPdf != null && id != _ephemeralPdf!.id) {
+      _clearEphemeralPdf();
+    }
     // Reset listener hash when switching to a different PDF
     // so the listener restarts properly for the new file
     if (_activePdfId != id) {
@@ -2322,24 +2334,11 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       }
 
       // Ensure "Quick Access" exists in Isar, then always import into that real folder id.
-      final quickAccessName = 'Quick Access';
       final fileManager = FileManagerService();
       if (!fileManager.isInitialized) {
         await fileManager.init();
       }
-
-      final folders = await fileManager.getFoldersOrdered();
-      ClassFolder? quickAccessFolder;
-      for (final folder in folders) {
-        if (folder.name == quickAccessName || folder.uuid == 'quick_access') {
-          quickAccessFolder = folder;
-          break;
-        }
-      }
-
-      quickAccessFolder ??= await fileManager.createFolder(
-        name: quickAccessName,
-      );
+      final quickAccessFolder = await fileManager.getOrCreateQuickAccessFolder();
 
       final doc = await fileManager.importAndOpenPdf(
         filePath,
@@ -2357,6 +2356,57 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       _notify();
     } catch (e) {
       debugPrint('Error loading PDF from path: $e');
+    }
+  }
+
+  /// Opens a PDF in the viewer without saving it into any folder.
+  /// The PDF is displayed ad-hoc (ephemeral) and is NOT persisted to Isar,
+  /// so it never appears in Quick Access, class lists, or the sidebar.
+  Future<void> openEphemeralPdf(String filePath, {String? name}) async {
+    try {
+      final file = File(filePath);
+      if (!await file.exists()) {
+        debugPrint('File does not exist: $filePath');
+        return;
+      }
+
+      final displayName = name ?? filePath.split(Platform.pathSeparator).last;
+
+      String? fileHash;
+      int? pageCount;
+      try {
+        fileHash = await FileHashService.calculateFileHash(filePath);
+        final pdfDoc = await pdfrx.PdfDocument.openFile(filePath);
+        pageCount = pdfDoc.pages.length;
+        await pdfDoc.dispose();
+      } catch (e) {
+        debugPrint('Ephemeral PDF metadata skipped: $e');
+      }
+
+      _ephemeralPdf = PdfItem(
+        id: 'ephemeral_${DateTime.now().millisecondsSinceEpoch}',
+        name: displayName,
+        path: filePath,
+        fileHash: fileHash,
+        pageCount: pageCount,
+      );
+      _activeClassId = null;
+      _activePdfId = _ephemeralPdf!.id;
+      _secondaryPdfId = null;
+      _isSplitMode = false;
+
+      // Intentionally NOT persisted: ephemeral view-only open.
+      _notify();
+    } catch (e) {
+      debugPrint('Error opening ephemeral PDF from path: $e');
+    }
+  }
+
+  /// Clears the ephemeral (non-folder) PDF once the user navigates to a
+  /// real, folder-managed PDF.
+  void _clearEphemeralPdf() {
+    if (_ephemeralPdf != null) {
+      _ephemeralPdf = null;
     }
   }
 
@@ -2399,6 +2449,32 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     await FileManagerService().updateFolderOrder(uuids);
 
     _notify();
+  }
+
+  /// Finalizes an already-imported PDF (by [FileManagerService.importAndOpenPdf])
+  /// into the app state: hydrates classes, activates the target folder/PDF.
+  /// Used by the college collection install pipeline.
+  Future<void> importPdfFromPath(String pdfUuid, String classId) async {
+    // Re-hydrate state
+    await _hydrateClassesFromIsar();
+
+    // Set active
+    _activeClassId = classId;
+    _activePdfId = pdfUuid;
+
+    _saveState();
+    _notify();
+  }
+
+  /// Ensures the "Quick Access" folder exists and is hydrated into the
+  /// sidebar so it always appears in the folder picker/install targets.
+  Future<void> ensureQuickAccessExists() async {
+    final fileManager = FileManagerService();
+    if (!fileManager.isInitialized) await fileManager.init();
+    await fileManager.getOrCreateQuickAccessFolder();
+    if (_classes.every((c) => c.name != 'Quick Access')) {
+      await _hydrateClassesFromIsar();
+    }
   }
 
   Future<void> uploadPdf(String classId) async {

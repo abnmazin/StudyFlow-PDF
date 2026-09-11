@@ -1772,7 +1772,7 @@ class _CursorUtilitiesHubState extends State<_CursorUtilitiesHub> {
       child: Column(
         children: [
           Container(
-            margin: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+            margin: const EdgeInsets.fromLTRB(12, 4, 12, 8),
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
               color: tabBg,
