@@ -7,7 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:url_launcher/url_launcher.dart';
+
 
 import 'package:webview_flutter/webview_flutter.dart' as yt_mobile;
 import 'package:webview_windows/webview_windows.dart' as yt_windows;
@@ -96,6 +96,48 @@ const String _ytEmbedWrapperHtml = r'''<!DOCTYPE html>
 </html>
 ''';
 
+/// Injected into every document WebView2 creates (including the cross-origin
+/// YouTube iframe) to keep playback inside the app: refuses clicks on links
+/// that leave for YouTube, suppresses the context menu / drag-out and hides the
+/// player top bar (video title link and share buttons).
+const String _ytEmbedGuardScript = r'''
+(function () {
+  function harden() {
+    document.addEventListener('contextmenu', function (e) {
+      e.preventDefault();
+    }, true);
+    document.addEventListener('dragstart', function (e) {
+      e.preventDefault();
+    }, true);
+    document.addEventListener('click', function (e) {
+      var node = e.target;
+      while (node && node.nodeType === 1) {
+        var href = node.getAttribute && (node.getAttribute('href') || '');
+        if (href && /youtube\.com|youtu\.be|googlevideo/i.test(href)) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        node = node.parentNode;
+      }
+    }, true);
+    try {
+      var style = document.createElement('style');
+      style.textContent =
+        '.ytp-chrome-top,.ytp-gradient-top,.ytp-title,.ytp-share-button,' +
+        '.ytp-watch-later-button,.ytp-youtube-button,.ytp-watermark' +
+        '{display:none !important}';
+      (document.head || document.documentElement).appendChild(style);
+    } catch (err) {}
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', harden);
+  } else {
+    harden();
+  }
+})();
+''';
+
 const String _desktopUserAgent =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
     '(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
@@ -124,21 +166,6 @@ class YouTubeVideoPlayerDialog extends StatelessWidget {
   final UniversityVideo video;
 
   const YouTubeVideoPlayerDialog({super.key, required this.video});
-
-  Future<void> _openInBrowser(BuildContext context) async {
-    final ok = await launchUrl(
-      Uri.parse(video.videoUrl),
-      mode: LaunchMode.externalApplication,
-    );
-    if (!ok && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('تعذر فتح المتصفح'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -185,15 +212,6 @@ class YouTubeVideoPlayerDialog extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    IconButton(
-                      icon: const Icon(
-                        LucideIcons.externalLink,
-                        color: Colors.white70,
-                        size: 20,
-                      ),
-                      tooltip: 'فتح في المتصفح',
-                      onPressed: () => _openInBrowser(context),
-                    ),
                   ],
                 ),
               ),
@@ -207,11 +225,7 @@ class YouTubeVideoPlayerDialog extends StatelessWidget {
                       aspectRatio: 16 / 9,
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(16),
-                        child: _PlayerWithFallback(
-                          videoId: video.videoId,
-                          title: video.title,
-                          watchUrl: video.videoUrl,
-                        ),
+                        child: _PlayerWithFallback(videoId: video.videoId),
                       ),
                     ),
                   ),
@@ -221,7 +235,7 @@ class YouTubeVideoPlayerDialog extends StatelessWidget {
               const Padding(
                 padding: EdgeInsets.only(bottom: 20),
                 child: Text(
-                  'يوتيوب · إذا لم يعمل التشغيل داخل التطبيق، اضغط زر المتصفح بالأعلى',
+                  'يوتيوب · التشغيل متاح داخل التطبيق فقط',
                   style: TextStyle(color: Colors.white38, fontSize: 12),
                 ),
               ),
@@ -233,19 +247,14 @@ class YouTubeVideoPlayerDialog extends StatelessWidget {
   }
 }
 
-/// Shows the YouTube thumbnail with a play button. Tapping attempts the
-/// in-app WebView embed; a secondary button always opens the video on
-/// youtube.com, which is immune to the Error 153 embed restriction.
+/// Shows the YouTube thumbnail with a play button; tapping starts the in-app
+/// WebView embed. Playback is locked to this app on purpose: no external link
+/// is offered and the player chrome that could lead out of the app is covered
+/// (the click shield below plus [_ytEmbedGuardScript]).
 class _PlayerWithFallback extends StatefulWidget {
   final String videoId;
-  final String title;
-  final String watchUrl;
 
-  const _PlayerWithFallback({
-    required this.videoId,
-    required this.title,
-    required this.watchUrl,
-  });
+  const _PlayerWithFallback({required this.videoId});
 
   @override
   State<_PlayerWithFallback> createState() => _PlayerWithFallbackState();
@@ -257,24 +266,6 @@ class _PlayerWithFallbackState extends State<_PlayerWithFallback> {
   String get _thumbUrl =>
       'https://i.ytimg.com/vi/${widget.videoId}/hqdefault.jpg';
 
-  String get _canonicalWatchUrl =>
-      'https://www.youtube.com/watch?v=${widget.videoId}';
-
-  Future<void> _openInBrowser() async {
-    final target = widget.watchUrl.startsWith('http')
-        ? widget.watchUrl
-        : _canonicalWatchUrl;
-    final ok = await launchUrl(
-      Uri.parse(target),
-      mode: LaunchMode.externalApplication,
-    );
-    if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تعذر فتح المتصفح')),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_started) {
@@ -282,34 +273,17 @@ class _PlayerWithFallbackState extends State<_PlayerWithFallback> {
         fit: StackFit.expand,
         children: [
           YouTubeEmbedView(videoId: widget.videoId),
+          // Absorbs taps on YouTube's own top bar (video title link and share
+          // buttons) so nothing inside the player can lead out of the app.
           Positioned(
-            right: 8,
-            bottom: 8,
-            child: Material(
-              color: Colors.black.withValues(alpha: 0.65),
-              borderRadius: BorderRadius.circular(20),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(20),
-                onTap: _openInBrowser,
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        LucideIcons.externalLink,
-                        color: Colors.white,
-                        size: 14,
-                      ),
-                      SizedBox(width: 6),
-                      Text(
-                        'فتح في يوتيوب',
-                        style: TextStyle(color: Colors.white, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+            top: 0,
+            left: 0,
+            right: 0,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {},
+              onLongPress: () {},
+              child: const SizedBox(height: 48),
             ),
           ),
         ],
@@ -358,36 +332,6 @@ class _PlayerWithFallbackState extends State<_PlayerWithFallback> {
               ),
             ),
           ),
-          Positioned(
-            right: 8,
-            bottom: 8,
-            child: Material(
-              color: Colors.black.withValues(alpha: 0.65),
-              borderRadius: BorderRadius.circular(20),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(20),
-                onTap: _openInBrowser,
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        LucideIcons.externalLink,
-                        color: Colors.white,
-                        size: 14,
-                      ),
-                      SizedBox(width: 6),
-                      Text(
-                        'فتح في يوتيوب',
-                        style: TextStyle(color: Colors.white, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -422,9 +366,6 @@ class _YouTubeEmbedViewState extends State<YouTubeEmbedView> {
       'https://$_ytWrapperHost/$_ytWrapperFileName'
       '?v=${Uri.encodeQueryComponent(widget.videoId)}';
 
-  /// Canonical watch URL — works even when the video's owner has disabled
-  /// embedding, unlike the /embed/ page which then refuses to play.
-  String get _watchUrl => 'https://www.youtube.com/watch?v=${widget.videoId}';
 
   @override
   void initState() {
@@ -508,6 +449,14 @@ class _YouTubeEmbedViewState extends State<YouTubeEmbedView> {
       // Chrome UA so the embed initialises like a normal browser.
       try {
         await controller.setUserAgent(_desktopUserAgent);
+      } catch (_) {}
+
+      // Keeps playback inside the app: blocks links that leave for youtube.com
+      // and hides YouTube's own top bar (title link / share buttons).
+      try {
+        await controller.addScriptToExecuteOnDocumentCreated(
+          _ytEmbedGuardScript,
+        );
       } catch (_) {}
 
       _messageSub = controller.webMessage.listen(_handleWebMessage);
@@ -642,26 +591,14 @@ class _YouTubeEmbedViewState extends State<YouTubeEmbedView> {
   }
 
   /// WebView2 Runtime isn't installed (or is too old) on this Windows machine.
-  /// Show a clear message instead of a raw MissingPluginException and let the
-  /// user open the video in the default browser.
+  /// Show a clear message instead of a raw MissingPluginException.
   void _initWebView2NotInstalled() {
     _fail(
       'مكوّن WebView2 غير مثبّت على هذا الجهاز — لا يمكن تشغيل الفيديو داخلياً.\n'
-      'يمكنك تثبيت WebView2 Runtime من موقع Microsoft، أو فتح الفيديو في المتصفح.',
+      'يمكنك تثبيت WebView2 Runtime من موقع Microsoft ثم إعادة تشغيل البرنامج.',
     );
   }
 
-  Future<void> _openEmbedInBrowser() async {
-    final ok = await launchUrl(
-      Uri.parse(_watchUrl),
-      mode: LaunchMode.externalApplication,
-    );
-    if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تعذر فتح المتصفح')),
-      );
-    }
-  }
 
   @override
   void dispose() {
@@ -690,16 +627,6 @@ class _YouTubeEmbedViewState extends State<YouTubeEmbedView> {
                   'تعذّر تشغيل الفيديو داخل التطبيق\n$_error',
                   style: const TextStyle(color: Colors.white70, fontSize: 13),
                   textAlign: TextAlign.center,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextButton.icon(
-                onPressed: _openEmbedInBrowser,
-                icon: const Icon(LucideIcons.externalLink,
-                    color: Colors.amber, size: 18),
-                label: const Text(
-                  'فتح في المتصفح',
-                  style: TextStyle(color: Colors.amber),
                 ),
               ),
             ],
