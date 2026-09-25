@@ -104,8 +104,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     _connectivitySub?.cancel();
     _stopKickListener();
     _stopUserMonitor();
-    _syncDebounce?.cancel();
-    for (var timer in _syncTimers.values) {
+  _syncDebounce?.cancel();
+  unawaited(_syncService.dispose());
+  for (var timer in _syncTimers.values) {
       timer?.cancel();
     }
     if (_saveTimer != null && _saveTimer!.isActive) {
@@ -466,7 +467,32 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       if (!silent) {
         _notify();
       }
+      _startRealtimeAnnotationListener();
     }
+  }
+
+  void _startRealtimeAnnotationListener() {
+    final pdf = activePdf;
+    final code = currentSessionCode;
+    final fileHash = pdf?.fileHash;
+    if (pdf == null || code == null || fileHash == null || fileHash.isEmpty) {
+      unawaited(_syncService.stopRealtimeAnnotations());
+      return;
+    }
+
+    unawaited(_syncService.startRealtimeAnnotations(
+      code,
+      fileHash,
+      onData: (items, lastDeletedAt) {
+        if (_isSyncing || currentSessionCode != code || activePdf?.fileHash != fileHash) {
+          return;
+        }
+        unawaited(performBidirectionalSync(silent: true));
+      },
+      onError: (error, stackTrace) {
+        debugPrint('Realtime annotation listener error: $error');
+      },
+    ));
   }
 
   /// Triggers a debounced bidirectional sync (default 1.8s).

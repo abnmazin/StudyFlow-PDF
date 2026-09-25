@@ -23,6 +23,9 @@ class SyncService {
   final Map<String, int> _lastProcessedSeqNum = {};
   final Map<String, Set<String>> _appliedMutationIds = {};
   final Map<String, int> _lastBroadcastTime = {};
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+      _annotationSubscription;
+  String? _activeAnnotationPath;
   final FirebaseFirestore _db;
 
   SyncService({FirebaseFirestore? firestore})
@@ -802,38 +805,48 @@ class SyncService {
         )
         .toList();
 
-    // ── Phase 5: Build merged truth ──────────────────────────────────────
-    // Retain all server items that weren't deleted AND weren't overridden by local mods
-    final retained = serverItems
-        .where(
-          (item) =>
-              item is Map &&
-              !deletedIds.contains(item['id']?.toString()) &&
-              !localModified.contains(item['id']?.toString()),
-        )
-        .map((item) => item is Map ? {...item, 'isSynced': true} : item)
-        .toList();
-
-    final merged = [...retained, ...newHJson, ...newCJson];
-
     // ── Write Guard: لا تكتب لو ما في تغيير فعلي ────────────────────────
     final hasChanges =
         newHJson.isNotEmpty || newCJson.isNotEmpty || deletedIds.isNotEmpty;
 
     if (hasChanges) {
-      final Map<String, dynamic> updatePayload = {'data': merged};
-      if (locallyDeletedIds.isNotEmpty) {
-        updatePayload['lastDeletedAt'] = DateTime.now().millisecondsSinceEpoch;
-      }
-
+      final annotationRef = _db
+          .collection('sync_sessions')
+          .doc(code)
+          .collection('annotations')
+          .doc(fileHash);
       await _withTimeout(
-        _db
-            .collection('sync_sessions')
-            .doc(code)
-            .collection('annotations')
-            .doc(fileHash)
-            .set(updatePayload, SetOptions(merge: true)),
-        operationName: 'syncExistingAnnotations (Push)',
+        _db.runTransaction((transaction) async {
+          final currentSnapshot = await transaction.get(annotationRef);
+          final currentData = currentSnapshot.data() ?? <String, dynamic>{};
+          final currentItems = currentData['data'] is List
+              ? List<dynamic>.from(currentData['data'] as List)
+              : <dynamic>[];
+          final currentById = <String, dynamic>{
+            for (final item in currentItems)
+              if (item is Map && item['id'] != null) item['id'].toString(): item,
+          };
+
+          for (final id in deletedIds) {
+            currentById.remove(id);
+          }
+          for (final item in [...newHJson, ...newCJson]) {
+            final id = item['id']?.toString();
+            if (id != null) currentById[id] = item;
+          }
+
+          final transactionPayload = <String, dynamic>{
+            'data': currentById.values.toList(),
+            'updatedAt': FieldValue.serverTimestamp(),
+            'revision': FieldValue.increment(1),
+          };
+          if (locallyDeletedIds.isNotEmpty) {
+            transactionPayload['lastDeletedAt'] =
+                DateTime.now().millisecondsSinceEpoch;
+          }
+          transaction.set(annotationRef, transactionPayload, SetOptions(merge: true));
+        }),
+        operationName: 'syncExistingAnnotations (Transactional Push)',
       );
       debugPrint(
         'DEBUG: Write executed — ${newHJson.length + newCJson.length} uploaded, ${deletedIds.length} deleted.',
@@ -1017,6 +1030,49 @@ class SyncService {
         .doc(code)
         .collection('annotations')
         .snapshots();
+  }
+
+  /// Watches one PDF annotation document and emits its complete annotation
+  /// payload whenever another client changes it.
+  Future<void> startRealtimeAnnotations(
+    String code,
+    String fileHash, {
+    required void Function(List<dynamic> items, int lastDeletedAt) onData,
+    void Function(Object error, StackTrace stackTrace)? onError,
+  }) async {
+    final path = 'sync_sessions/$code/annotations/$fileHash';
+    if (_activeAnnotationPath == path && _annotationSubscription != null) return;
+
+    await stopRealtimeAnnotations();
+    _activeAnnotationPath = path;
+    _annotationSubscription = _db
+        .collection('sync_sessions')
+        .doc(code)
+        .collection('annotations')
+        .doc(fileHash)
+        .snapshots()
+        .listen((snapshot) {
+          if (!snapshot.exists) {
+            onData(const [], 0);
+            return;
+          }
+          final data = snapshot.data() ?? <String, dynamic>{};
+          final rawItems = data['data'];
+          final items = rawItems is List ? List<dynamic>.from(rawItems) : const <dynamic>[];
+          final lastDeletedAt = (data['lastDeletedAt'] as num?)?.toInt() ?? 0;
+          onData(items, lastDeletedAt);
+        }, onError: onError);
+  }
+
+  Future<void> stopRealtimeAnnotations() async {
+    await _annotationSubscription?.cancel();
+    _annotationSubscription = null;
+    _activeAnnotationPath = null;
+  }
+
+  Future<void> dispose() async {
+    await stopRealtimeAnnotations();
+    await _mutationSubscription?.cancel();
   }
 
   // ─────────────────────────────────────────────
