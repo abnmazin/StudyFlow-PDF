@@ -1073,6 +1073,9 @@ class SyncService {
   Future<void> dispose() async {
     await stopRealtimeAnnotations();
     await _mutationSubscription?.cancel();
+    _mutationSubscription = null;
+    _lastProcessedSeqNum.clear();
+    _appliedMutationIds.clear();
   }
 
   // ─────────────────────────────────────────────
@@ -1373,12 +1376,5 @@ class SyncService {
           debugPrint('❌ [SYNC RECEIVER] Listener FAILED for $fileHash: $e');
           debugPrint('❌ [SYNC RECEIVER] This is likely a missing Firestore composite index!');
         });
-  }
-
-  void dispose() {
-    _mutationSubscription?.cancel();
-    _mutationSubscription = null;
-    _lastProcessedSeqNum.clear();
-    _appliedMutationIds.clear();
   }
 }

@@ -104,9 +104,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     _connectivitySub?.cancel();
     _stopKickListener();
     _stopUserMonitor();
-  _syncDebounce?.cancel();
-  unawaited(_syncService.dispose());
-  for (var timer in _syncTimers.values) {
+    _syncDebounce?.cancel();
+    unawaited(_syncService.dispose());
+    for (var timer in _syncTimers.values) {
       timer?.cancel();
     }
     if (_saveTimer != null && _saveTimer!.isActive) {
