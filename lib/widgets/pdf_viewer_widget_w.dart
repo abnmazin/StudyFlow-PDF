@@ -537,6 +537,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
       // If activating Text tool, hide floating toolbar (Text uses its own TextFormattingToolbar)
       if (nextTool == ToolType.text) {
         _floatingToolbarSelectedTool = null;
+        _isFloatingToolbarOpen = false;
       }
       // Update floating toolbar icon for drawing tools (shortcuts, toolbar selection)
       if (nextTool.isDrawing) {
@@ -727,6 +728,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     return AnimatedBuilder(
       animation: Listenable.merge([FocusManager.instance, app]),
       builder: (context, _) {
+        final selectedFloatingTool = _floatingToolbarSelectedTool;
         // Only disable shortcuts if no PDF or editing comment, or if keyboard is locked (TextField has focus)
         final shortcutsDisabled = _editingCommentId != null || pdf == null || app.isKeyboardLocked;
 
@@ -1035,14 +1037,15 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                         ),
                                       ),
 
-                                    if (_isFloatingToolbarOpen)
+                                    if (_isFloatingToolbarOpen &&
+                                        selectedFloatingTool != null)
                                       Positioned(
                                         left: 0,
                                         right: 0,
                                         bottom: 32,
                                         child: Center(
                                           child: DrawingToolbar(
-                                            activeTool: _floatingToolbarSelectedTool!,
+                                            activeTool: selectedFloatingTool,
                                             onToolChanged: (tool) {
                                               setState(() {
                                                 _floatingToolbarSelectedTool = tool;

@@ -13,9 +13,11 @@ import 'package:isar/isar.dart';
 import '../models/app_user.dart';
 import '../models/university_folder.dart';
 import '../models/university_file.dart';
+import '../models/university_video.dart';
 import '../models/isar_models.dart';
 import 'file_hash_service.dart';
 import 'file_manager_service.dart';
+import 'library_sync_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UniversityService
@@ -201,10 +203,25 @@ class UniversityService {
     _ensureInitialized();
     _assertAdmin();
 
+    // Soft-delete the folder itself.
     await _firestore
         .collection('university_folders')
         .doc(folderId)
         .update({'isDeleted': true});
+
+    // Also soft-delete any video links inside the folder so they stop
+    // showing for every member.
+    final videos = await _firestore
+        .collection('university_videos')
+        .where('universityId', isEqualTo: _universityId)
+        .where('folderId', isEqualTo: folderId)
+        .where('isDeleted', isEqualTo: false)
+        .get();
+    final batch = _firestore.batch();
+    for (final doc in videos.docs) {
+      batch.update(doc.reference, {'isDeleted': true});
+    }
+    await batch.commit();
 
     debugPrint(
       '📂 [UniversityService] Soft-deleted folder $folderId',
@@ -224,12 +241,21 @@ class UniversityService {
         .where('universityId', isEqualTo: _universityId)
         .where('folderId', isEqualTo: folderId)
         .where('isDeleted', isEqualTo: false)
-        .orderBy('uploadedAt', descending: false)
         .get();
 
     return snapshot.docs
         .map((doc) => UniversityFile.fromFirestore(doc.id, doc.data()))
-        .toList();
+        .toList()
+      ..sort(_compareFiles);
+  }
+
+  /// Sorts by the manual [UniversityFile.sortOrder] first (drag & drop), then
+  /// by upload time (oldest first) so legacy files (all sortOrder 0) keep
+  /// their original display order.
+  static int _compareFiles(UniversityFile a, UniversityFile b) {
+    final byOrder = a.sortOrder.compareTo(b.sortOrder);
+    if (byOrder != 0) return byOrder;
+    return a.uploadedAt.compareTo(b.uploadedAt);
   }
 
   /// Streams files in a folder in real-time.
@@ -241,16 +267,66 @@ class UniversityService {
         .where('universityId', isEqualTo: _universityId)
         .where('folderId', isEqualTo: folderId)
         .where('isDeleted', isEqualTo: false)
-        .orderBy('uploadedAt', descending: false)
         .snapshots()
         .map((snapshot) => snapshot.docs
             .map((doc) => UniversityFile.fromFirestore(doc.id, doc.data()))
-            .toList());
+            .toList()
+          ..sort(_compareFiles));
+  }
+
+  /// Looks up a university library file by its content hash. Used by the
+  /// document settings to surface the per-file sync code for an open PDF
+  /// that came from the university library. Returns `null` when the user has
+  /// no university, is not inited, or no file matches.
+  Future<UniversityFile?> findUniversityFileByHash(String fileHash) async {
+    if (!isReady || fileHash.isEmpty) return null;
+    try {
+      final snapshot = await _firestore
+          .collection('university_files')
+          .where('universityId', isEqualTo: _universityId)
+          .where('fileHash', isEqualTo: fileHash)
+          .where('isDeleted', isEqualTo: false)
+          .limit(1)
+          .get();
+      if (snapshot.docs.isEmpty) return null;
+      return UniversityFile.fromFirestore(
+        snapshot.docs.first.id,
+        snapshot.docs.first.data(),
+      );
+    } catch (e) {
+      debugPrint('⚠️ [UniversityService] findUniversityFileByHash failed: $e');
+      return null;
+    }
   }
 
   // =========================================================================
   // SECTION 3: UPLOAD PIPELINE (ADMIN)
   // =========================================================================
+
+  /// Replaces characters that Supabase Storage rejects in object keys
+  /// (spaces, non-ASCII/Arabic, reserved symbols) with '_', collapses runs of
+  /// '_', and trims leading/trailing '_'. Result uses only [A-Za-z0-9._-].
+  String _sanitizeStorageSegment(String input) {
+    final cleaned = input
+        .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+    return cleaned.length > 200 ? cleaned.substring(0, 200) : cleaned;
+  }
+
+  /// Sanitizes a display file name for use as the final storage key segment,
+  /// keeping the original extension. Falls back to a timestamped ASCII name if
+  /// the stem sanitizes to empty (e.g. an all-Arabic name), so the storage path
+  /// never ends in '/' or an empty segment (both also trigger InvalidKey).
+  String _sanitizeStorageFileName(String fileName) {
+    final ext = p.extension(fileName);
+    final stem = p.basenameWithoutExtension(fileName);
+    final safeStem = _sanitizeStorageSegment(stem);
+    final effectiveStem = safeStem.isEmpty
+        ? 'file_${DateTime.now().millisecondsSinceEpoch}'
+        : safeStem;
+    return '$effectiveStem$ext';
+  }
 
   /// Complete upload pipeline:
   /// 1. Compute SHA-256 hash of the selected PDF
@@ -303,7 +379,19 @@ class UniversityService {
 
     // ── Step 3: Upload to Supabase Storage ─────────────────────────────
     debugPrint('📤 [UniversityService] Step 3/4: Uploading to Supabase...');
-    final storagePath = '$_universityId/folders/$folderId/$fileName';
+    // Supabase Storage rejects keys with spaces/non-ASCII chars (HTTP 400
+    // "Invalid key"), so the storage path is sanitized while the original
+    // display name is kept in Firestore.
+    final safeFolderId = _sanitizeStorageSegment(folderId);
+    final safeFileName = _sanitizeStorageFileName(fileName);
+    final storagePath = '$_universityId/folders/$safeFolderId/$safeFileName';
+
+    if (storagePath != '$_universityId/folders/$folderId/$fileName') {
+      debugPrint(
+        '⚠️ [UniversityService] Storage key sanitized: '
+        '"$fileName" ($folderId) -> "$safeFileName" ($safeFolderId)',
+      );
+    }
 
     final bytes = await file.readAsBytes();
 
@@ -333,6 +421,17 @@ class UniversityService {
     debugPrint('📤 [UniversityService] Step 4/4: Saving Firestore record...');
     final fileRef = _firestore.collection('university_files').doc();
 
+    // Every uploaded file gets its own sync code for the library sync.
+    final syncCode = await _generateUniqueSyncCode();
+
+    // New files append at the end of the folder (manual drag & drop order).
+    int sortOrder = 0;
+    try {
+      sortOrder = (await getFilesInFolder(folderId)).length;
+    } catch (e) {
+      debugPrint('⚠️ [UniversityService] Could not compute sortOrder: $e');
+    }
+
     final universityFile = UniversityFile(
       id: fileRef.id,
       universityId: _universityId,
@@ -346,6 +445,8 @@ class UniversityService {
       uploadedAt: DateTime.now(),
       totalPages: totalPages,
       isDeleted: false,
+      syncCode: syncCode,
+      sortOrder: sortOrder,
     );
 
     await fileRef.set(universityFile.toJson());
@@ -355,6 +456,67 @@ class UniversityService {
       '(hash: ${fileHash.substring(0, 16)}..., size: ${_formatBytes(fileSize)})',
     );
     return universityFile;
+  }
+
+  // =========================================================================
+  // SECTION 3.5: PER-FILE SYNC CODES
+  // =========================================================================
+
+  /// Generates a 6-char sync code unique among this university's files.
+  Future<String> _generateUniqueSyncCode() async {
+    final existing = await _firestore
+        .collection('university_files')
+        .where('universityId', isEqualTo: _universityId)
+        .get();
+    final codes = existing.docs
+        .map((d) => (d.data()['syncCode'] ?? '').toString())
+        .where((c) => c.isNotEmpty)
+        .toSet();
+
+    for (var attempt = 0; attempt < 6; attempt++) {
+      final code = LibrarySyncService.generateSyncCode();
+      if (!codes.contains(code)) return code;
+    }
+    return 'FILE${DateTime.now().millisecondsSinceEpoch % 1000000}';
+  }
+
+  /// Backfills a sync code onto every already-uploaded file of this university
+  /// that is missing one. Admin only. Returns the number of files updated.
+  Future<int> backfillSyncCodes() async {
+    _ensureInitialized();
+    _assertAdmin();
+
+    final snapshot = await _firestore
+        .collection('university_files')
+        .where('universityId', isEqualTo: _universityId)
+        .where('isDeleted', isEqualTo: false)
+        .get();
+
+    var count = 0;
+    for (final doc in snapshot.docs) {
+      final syncCode = (doc.data()['syncCode'] ?? '').toString();
+      if (syncCode.isNotEmpty) continue;
+      try {
+        final code = await _generateUniqueSyncCode();
+        await _firestore
+            .collection('university_files')
+            .doc(doc.id)
+            .update({'syncCode': code});
+        count++;
+        debugPrint(
+          '📡 [UniversityService] Backfilled syncCode "$code" for file ${doc.id}',
+        );
+      } catch (e) {
+        debugPrint(
+          '⚠️ [UniversityService] Backfill failed for ${doc.id}: $e',
+        );
+      }
+    }
+
+    if (count > 0) {
+      debugPrint('✅ [UniversityService] Backfilled $count file(s) with sync codes.');
+    }
+    return count;
   }
 
   // =========================================================================
@@ -642,20 +804,295 @@ class UniversityService {
   }
 
   // =========================================================================
-  // SECTION 6: UTILITY
+  // SECTION 6: REORDER + UTILITY
   // =========================================================================
 
-  /// Soft-deletes a university file (Admin only).
-  Future<void> deleteFile(String fileId) async {
+  /// Reorders two folders via drag & drop (Admin only). The dragged folder is
+  /// moved in front of the target folder; dense `sortOrder` 0..n-1 is
+  /// batch-written to every folder so the order syncs to all members.
+  Future<void> reorderFolders({
+    required String draggedFolderId,
+    required String targetFolderId,
+  }) async {
+    _ensureInitialized();
+    _assertAdmin();
+
+    final folders = await getFolders();
+    final draggedIndex = folders.indexWhere((f) => f.id == draggedFolderId);
+    final targetIndex = folders.indexWhere((f) => f.id == targetFolderId);
+    if (draggedIndex == -1 || targetIndex == -1) return;
+
+    final dragged = folders.removeAt(draggedIndex);
+    folders.insert(targetIndex, dragged);
+
+    final batch = _firestore.batch();
+    for (var i = 0; i < folders.length; i++) {
+      if (folders[i].sortOrder == i) continue;
+      batch.update(
+        _firestore.collection('university_folders').doc(folders[i].id),
+        {'sortOrder': i},
+      );
+    }
+    await batch.commit();
+    debugPrint('📂 [UniversityService] Reordered folders (dragged=$draggedFolderId).');
+  }
+
+  /// Reorders two files within a folder via drag & drop (Admin only). Dense
+  /// `sortOrder` 0..n-1 is batch-written so the order syncs to all members.
+  Future<void> reorderFiles({
+    required String folderId,
+    required String draggedFileId,
+    required String targetFileId,
+  }) async {
+    _ensureInitialized();
+    _assertAdmin();
+
+    final files = await getFilesInFolder(folderId);
+    final draggedIndex = files.indexWhere((f) => f.id == draggedFileId);
+    final targetIndex = files.indexWhere((f) => f.id == targetFileId);
+    if (draggedIndex == -1 || targetIndex == -1) return;
+
+    final dragged = files.removeAt(draggedIndex);
+    files.insert(targetIndex, dragged);
+
+    final batch = _firestore.batch();
+    for (var i = 0; i < files.length; i++) {
+      if (files[i].sortOrder == i) continue;
+      batch.update(
+        _firestore.collection('university_files').doc(files[i].id),
+        {'sortOrder': i},
+      );
+    }
+    await batch.commit();
+    debugPrint(
+      '🗂️ [UniversityService] Reordered files in $folderId (dragged=$draggedFileId).',
+    );
+  }
+
+  /// Deletes a university file (Admin only). Removes the PDF object from the
+  /// Supabase `university-pdfs` bucket (best-effort), then soft-deletes the
+  /// Firestore doc so the stream removes it for every member.
+  Future<void> deleteFile(UniversityFile file) async {
+    _ensureInitialized();
+    _assertAdmin();
+
+    if (file.storagePath.isNotEmpty) {
+      try {
+        await _supabase.storage
+            .from(_bucketName)
+            .remove([file.storagePath]);
+        debugPrint(
+          '🗄️ [UniversityService] Removed storage object: ${file.storagePath}',
+        );
+      } catch (e) {
+        debugPrint(
+          '⚠️ [UniversityService] Storage remove failed (ignored): $e',
+        );
+      }
+    }
+
+    await _firestore
+        .collection('university_files')
+        .doc(file.id)
+        .update({'isDeleted': true});
+
+    debugPrint(
+      '🗑️ [UniversityService] Deleted file ${file.id} ("${file.name}")',
+    );
+  }
+
+  // =========================================================================
+  // SECTION 7: VIDEO LINKS (YouTube)
+  // Videos live in the `university_videos` collection, separate from PDFs.
+  // =========================================================================
+
+  /// Extracts the 11-char YouTube video ID from a wide range of URL formats
+  /// (`watch?v=`, `youtu.be/`, `/shorts/`, `/embed/`, `/live/`, `m.youtube.com`).
+  /// Returns `null` when the URL is not a valid YouTube watch link.
+  static String? videoIdFromUrl(String input) {
+    final text = input.trim();
+    if (text.isEmpty) return null;
+
+    final uri = Uri.tryParse(text);
+    if (uri == null) return null;
+
+    final host = uri.host.toLowerCase();
+    final isYouTube = host == 'youtube.com' ||
+        host == 'www.youtube.com' ||
+        host == 'm.youtube.com' ||
+        host == 'youtu.be' ||
+        host == 'www.youtu.be' ||
+        host.endsWith('.youtube.com');
+    if (!isYouTube) return null;
+
+    // ?v=<id>
+    final queryId = uri.queryParameters['v'];
+    if (queryId != null && _isValidVideoId(queryId)) return queryId;
+
+    // youtu.be/<id>
+    if (host.contains('youtu.be')) {
+      final seg = uri.pathSegments.isNotEmpty ? uri.pathSegments.first : '';
+      if (_isValidVideoId(seg)) return seg;
+    }
+
+    // /shorts/<id> | /embed/<id> | /live/<id> | /v/<id> | /watch/<id>
+    final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
+    if (segments.length >= 2) {
+      const kinds = {'shorts', 'embed', 'live', 'v', 'watch'};
+      if (kinds.contains(segments[0]) && _isValidVideoId(segments[1])) {
+        return segments[1];
+      }
+    }
+    return null;
+  }
+
+  static bool _isValidVideoId(String id) {
+    return RegExp(r'^[A-Za-z0-9_-]{11}$').hasMatch(id);
+  }
+
+  /// Converts any supported YouTube URL into a canonical watch URL.
+  static String normalizeVideoUrl(String url) {
+    final id = videoIdFromUrl(url);
+    if (id == null) {
+      throw FormatException('رابط يوتيوب غير صالح');
+    }
+    return 'https://www.youtube.com/watch?v=$id';
+  }
+
+  /// Adds a YouTube video link to a folder (Admin only).
+  Future<UniversityVideo> addVideo({
+    required String folderId,
+    required String title,
+    required String videoUrl,
+  }) async {
+    _ensureInitialized();
+    _assertAdmin();
+
+    final id = videoIdFromUrl(videoUrl);
+    if (id == null) {
+      throw FormatException(
+        'رابط يوتيوب غير صالح. تأكد من الرابط ثم أعد المحاولة.',
+      );
+    }
+
+    final ref = _firestore.collection('university_videos').doc();
+
+    // New videos append at the end of the folder (manual drag & drop order).
+    int sortOrder = 0;
+    try {
+      sortOrder = (await getVideosInFolder(folderId)).length;
+    } catch (e) {
+      debugPrint('⚠️ [UniversityService] Could not compute video sortOrder: $e');
+    }
+
+    final video = UniversityVideo(
+      id: ref.id,
+      universityId: _universityId,
+      folderId: folderId,
+      title: title.trim().isEmpty ? 'درس فيديو' : title.trim(),
+      videoId: id,
+      videoUrl: 'https://www.youtube.com/watch?v=$id',
+      uploadedBy: _userId,
+      uploadedAt: DateTime.now(),
+      isDeleted: false,
+      sortOrder: sortOrder,
+    );
+
+    await ref.set(video.toJson());
+
+    debugPrint(
+      '🎬 [UniversityService] Added video ${ref.id} (videoId=$id) to $folderId',
+    );
+    return video;
+  }
+
+  /// Fetches all videos in a specific folder for the current user's university.
+  Future<List<UniversityVideo>> getVideosInFolder(String folderId) async {
+    _ensureInitialized();
+
+    final snapshot = await _firestore
+        .collection('university_videos')
+        .where('universityId', isEqualTo: _universityId)
+        .where('folderId', isEqualTo: folderId)
+        .where('isDeleted', isEqualTo: false)
+        .get();
+
+    return snapshot.docs
+        .map((doc) => UniversityVideo.fromFirestore(doc.id, doc.data()))
+        .toList()
+      ..sort(_compareVideos);
+  }
+
+  /// Sorts by the manual [UniversityVideo.sortOrder] first (drag & drop), then
+  /// by upload time.
+  static int _compareVideos(UniversityVideo a, UniversityVideo b) {
+    final byOrder = a.sortOrder.compareTo(b.sortOrder);
+    if (byOrder != 0) return byOrder;
+    return a.uploadedAt.compareTo(b.uploadedAt);
+  }
+
+  /// Streams videos in a folder in real-time.
+  Stream<List<UniversityVideo>> streamVideosInFolder(String folderId) {
+    _ensureInitialized();
+
+    return _firestore
+        .collection('university_videos')
+        .where('universityId', isEqualTo: _universityId)
+        .where('folderId', isEqualTo: folderId)
+        .where('isDeleted', isEqualTo: false)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => UniversityVideo.fromFirestore(doc.id, doc.data()))
+            .toList()
+          ..sort(_compareVideos));
+  }
+
+  /// Deletes a university video link (Admin only). Videos have no storage
+  /// object to remove, so this soft-deletes the Firestore doc directly.
+  Future<void> deleteVideo(UniversityVideo video) async {
     _ensureInitialized();
     _assertAdmin();
 
     await _firestore
-        .collection('university_files')
-        .doc(fileId)
+        .collection('university_videos')
+        .doc(video.id)
         .update({'isDeleted': true});
 
-    debugPrint('🗑️ [UniversityService] Soft-deleted file $fileId');
+    debugPrint(
+      '🗑️ [UniversityService] Deleted video ${video.id} ("${video.title}")',
+    );
+  }
+
+  /// Reorders two videos within a folder via drag & drop (Admin only). Dense
+  /// `sortOrder` 0..n-1 is batch-written so the order syncs to all members.
+  Future<void> reorderVideos({
+    required String folderId,
+    required String draggedVideoId,
+    required String targetVideoId,
+  }) async {
+    _ensureInitialized();
+    _assertAdmin();
+
+    final videos = await getVideosInFolder(folderId);
+    final draggedIndex = videos.indexWhere((v) => v.id == draggedVideoId);
+    final targetIndex = videos.indexWhere((v) => v.id == targetVideoId);
+    if (draggedIndex == -1 || targetIndex == -1) return;
+
+    final dragged = videos.removeAt(draggedIndex);
+    videos.insert(targetIndex, dragged);
+
+    final batch = _firestore.batch();
+    for (var i = 0; i < videos.length; i++) {
+      if (videos[i].sortOrder == i) continue;
+      batch.update(
+        _firestore.collection('university_videos').doc(videos[i].id),
+        {'sortOrder': i},
+      );
+    }
+    await batch.commit();
+    debugPrint(
+      '🎬 [UniversityService] Reordered videos in $folderId (dragged=$draggedVideoId).',
+    );
   }
 
   String _formatBytes(int bytes) {

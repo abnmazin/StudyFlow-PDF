@@ -5,22 +5,23 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../models/university_folder.dart';
 import '../../models/university_file.dart';
+import '../../models/university_video.dart';
 import '../../services/university_service.dart';
 import '../../services/file_manager_service.dart';
+import '../../services/library_sync_service.dart';
 import '../../providers/app_state.dart';
+import 'youtube_player_w.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CollegeCollectionWidget
 //
-// Lives inside "أقسامك" in the left sidebar as a closed folder. Clicking it
-// expands to reveal the Supabase-backed university folders (المجموعة الجامعية).
-// Clicking a folder shows its PDFs.
+// Lives under "المكتبة الجامعية" in the left sidebar as a collapsible
+// section. It reveals the Supabase-backed university folders; clicking a
+// folder shows its PDFs.
 //
 // File actions:
-//   * Tap the file row  → opens the PDF in the viewer WITHOUT saving it into
-//     any folder (ephemeral / view-only).
-//   * Tap the install (download) button → small folder-picker popup; the file
-//     is imported into the chosen class folder.
+//   * Tap the file row → downloads the PDF, saves it inside the local
+//     "Quick Access" folder, then opens it — exactly like a local file.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class CollegeCollectionWidget extends StatefulWidget {
@@ -64,17 +65,13 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
   String? _openFolderId;
   StreamSubscription<List<UniversityFile>>? _filesSub;
   List<UniversityFile> _files = [];
+  StreamSubscription<List<UniversityVideo>>? _videosSub;
+  List<UniversityVideo> _videos = [];
   bool _filesLoading = false;
   String? _filesError;
 
-  /// Tracks which files are currently being opened (ephemeral, view-only).
+  /// Tracks which files are currently being opened (download + open).
   final Set<String> _openHashes = {};
-
-  /// Files currently being installed (downloading) into a class folder.
-  final Set<String> _installingHashes = {};
-
-  /// Files already installed into a local class folder.
-  final Set<String> _installedHashes = {};
 
   bool _serviceReady = false;
 
@@ -91,7 +88,7 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
       if (mounted) {
         setState(() {
           _foldersLoading = false;
-          _foldersError = 'سجّل الدخول لعرض المجموعة الجامعية';
+          _foldersError = 'سجّل الدخول لعرض المكتبة الجامعية';
         });
       }
       return;
@@ -108,7 +105,9 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
         return;
       }
       _serviceReady = true;
-      if (_isExpanded) {
+      // In sidebar (folderStyle) mode the folder list is always visible, so
+      // load it immediately. In card mode it stays lazy until first expand.
+      if (widget.folderStyle || _isExpanded) {
         _foldersLoading = true;
         _startFoldersStream();
       } else {
@@ -170,9 +169,11 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
     setState(() {
       _openFolderId = nextId;
       _files = [];
+      _videos = [];
       _filesError = null;
     });
     _filesSub?.cancel();
+    _videosSub?.cancel();
     if (nextId == null) return;
     setState(() => _filesLoading = true);
     _filesSub = _universityService.streamFilesInFolder(folder.id).listen(
@@ -194,156 +195,24 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
         }
       },
     );
+    _videosSub = _universityService.streamVideosInFolder(folder.id).listen(
+      (videos) {
+        if (mounted && _openFolderId == folder.id) {
+          setState(() => _videos = videos);
+        }
+      },
+      onError: (err) {
+        debugPrint('⚠️ [College] Video stream error: $err');
+      },
+    );
   }
 
   @override
   void dispose() {
     _foldersSub?.cancel();
     _filesSub?.cancel();
+    _videosSub?.cancel();
     super.dispose();
-  }
-
-  // ── Install pipeline: download → pick target class → import ─────────────
-
-  Future<void> _installPdf(UniversityFile file) async {
-    final hash = file.fileHash;
-    if (_installingHashes.contains(hash)) return;
-    if (_installedHashes.contains(hash)) return;
-
-    final app = context.read<AppProvider>();
-
-    // Ensure "Quick Access" always exists so it appears in the picker.
-    await app.ensureQuickAccessExists();
-
-    if (app.classes.isEmpty) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(
-            content: Text('أنشئ قسمًا أولاً لتثبيت الملف فيه'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      return;
-    }
-
-    setState(() => _installingHashes.add(hash));
-
-    try {
-      // 1. Download (pure download, no Isar record yet) → local path.
-      final localPath = await _universityService.downloadPdfToLocal(file);
-
-      if (!mounted) return;
-
-      // 2. Let the user pick the target class folder.
-      final chosenClassId = await _pickClassFolder(app, file.name);
-      if (!mounted) return;
-      if (chosenClassId == null) return; // cancelled → abort install
-
-      // 3. Import into the chosen folder (hash-deduped inside that folder).
-      final fileManager = FileManagerService();
-      if (!fileManager.isInitialized) {
-        await fileManager.init();
-      }
-      final doc = await fileManager.importAndOpenPdf(
-        localPath,
-        classId: chosenClassId,
-      );
-
-      // 4. Re-hydrate + activate via the provider.
-      await app.importPdfFromPath(doc.uuid, chosenClassId);
-
-      if (!mounted) return;
-      setState(() => _installedHashes.add(hash));
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(
-            content: Text('✅ تم تثبيت "${file.name}"'),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(
-            SnackBar(
-              content: Text('❌ فشل التثبيت: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-      }
-    } finally {
-      if (mounted) setState(() => _installingHashes.remove(hash));
-    }
-  }
-
-  /// Dialog listing the user's class folders; returns the chosen classId.
-  /// Compact size: narrower than the device and capped height.
-  Future<String?> _pickClassFolder(AppProvider app, String fileName) {
-    return showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Theme.of(ctx).colorScheme.surface,
-        title: Text(
-          'تثبيت "$fileName"',
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-        ),
-        content: SizedBox(
-          width: 380,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'اختر القسم الذي تريد تثبيت الملف فيه:',
-                style: TextStyle(
-                  fontSize: 12.5,
-                  color: widget.textMuted,
-                ),
-              ),
-              const SizedBox(height: 8),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 280),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (final cls in app.classes)
-                        ListTile(
-                          dense: true,
-                          leading: Icon(
-                            LucideIcons.folder,
-                            size: 18,
-                            color: widget.isDarkMode
-                                ? const Color(0xFF93C5FD)
-                                : Colors.indigo.shade400,
-                          ),
-                          title: Text(
-                            cls.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 13.5),
-                          ),
-                          onTap: () => Navigator.of(ctx).pop(cls.id),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('إلغاء'),
-          ),
-        ],
-      ),
-    );
   }
 
   // ── Build ───────────────────────────────────────────────────────────────
@@ -395,7 +264,7 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'المجموعة الجامعية',
+                          'المكتبة الجامعية',
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
@@ -447,87 +316,13 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
     );
   }
 
-  /// Compact folder row matching the "أقسامك" folder style in the sidebar.
+  /// Renders the university folders DIRECTLY (no wrapper row) using exactly
+  /// the same compact folder style as local class folders: each folder is a
+  /// row, and clicking it shows its files inline underneath.
   Widget _buildSidebarFolder(bool isDark) {
-    final scheme = Theme.of(context).colorScheme;
-    final activeBg = isDark
-        ? const Color(0xFF1E293B)
-        : scheme.surfaceContainerHigh;
-
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        InkWell(
-          onTap: _toggleExpand,
-          borderRadius: BorderRadius.circular(4),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            decoration: BoxDecoration(
-              color: _isExpanded ? activeBg : Colors.transparent,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Row(
-                    children: [
-                      Icon(
-                        _isExpanded
-                            ? LucideIcons.folderOpen
-                            : LucideIcons.folder,
-                        size: 14,
-                        color: const Color(0xFF60A5FA),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'المجموعة الجامعية',
-                          style: TextStyle(
-                            color: _isExpanded
-                                ? const Color(0xFF60A5FA)
-                                : widget.textPrimary,
-                            fontWeight: FontWeight.w500,
-                            fontSize: 14,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Icon(
-                  _isExpanded
-                      ? LucideIcons.chevronUp
-                      : LucideIcons.chevronDown,
-                  size: 16,
-                  color: widget.textMuted,
-                ),
-              ],
-            ),
-          ),
-        ),
-        if (_isExpanded)
-          Padding(
-            padding: const EdgeInsets.only(left: 16, top: 4),
-            child: Container(
-              decoration: BoxDecoration(
-                border: Border(
-                  left: BorderSide(
-                    color: isDark ? const Color(0xFF1E293B) : scheme.outlineVariant,
-                    width: 2,
-                  ),
-                ),
-              ),
-              padding: const EdgeInsets.only(left: 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: _buildExpandedTiles(isDark),
-              ),
-            ),
-          ),
-        const SizedBox(height: 8),
-      ],
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: _buildExpandedTiles(isDark),
     );
   }
 
@@ -586,55 +381,174 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
     return [
       for (final folder in _folders)
         _buildSidebarSubfolder(isDark, folder),
-      if (_openFolderId != null) ...[
-        const Divider(height: 1, thickness: 1, color: Colors.transparent),
-        ..._buildFilesList(isDark),
-      ],
     ];
   }
 
   Widget _buildSidebarSubfolder(bool isDark, UniversityFolder folder) {
     final isOpen = _openFolderId == folder.id;
+    final scheme = Theme.of(context).colorScheme;
+    final isAdmin = context.read<AppProvider>().currentUser?.isAdmin ?? false;
+
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        InkWell(
-          onTap: () => _openFolder(folder),
-          borderRadius: BorderRadius.circular(4),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-            decoration: BoxDecoration(
-              color: isOpen ? activeSidebarBg(isDark) : Colors.transparent,
+        // Folder row wrapped in a DragTarget so admins can drop a dragged
+        // folder onto it to reorder (mirrors local class folders).
+        DragTarget<Map<String, String>>(
+          onWillAccept: (data) =>
+              data != null &&
+              data['dragType'] == 'uniFolder' &&
+              data['folderId'] != null &&
+              data['folderId'] != folder.id,
+          onAccept: (data) {
+            final draggedId = data['folderId'];
+            if (draggedId != null) _reorderFolders(draggedId, folder.id);
+          },
+          builder: (context, candidateData, rejectedData) {
+            final isHovering = candidateData.isNotEmpty;
+            return InkWell(
+              onTap: () => _openFolder(folder),
               borderRadius: BorderRadius.circular(4),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  isOpen ? LucideIcons.folderOpen : LucideIcons.folder,
-                  size: 13,
-                  color: isDark ? const Color(0xFF93C5FD) : Colors.indigo.shade400,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 120),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 8,
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    folder.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w500,
-                      color: widget.textPrimary,
+                decoration: BoxDecoration(
+                  color:
+                      isHovering
+                          ? const Color(0x223B82F6)
+                          : (isOpen
+                                ? activeSidebarBg(isDark)
+                                : Colors.transparent),
+                  borderRadius: BorderRadius.circular(4),
+                  border: isHovering
+                      ? Border.all(color: const Color(0xFF3B82F6), width: 1)
+                      : null,
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      isOpen ? LucideIcons.folderOpen : LucideIcons.folder,
+                      size: 13,
+                      color: isDark
+                          ? const Color(0xFF93C5FD)
+                          : Colors.indigo.shade400,
                     ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        folder.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w500,
+                          color: isOpen
+                              ? const Color(0xFF60A5FA)
+                              : widget.textPrimary,
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      isOpen
+                          ? LucideIcons.chevronUp
+                          : LucideIcons.chevronDown,
+                      size: 14,
+                      color: widget.textMuted,
+                    ),
+                    if (isAdmin) ...[
+                      const SizedBox(width: 4),
+                      Draggable<Map<String, String>>(
+                        data: {
+                          'dragType': 'uniFolder',
+                          'folderId': folder.id,
+                        },
+                        feedback: Material(
+                          color: Colors.transparent,
+                          child: Container(
+                            width: 200,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1E293B).withOpacity(0.9),
+                              borderRadius: BorderRadius.circular(4),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.3),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  LucideIcons.folder,
+                                  size: 14,
+                                  color: Color(0xFF94A3B8),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    folder.name,
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      color: Color(0xFFF1F5F9),
+                                      decoration: TextDecoration.none,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        childWhenDragging: Icon(
+                          LucideIcons.gripVertical,
+                          size: 14,
+                          color: widget.textMuted.withOpacity(0.35),
+                        ),
+                        child: Icon(
+                          LucideIcons.gripVertical,
+                          size: 14,
+                          color: widget.textMuted,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+        // Files of the open folder appear inline underneath it, exactly like
+        // local PDFs under a class folder.
+        if (isOpen)
+          Padding(
+            padding: const EdgeInsets.only(left: 16, top: 4),
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border(
+                  left: BorderSide(
+                    color: isDark
+                        ? const Color(0xFF1E293B)
+                        : scheme.outlineVariant,
+                    width: 2,
                   ),
                 ),
-                Icon(
-                  isOpen ? LucideIcons.chevronUp : LucideIcons.chevronDown,
-                  size: 14,
-                  color: widget.textMuted,
-                ),
-              ],
+              ),
+              padding: const EdgeInsets.only(left: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: _buildFilesList(isDark),
+              ),
             ),
           ),
-        ),
+        const SizedBox(height: 8),
       ],
     );
   }
@@ -670,12 +584,12 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
         ),
       ];
     }
-    if (_files.isEmpty) {
+    if (_files.isEmpty && _videos.isEmpty) {
       return [
         Padding(
           padding: const EdgeInsets.all(12),
           child: Text(
-            'لا توجد ملفات في هذا المجلد',
+            'لا توجد ملفات أو فيديوهات في هذا المجلد',
             style: TextStyle(
               fontSize: 11.5,
               color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
@@ -684,7 +598,52 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
         ),
       ];
     }
-    return [for (final file in _files) _buildFileTile(isDark, file)];
+    return [
+      if (_videos.isNotEmpty) ...[
+        for (final video in _videos) _buildVideoTile(isDark, video),
+        const SizedBox(height: 4),
+      ],
+      for (final file in _files)
+        _buildFileTile(isDark, file, _openFolderId ?? ''),
+    ];
+  }
+
+  /// Drag & drop: reorder a folder in front of [targetFolderId]. The batch
+  /// write in the service syncs the new order to every member in real time.
+  Future<void> _reorderFolders(String draggedFolderId, String targetFolderId) async {
+    if (draggedFolderId == targetFolderId) return;
+    final user = context.read<AppProvider>().currentUser;
+    if (user == null) return;
+    try {
+      if (!_universityService.isReady) await _universityService.init(user);
+      await _universityService.reorderFolders(
+        draggedFolderId: draggedFolderId,
+        targetFolderId: targetFolderId,
+      );
+    } catch (e) {
+      debugPrint('📂 [College] Folder reorder failed: $e');
+    }
+  }
+
+  /// Drag & drop: reorder a file in front of [targetFileId] within [folderId].
+  Future<void> _reorderFiles(
+    String folderId,
+    String draggedFileId,
+    String targetFileId,
+  ) async {
+    if (draggedFileId == targetFileId) return;
+    final user = context.read<AppProvider>().currentUser;
+    if (user == null) return;
+    try {
+      if (!_universityService.isReady) await _universityService.init(user);
+      await _universityService.reorderFiles(
+        folderId: folderId,
+        draggedFileId: draggedFileId,
+        targetFileId: targetFileId,
+      );
+    } catch (e) {
+      debugPrint('🗂️ [College] File reorder failed: $e');
+    }
   }
 
   Widget _buildFoldersBody(bool isDark) {
@@ -843,11 +802,11 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
       );
     }
 
-    if (_files.isEmpty) {
+    if (_files.isEmpty && _videos.isEmpty) {
       return Padding(
         padding: const EdgeInsets.all(12),
         child: Text(
-          'لا توجد ملفات في هذا المجلد',
+          'لا توجد ملفات أو فيديوهات في هذا المجلد',
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 11.5,
@@ -859,153 +818,401 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
 
     return Column(
       children: [
-        for (final file in _files) _buildFileTile(isDark, file),
+        if (_videos.isNotEmpty) ...[
+          for (final video in _videos) _buildVideoTile(isDark, video),
+          const SizedBox(height: 4),
+        ],
+        for (final file in _files)
+          _buildFileTile(isDark, file, _openFolderId ?? ''),
       ],
     );
   }
 
-  Widget _buildFileTile(bool isDark, UniversityFile file) {
-    final isBusy =
-        _openHashes.contains(file.fileHash) ||
-        _installingHashes.contains(file.fileHash);
+  Widget _buildVideoTile(bool isDark, UniversityVideo video) {
+    final folderId = _openFolderId ?? '';
+    final isAdmin = context.read<AppProvider>().currentUser?.isAdmin ?? false;
 
-    return Material(
+    final child = Material(
       color: Colors.transparent,
       child: InkWell(
-        // Tap anywhere on the row → open the PDF without saving it anywhere.
-        onTap: isBusy ? null : () => _openPdf(file),
+        // Tap anywhere on the row → open the embedded YouTube player.
+        onTap: () => showYouTubeVideoPlayer(context, video),
+        borderRadius: BorderRadius.circular(4),
         child: Container(
-          padding: const EdgeInsets.fromLTRB(14, 8, 10, 8),
+          margin: const EdgeInsets.symmetric(vertical: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           decoration: BoxDecoration(
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.02)
-                : Colors.black.withValues(alpha: 0.01),
-            border: Border(
-              bottom: BorderSide(
-                color: widget.panelBorder.withValues(alpha: 0.5),
-              ),
-            ),
+            borderRadius: BorderRadius.circular(4),
           ),
           child: Row(
             children: [
-              Container(
-                width: 30,
-                height: 30,
-                decoration: BoxDecoration(
-                  color: Colors.red.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  LucideIcons.fileText,
-                  color: Colors.red,
-                  size: 16,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      file.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: widget.textPrimary,
-                      ),
-                    ),
-                    Text(
-                      _formatBytes(file.sizeBytes),
-                      style: TextStyle(fontSize: 10.5, color: widget.textMuted),
-                    ),
-                  ],
-                ),
+              const Icon(
+                LucideIcons.youtube,
+                size: 14,
+                color: Color(0xFFF87171),
               ),
               const SizedBox(width: 8),
-              if (isBusy)
-                const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              else
-                // Install (download) button → small folder-picker popup.
-                InkWell(
-                  onTap: () => _installPdf(file),
-                  borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: (_installedHashes.contains(file.fileHash)
-                              ? const Color(0xFF22C55E)
-                              : const Color(0xFF3B82F6))
-                          .withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          _installedHashes.contains(file.fileHash)
-                              ? LucideIcons.check
-                              : LucideIcons.download,
-                          size: 13,
-                          color: _installedHashes.contains(file.fileHash)
-                              ? const Color(0xFF22C55E)
-                              : const Color(0xFF3B82F6),
-                        ),
-                        const SizedBox(width: 5),
-                        Text(
-                          _installedHashes.contains(file.fileHash)
-                              ? 'مثبّت'
-                              : 'تثبيت',
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w700,
-                            color: _installedHashes.contains(file.fileHash)
-                                ? (isDark
-                                      ? const Color(0xFF86EFAC)
-                                      : const Color(0xFF16A34A))
-                                : (isDark
-                                      ? const Color(0xFF93C5FD)
-                                      : const Color(0xFF2563EB)),
+              Expanded(
+                child: Text(
+                  video.title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: Color(0xFF94A3B8),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (isAdmin) ...[
+                const SizedBox(width: 2),
+                Draggable<Map<String, String>>(
+                  data: {
+                    'dragType': 'uniVideo',
+                    'folderId': folderId,
+                    'videoId': video.id,
+                  },
+                  feedback: Material(
+                    color: Colors.transparent,
+                    child: Container(
+                      width: 200,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEF4444).withOpacity(0.9),
+                        borderRadius: BorderRadius.circular(4),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.3),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            LucideIcons.youtube,
+                            size: 14,
+                            color: Colors.white,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              video.title,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: Colors.white,
+                                decoration: TextDecoration.none,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
+                  childWhenDragging: Icon(
+                    LucideIcons.gripVertical,
+                    size: 13,
+                    color: widget.textMuted.withOpacity(0.35),
+                  ),
+                  child: Icon(
+                    LucideIcons.gripVertical,
+                    size: 13,
+                    color: widget.textMuted,
+                  ),
                 ),
+                IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 28,
+                    minHeight: 28,
+                  ),
+                  icon: const Icon(
+                    LucideIcons.trash2,
+                    size: 13,
+                    color: Color(0xFFF87171),
+                  ),
+                  tooltip: 'حذف الفيديو',
+                  onPressed: () => _deleteVideo(video),
+                ),
+              ],
             ],
           ),
         ),
       ),
     );
+
+    return DragTarget<Map<String, String>>(
+      onWillAccept: (data) =>
+          data != null &&
+          data['dragType'] == 'uniVideo' &&
+          data['videoId'] != null &&
+          data['videoId'] != video.id &&
+          data['folderId'] == folderId,
+      onAccept: (data) {
+        final draggedId = data['videoId'];
+        if (draggedId != null) _reorderVideos(folderId, draggedId, video.id);
+      },
+      builder: (context, candidateData, rejectedData) {
+        final isHovering = candidateData.isNotEmpty;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(4),
+            color: isHovering
+                ? const Color(0x22EF4444)
+                : Colors.transparent,
+            border: isHovering
+                ? Border.all(color: const Color(0xFFEF4444), width: 1)
+                : null,
+          ),
+          child: child,
+        );
+      },
+    );
   }
 
-  /// Tap action: open the PDF in the viewer WITHOUT saving it into any folder.
+  /// Drag & drop: reorder a video in front of [targetVideoId] within [folderId].
+  Future<void> _reorderVideos(
+    String folderId,
+    String draggedVideoId,
+    String targetVideoId,
+  ) async {
+    if (draggedVideoId == targetVideoId) return;
+    final user = context.read<AppProvider>().currentUser;
+    if (user == null) return;
+    try {
+      if (!_universityService.isReady) await _universityService.init(user);
+      await _universityService.reorderVideos(
+        folderId: folderId,
+        draggedVideoId: draggedVideoId,
+        targetVideoId: targetVideoId,
+      );
+    } catch (e) {
+      debugPrint('🎬 [College] Video reorder failed: $e');
+    }
+  }
+
+  /// Deletes a video link (Admin only).
+  Future<void> _deleteVideo(UniversityVideo video) async {
+    final user = context.read<AppProvider>().currentUser;
+    if (user == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('حذف الفيديو؟'),
+        content: Text('حذف "${video.title}" من المكتبة الجامعية؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('حذف', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      try {
+        if (!_universityService.isReady) await _universityService.init(user);
+        await _universityService.deleteVideo(video);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('🗑️ تم حذف الفيديو')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('❌ $e'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    }
+  }
+
+  Widget _buildFileTile(bool isDark, UniversityFile file, String folderId) {
+    final isBusy = _openHashes.contains(file.fileHash);
+    final isAdmin = context.read<AppProvider>().currentUser?.isAdmin ?? false;
+
+    final child = Material(
+      color: Colors.transparent,
+      child: InkWell(
+        // Tap anywhere on the row → download + save to Quick Access + open.
+        onTap: isBusy ? null : () => _openPdf(file),
+        borderRadius: BorderRadius.circular(4),
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Row(
+            children: [
+              const Icon(
+                LucideIcons.fileText,
+                size: 14,
+                color: Color(0xFF94A3B8),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  file.name,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: Color(0xFF94A3B8),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (isBusy)
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              if (isAdmin && !isBusy) ...[
+                const SizedBox(width: 2),
+                Draggable<Map<String, String>>(
+                  data: {
+                    'dragType': 'uniFile',
+                    'folderId': folderId,
+                    'fileId': file.id,
+                  },
+                  feedback: Material(
+                    color: Colors.transparent,
+                    child: Container(
+                      width: 200,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E293B).withOpacity(0.9),
+                        borderRadius: BorderRadius.circular(4),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.3),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            LucideIcons.fileText,
+                            size: 14,
+                            color: Color(0xFF94A3B8),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              file.name,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: Color(0xFFF1F5F9),
+                                decoration: TextDecoration.none,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  childWhenDragging: Icon(
+                    LucideIcons.gripVertical,
+                    size: 13,
+                    color: widget.textMuted.withOpacity(0.35),
+                  ),
+                  child: Icon(
+                    LucideIcons.gripVertical,
+                    size: 13,
+                    color: widget.textMuted,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+
+    return DragTarget<Map<String, String>>(
+      onWillAccept: (data) =>
+          data != null &&
+          data['dragType'] == 'uniFile' &&
+          data['fileId'] != null &&
+          data['fileId'] != file.id &&
+          data['folderId'] == folderId,
+      onAccept: (data) {
+        final draggedId = data['fileId'];
+        if (draggedId != null) _reorderFiles(folderId, draggedId, file.id);
+      },
+      builder: (context, candidateData, rejectedData) {
+        final isHovering = candidateData.isNotEmpty;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(4),
+            color: isHovering ? const Color(0x223B82F6) : Colors.transparent,
+            border: isHovering
+                ? Border.all(color: const Color(0xFF3B82F6), width: 1)
+                : null,
+          ),
+          child: child,
+        );
+      },
+    );
+  }
+
+  /// Tap action: download the PDF, save it inside the local "Quick Access"
+  /// folder, then open it — exactly like a local file.
   Future<void> _openPdf(UniversityFile file) async {
     final hash = file.fileHash;
     if (_openHashes.contains(hash)) return;
     setState(() => _openHashes.add(hash));
 
     try {
+      final app = context.read<AppProvider>();
+
+      // 1. Make sure "Quick Access" exists as the download destination.
+      await app.ensureQuickAccessExists();
+      final fileManager = FileManagerService();
+      if (!fileManager.isInitialized) await fileManager.init();
+      final quickAccess = await fileManager.getOrCreateQuickAccessFolder();
+
+      // 2. Download to a local path (no record yet).
       final localPath = await _universityService.downloadPdfToLocal(file);
       if (!mounted) return;
-      await context.read<AppProvider>().openEphemeralPdf(
+
+      // 3. Import into "Quick Access" (hash-deduped) + hydrate + open.
+      final doc = await fileManager.importAndOpenPdf(
         localPath,
-        name: file.name,
+        classId: quickAccess.uuid,
       );
+      await app.importPdfFromPath(doc.uuid, quickAccess.uuid);
+
+      // 4. Track the download for the university library sync (member only).
+      final user = app.currentUser;
+      if (user != null) {
+        unawaited(
+          LibrarySyncService().recordDownload(user: user, file: file),
+        );
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(
             SnackBar(
-              content: Text('✅ تم فتح "${file.name}"'),
+              content: Text('✅ تم تحميل وفتح "${file.name}"'),
               duration: const Duration(seconds: 2),
             ),
           );
@@ -1016,7 +1223,7 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
           ..hideCurrentSnackBar()
           ..showSnackBar(
             SnackBar(
-              content: Text('❌ فشل الفتح: $e'),
+              content: Text('❌ فشل التحميل: $e'),
               backgroundColor: Colors.red,
             ),
           );
@@ -1024,11 +1231,5 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
     } finally {
       if (mounted) setState(() => _openHashes.remove(hash));
     }
-  }
-
-  String _formatBytes(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 }

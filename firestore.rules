@@ -118,7 +118,32 @@ service cloud.firestore {
     }
 
     // ================================================================
-    // 5. UNIVERSITY FILE MUTATIONS (existing mutation sync system)
+    // 5. UNIVERSITY VIDEOS COLLECTION (YouTube links)
+    //    - Read: Any member of the video's university
+    //    - Create: Admin of that university only
+    //    - Update: Admin only (for soft delete or reorder)
+    //    - Delete: Admin only
+    // ================================================================
+    match /university_videos/{videoId} {
+      allow read: if isAuthenticated()
+        && resource.data.universityId == userUniversityId();
+
+      allow create: if isAuthenticated()
+        && userRole() == 'admin'
+        && request.resource.data.universityId == userUniversityId()
+        && request.resource.data.uploadedBy == request.auth.uid;
+
+      allow update: if isAuthenticated()
+        && userRole() == 'admin'
+        && resource.data.universityId == userUniversityId();
+
+      allow delete: if isAuthenticated()
+        && userRole() == 'admin'
+        && resource.data.universityId == userUniversityId();
+    }
+
+    // ================================================================
+    // 6. UNIVERSITY FILE MUTATIONS (existing mutation sync system)
     //    Subcollection under each university_file
     //    - Read: Any authenticated user
     //    - Write: Must belong to the file's university (admin or student)
@@ -130,7 +155,7 @@ service cloud.firestore {
     }
 
     // ================================================================
-    // 6. UNIVERSITY_FILE_PROGRESS (reading progress sync)
+    // 7. UNIVERSITY_FILE_PROGRESS (reading progress sync)
     //    - Users read/write only their own progress documents
     // ================================================================
     match /university_file_progress/{progressId} {
@@ -144,7 +169,7 @@ service cloud.firestore {
     }
 
     // ================================================================
-    // 7. SYNC SESSIONS (existing — kept for backward compatibility)
+    // 8. SYNC SESSIONS (existing — kept for backward compatibility)
     // ================================================================
     match /sync_sessions/{sessionCode} {
       allow read, write: if isAuthenticated();

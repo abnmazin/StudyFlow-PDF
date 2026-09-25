@@ -7,11 +7,14 @@ import 'package:isar/isar.dart';
 import '../models/app_user.dart';
 import '../models/university_folder.dart';
 import '../models/university_file.dart';
+import '../models/university_video.dart';
 import '../models/isar_models.dart';
 import '../services/university_service.dart';
 import '../services/file_manager_service.dart';
 import '../providers/app_state.dart';
 import 'university_upload_dialog.dart';
+import 'university_video_dialog.dart';
+import 'viewer_components/youtube_player_w.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FolderViewScreen
@@ -41,6 +44,8 @@ class _FolderViewScreenState extends State<FolderViewScreen> {
   final UniversityService _universityService = UniversityService();
   StreamSubscription<List<UniversityFile>>? _fileSub;
   List<UniversityFile> _files = [];
+  StreamSubscription<List<UniversityVideo>>? _videoSub;
+  List<UniversityVideo> _videos = [];
   bool _isLoading = true;
   String? _error;
 
@@ -76,6 +81,19 @@ class _FolderViewScreenState extends State<FolderViewScreen> {
           }
         },
       );
+
+      _videoSub = _universityService
+          .streamVideosInFolder(widget.folder.id)
+          .listen(
+        (videos) {
+          if (mounted) {
+            setState(() => _videos = videos);
+          }
+        },
+        onError: (err) {
+          debugPrint('⚠️ [FolderView] Video stream error: $err');
+        },
+      );
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -89,6 +107,7 @@ class _FolderViewScreenState extends State<FolderViewScreen> {
   @override
   void dispose() {
     _fileSub?.cancel();
+    _videoSub?.cancel();
     super.dispose();
   }
 
@@ -98,6 +117,16 @@ class _FolderViewScreenState extends State<FolderViewScreen> {
     await showDialog(
       context: context,
       builder: (_) => UploadPdfDialog(
+        folderId: widget.folder.id,
+        user: widget.user,
+      ),
+    );
+  }
+
+  Future<void> _showAddVideoDialog() async {
+    await showDialog(
+      context: context,
+      builder: (_) => UniversityVideoDialog(
         folderId: widget.folder.id,
         user: widget.user,
       ),
@@ -211,10 +240,50 @@ class _FolderViewScreenState extends State<FolderViewScreen> {
 
     if (confirmed == true && mounted) {
       try {
-        await _universityService.deleteFile(file.id);
+        await _universityService.deleteFile(file);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('🗑️ File deleted')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('❌ $e'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    }
+  }
+
+  // ── Delete video link (Admin only) ────────────────────────────────────
+
+  Future<void> _deleteVideo(UniversityVideo video) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Video?'),
+        content: Text('Delete "${video.title}" from the university?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      try {
+        await _universityService.deleteVideo(video);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('🗑️ Video deleted')),
           );
         }
       } catch (e) {
@@ -257,6 +326,17 @@ class _FolderViewScreenState extends State<FolderViewScreen> {
         actions: [
           if (isAdmin)
             TextButton.icon(
+              onPressed: _showAddVideoDialog,
+              icon: const Icon(
+                LucideIcons.youtube,
+                size: 18,
+                color: Color(0xFFEF4444),
+              ),
+              label: const Text('Add Video'),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+            ),
+          if (isAdmin)
+            TextButton.icon(
               onPressed: _showUploadDialog,
               icon: const Icon(LucideIcons.upload, size: 18),
               label: const Text('Upload PDF'),
@@ -291,21 +371,21 @@ class _FolderViewScreenState extends State<FolderViewScreen> {
       );
     }
 
-    if (_files.isEmpty) {
+    if (_files.isEmpty && _videos.isEmpty) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              LucideIcons.fileX,
+              LucideIcons.folderOpen,
               size: 48,
               color: isDarkMode ? Colors.grey[600] : Colors.grey[400],
             ),
             const SizedBox(height: 16),
             Text(
               isAdmin
-                  ? 'No files yet. Upload a PDF!'
-                  : 'No files available yet',
+                  ? 'No files or videos yet. Upload a PDF or add a video!'
+                  : 'No files or videos available yet',
               style: TextStyle(
                 color: isDarkMode
                     ? const Color(0xFF94A3B8)
@@ -317,21 +397,164 @@ class _FolderViewScreenState extends State<FolderViewScreen> {
       );
     }
 
-    return ListView.separated(
-      itemCount: _files.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
-      itemBuilder: (context, index) {
-        final file = _files[index];
-        final isDownloading = _downloadingFiles.contains(file.fileHash);
-        return _FileTile(
-          file: file,
-          isDarkMode: isDarkMode,
-          isAdmin: isAdmin,
-          isDownloading: isDownloading,
-          onDownload: () => _downloadAndOpen(file),
-          onDelete: isAdmin ? () => _deleteFile(file) : null,
-        );
-      },
+    return ListView(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      children: [
+        if (_videos.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 10),
+            child: Text(
+              '🎬 دروس فيديو',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: isDarkMode
+                    ? const Color(0xFF94A3B8)
+                    : const Color(0xFF64748B),
+              ),
+            ),
+          ),
+          for (final video in _videos)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _VideoTile(
+                video: video,
+                isDarkMode: isDarkMode,
+                isAdmin: isAdmin,
+                onPlay: () => showYouTubeVideoPlayer(context, video),
+                onDelete: isAdmin ? () => _deleteVideo(video) : null,
+              ),
+            ),
+          if (_files.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(left: 4, top: 8, bottom: 10),
+              child: Text(
+                '📄 ملفات PDF',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: isDarkMode
+                      ? const Color(0xFF94A3B8)
+                      : const Color(0xFF64748B),
+                ),
+              ),
+            ),
+        ],
+        for (var i = 0; i < _files.length; i++) ...[
+          if (i > 0) const SizedBox(height: 12),
+          _FileTile(
+            file: _files[i],
+            isDarkMode: isDarkMode,
+            isAdmin: isAdmin,
+            isDownloading: _downloadingFiles.contains(_files[i].fileHash),
+            onDownload: () => _downloadAndOpen(_files[i]),
+            onDelete: isAdmin ? () => _deleteFile(_files[i]) : null,
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+// ─── Video Tile ────────────────────────────────────────────────────────────
+
+class _VideoTile extends StatelessWidget {
+  final UniversityVideo video;
+  final bool isDarkMode;
+  final bool isAdmin;
+  final VoidCallback onPlay;
+  final VoidCallback? onDelete;
+
+  const _VideoTile({
+    required this.video,
+    required this.isDarkMode,
+    required this.isAdmin,
+    required this.onPlay,
+    this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Dismissible(
+      key: Key('video-${video.id}'),
+      direction: isAdmin ? DismissDirection.endToStart : DismissDirection.none,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        decoration: BoxDecoration(
+          color: Colors.red.withValues(alpha: 0.8),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: const Icon(LucideIcons.trash2, color: Colors.white),
+      ),
+      onDismissed: onDelete != null ? (_) => onDelete!() : null,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isDarkMode
+              ? const Color(0xFF1E293B).withValues(alpha: 0.6)
+              : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isDarkMode
+                ? const Color(0xFF334155)
+                : const Color(0xFFE2E8F0),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEF4444).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                LucideIcons.youtube,
+                color: Color(0xFFEF4444),
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    video.title,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: isDarkMode ? Colors.white : Colors.black87,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'يوتيوب',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDarkMode
+                          ? const Color(0xFF94A3B8)
+                          : const Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              tooltip: 'تشغيل',
+              icon: const Icon(
+                LucideIcons.play,
+                color: Color(0xFFEF4444),
+                size: 22,
+              ),
+              onPressed: onPlay,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:provider/provider.dart';
@@ -14,9 +15,12 @@ import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:markdown/markdown.dart' as md;
 
 import '../../models/models.dart';
+import '../../models/app_user.dart';
 import '../../providers/app_state.dart';
 import '../../services/sync_service.dart';
 import '../../services/mcp_client_service.dart';
+import '../../services/university_service.dart';
+import '../../services/library_sync_service.dart';
 import '../../utils/responsive_utils.dart';
 import '../mini_apps_menu.dart';
 import 'session_cards.dart';
@@ -1037,6 +1041,15 @@ class StudyFlowRightPanel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (activePdf != null) ...[
+            _UniversitySyncCard(
+              activePdf: activePdf,
+              user: app.currentUser,
+              surfaceAlt: surfaceAlt,
+              panelBorder: panelBorder,
+              textPrimary: textPrimary,
+              textMuted: textMuted,
+            ),
+            const SizedBox(height: 16),
             _buildSettingsCard(
               context,
               surfaceAlt,
@@ -2917,5 +2930,186 @@ class LatexElementBuilder extends MarkdownElementBuilder {
         ),
       );
     }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// _UniversitySyncCard
+// Shows the per-file sync code in the document settings ("إعدادات المستند")
+// when the open PDF came from the university library. Matching is by content
+// hash, so it works regardless of where the file was opened from. Renders
+// nothing (SizedBox.shrink) while loading or when the file is not a university
+// file. No manual code entry — the file connects automatically on open.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _UniversitySyncCard extends StatefulWidget {
+  final PdfItem? activePdf;
+  final AppUser? user;
+  final Color surfaceAlt;
+  final Color panelBorder;
+  final Color textPrimary;
+  final Color textMuted;
+
+  const _UniversitySyncCard({
+    required this.activePdf,
+    required this.user,
+    required this.surfaceAlt,
+    required this.panelBorder,
+    required this.textPrimary,
+    required this.textMuted,
+  });
+
+  @override
+  State<_UniversitySyncCard> createState() => _UniversitySyncCardState();
+}
+
+class _UniversitySyncCardState extends State<_UniversitySyncCard> {
+  Future<UniversityFile?>? _lookup;
+
+  @override
+  void initState() {
+    super.initState();
+    _lookup = _resolve();
+  }
+
+  @override
+  void didUpdateWidget(_UniversitySyncCard old) {
+    super.didUpdateWidget(old);
+    if (old.activePdf?.fileHash != widget.activePdf?.fileHash ||
+        old.user?.uid != widget.user?.uid) {
+      _lookup = _resolve();
+    }
+  }
+
+  Future<UniversityFile?> _resolve() async {
+    final user = widget.user;
+    final hash = widget.activePdf?.fileHash ?? '';
+    if (user == null || hash.isEmpty) return null;
+    final service = UniversityService();
+    if (!service.isReady) {
+      try {
+        await service.init(user);
+      } catch (_) {
+        return null;
+      }
+    }
+    return service.findUniversityFileByHash(hash);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<UniversityFile?>(
+      future: _lookup,
+      builder: (context, snapshot) {
+        final file = snapshot.data;
+        if (snapshot.connectionState != ConnectionState.done ||
+            file == null) {
+          return const SizedBox.shrink();
+        }
+
+        final code = file.syncCode ?? LibrarySyncService.codeFromHash(file.fileHash);
+
+        return Container(
+          decoration: BoxDecoration(
+            color: widget.surfaceAlt,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: widget.panelBorder),
+          ),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF3B82F6)
+                          .withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      LucideIcons.link,
+                      size: 16,
+                      color: Color(0xFF3B82F6),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'المزامنة الجامعية',
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w700,
+                            color: widget.textPrimary,
+                          ),
+                        ),
+                        Text(
+                          file.name,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: widget.textMuted,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                initialValue: code,
+                readOnly: true,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: widget.textPrimary,
+                  fontFamily: 'monospace',
+                  fontWeight: FontWeight.w600,
+                ),
+                decoration: InputDecoration(
+                  labelText: 'كود المزامنة',
+                  labelStyle: TextStyle(color: widget.textMuted),
+                  helperText:
+                      'هذا الملف من المكتبة الجامعية — متصل تلقائياً عند الفتح',
+                  helperStyle: TextStyle(
+                    color: widget.textMuted,
+                    fontSize: 11,
+                  ),
+                  isDense: true,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: widget.panelBorder),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: widget.panelBorder),
+                  ),
+                  suffixIcon: IconButton(
+                    icon: const Icon(LucideIcons.copy, size: 15),
+                    tooltip: 'نسخ الكود',
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: code));
+                      ScaffoldMessenger.of(context)
+                        ..hideCurrentSnackBar()
+                        ..showSnackBar(
+                          const SnackBar(
+                            content: Text('تم نسخ كود المزامنة'),
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 }

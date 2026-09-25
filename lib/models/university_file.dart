@@ -20,6 +20,8 @@ class UniversityFile {
   final DateTime uploadedAt;
   final int? totalPages;
   final bool isDeleted;
+  final String? syncCode; // 6-char per-file sync code (auto-generated)
+  final int sortOrder; // Manual order index (drag & drop reorder)
 
   const UniversityFile({
     required this.id,
@@ -34,6 +36,8 @@ class UniversityFile {
     required this.uploadedAt,
     this.totalPages,
     this.isDeleted = false,
+    this.syncCode,
+    this.sortOrder = 0,
   });
 
   factory UniversityFile.fromFirestore(String id, Map<String, dynamic> data) {
@@ -52,6 +56,8 @@ class UniversityFile {
           : DateTime.now(),
       totalPages: data['totalPages'] as int?,
       isDeleted: data['isDeleted'] ?? false,
+      syncCode: data['syncCode']?.toString(),
+      sortOrder: data['sortOrder'] ?? 0,
     );
   }
 
@@ -68,6 +74,8 @@ class UniversityFile {
       'uploadedAt': Timestamp.fromDate(uploadedAt),
       'totalPages': totalPages,
       'isDeleted': isDeleted,
+      'syncCode': syncCode,
+      'sortOrder': sortOrder,
     };
   }
 
@@ -87,6 +95,8 @@ class UniversityFile {
           : DateTime.parse(json['uploadedAt'] as String),
       totalPages: json['totalPages'] as int?,
       isDeleted: json['isDeleted'] as bool? ?? false,
+      syncCode: json['syncCode'] as String?,
+      sortOrder: json['sortOrder'] as int? ?? 0,
     );
   }
 
@@ -103,6 +113,8 @@ class UniversityFile {
     DateTime? uploadedAt,
     int? totalPages,
     bool? isDeleted,
+    String? syncCode,
+    int? sortOrder,
   }) {
     return UniversityFile(
       id: id ?? this.id,
@@ -117,6 +129,8 @@ class UniversityFile {
       uploadedAt: uploadedAt ?? this.uploadedAt,
       totalPages: totalPages ?? this.totalPages,
       isDeleted: isDeleted ?? this.isDeleted,
+      syncCode: syncCode ?? this.syncCode,
+      sortOrder: sortOrder ?? this.sortOrder,
     );
   }
 }

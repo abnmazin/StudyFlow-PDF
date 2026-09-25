@@ -23,8 +23,6 @@ Widget _buildDashboard(BuildContext context) {
     builder: (context, data, _) => _DashboardWrapper(
       isDarkMode: data.isDarkMode,
       app: context.read<AppProvider>(),
-      isAdmin: data.user?.isLecturer ?? false,
-      isDeveloper: data.user?.isAdmin ?? false,
     ),
   );
 }
@@ -32,14 +30,10 @@ Widget _buildDashboard(BuildContext context) {
 class _DashboardWrapper extends StatefulWidget {
   final bool isDarkMode;
   final AppProvider app;
-  final bool isAdmin;
-  final bool isDeveloper;
 
   const _DashboardWrapper({
     required this.isDarkMode,
     required this.app,
-    required this.isAdmin,
-    required this.isDeveloper,
   });
 
   @override
@@ -47,33 +41,10 @@ class _DashboardWrapper extends StatefulWidget {
 }
 
 class _DashboardWrapperState extends State<_DashboardWrapper> {
-  late Future<List<PdfDocument>> _recentDocsFuture;
-
-  @override
-  void initState() {
-    super.initState();
-    // MEMOIZATION: Future only created once per widget lifecycle
-    _recentDocsFuture = context.read<FileManagerService>().getRecentDocuments(
-      limit: 6,
-    );
-  }
-
-  int _estimateReadingTime(List<PdfDocument> allDocs) {
-    int totalMinutes = 0;
-    for (var doc in allDocs) {
-      final lastPage = doc.lastPage;
-      if (lastPage > 0) {
-        totalMinutes += lastPage * 2;
-      }
-    }
-    return totalMinutes;
-  }
-
   @override
   Widget build(BuildContext context) {
     final isDarkMode = widget.isDarkMode;
     final app = widget.app;
-    final isDeveloper = widget.isDeveloper;
 
     final rootBg = isDarkMode
         ? const Color(0xFF020617)
@@ -96,7 +67,6 @@ class _DashboardWrapperState extends State<_DashboardWrapper> {
                 ? 12.0
                 : (width < 900 ? 16.0 : 20.0);
             final isWide = ResponsiveBreakpoints.isDesktop(width);
-            final isTablet = ResponsiveBreakpoints.isTablet(width);
 
             return Container(
               margin: EdgeInsets.all(padding),
@@ -113,66 +83,26 @@ class _DashboardWrapperState extends State<_DashboardWrapper> {
                 ],
               ),
               clipBehavior: Clip.antiAlias,
-              child: FutureBuilder<List<PdfDocument>>(
-                future: _recentDocsFuture,
-                builder: (context, snapshot) {
-                  final recentDocs = snapshot.data ?? <PdfDocument>[];
-                  final readingTimeEstimate = _estimateReadingTime(
-                    recentDocs,
-                  ); // Using recentDocs for now or pass allDocs if available
-
-                  return SingleChildScrollView(
-                    padding: const EdgeInsets.all(32),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildHeroSection(context, app),
-                        const SizedBox(height: 32),
-
-                        _buildMainContentArea(
-                          context,
-                          app,
-                          isDarkMode,
-                          recentDocs,
-                          readingTimeEstimate,
-                          isWide,
-                          isTablet,
-                        ),
-
-                        const SizedBox(height: 48),
-
-                        _buildSectionHeader(
-                          isDeveloper
-                              ? 'لوحة تحكم المطور - نشر الإعلانات'
-                              : (app.currentUser?.isLecturer ?? false
-                                    ? 'نشر إشعار للطلاب'
-                                    : (app.currentUser?.isStudent ?? true
-                                          ? 'نشر إشعار للطلاب والمبرمج'
-                                          : 'الكتب الأخيرة')),
-                          isDarkMode,
-                        ),
-                        const SizedBox(height: 20),
-
-                        if (isDeveloper ||
-                            (app.currentUser?.isLecturer ?? false) ||
-                            (app.currentUser?.isStudent ?? true))
-                          _buildAdminAnnouncementSender(
-                            isDarkMode,
-                            app.currentUser?.displayName ?? 'User',
-                            app.currentUser?.role ?? 'student',
-                          )
-                        else
-                          _buildRecentVerticalList(
-                            context,
-                            recentDocs,
-                            isDarkMode,
-                          ),
-
-                        const SizedBox(height: 24),
-                      ],
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildHeroSection(context, app),
+                    const SizedBox(height: 24),
+                    _buildQuickActionsSection(context, isDarkMode),
+                    const SizedBox(height: 32),
+                    _buildAnnouncementsTodosSection(
+                      context,
+                      app,
+                      isDarkMode,
+                      isWide,
                     ),
-                  );
-                },
+                    const SizedBox(height: 32),
+                    _buildLibrarySection(context, app, isDarkMode),
+                    const SizedBox(height: 8),
+                  ],
+                ),
               ),
             );
           },
@@ -239,117 +169,35 @@ Future<void> _migrateAdminAccount(BuildContext context) async {
   }
 }
 
-Widget _buildMainContentArea(
+// ─── QUICK ACTIONS ───────────────────────────────────────────────────────────
+
+Widget _buildQuickActionsSection(BuildContext context, bool isDarkMode) {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      _buildSectionHeader('إجراءات سريعة', isDarkMode),
+      const SizedBox(height: 12),
+      _buildQuickActionChips(context, isDarkMode),
+    ],
+  );
+}
+
+// ─── LIBRARY (CLOUD / PERSONAL FOLDERS) ──────────────────────────────────────
+
+Widget _buildLibrarySection(
   BuildContext context,
   AppProvider app,
   bool isDarkMode,
-  List<PdfDocument> recentDocs,
-  int readingTimeEstimate,
-  bool isWide,
-  bool isTablet,
 ) {
-  // Determine if user has a university → show UniversityHub or personal folders
   final user = app.currentUser;
   final hasUniversity = user != null && user.universityId?.isNotEmpty == true;
 
-  // For university users: return a simple shrinkWrap Column with the Cloud Library
-  // and the announcements/todo in a vertical flow — no Row/Expanded to avoid
-  // RenderFlex overflow inside SingleChildScrollView.
-  if (hasUniversity) {
-    if (isWide) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── Right Side: University Library & Quick Actions ──────────
-          Expanded(
-            flex: 5,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                UniversityCloudLibraryWidget(
-                  isDarkMode: isDarkMode,
-                  user: user,
-                ),
-                const SizedBox(height: 24),
-                _buildSectionHeader('إجراءات سريعة', isDarkMode),
-                const SizedBox(height: 12),
-                _buildQuickActionChips(context, isDarkMode),
-              ],
-            ),
-          ),
-          const SizedBox(width: 48),
-          // ── Left Side: Announcements & To-Do ──────────────────
-          Expanded(
-            flex: 2,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildSectionHeader('إعلانات هامة', isDarkMode),
-                const SizedBox(height: 20),
-                _buildAnnouncementsSection(isDarkMode),
-                const SizedBox(height: 48),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _buildSectionHeader('مهام اليوم', isDarkMode),
-                    IconButton(
-                      onPressed: () => _showAddTaskDialog(context),
-                      icon: const Icon(LucideIcons.plusCircle, size: 18),
-                      color: Colors.indigo,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                _buildToDoListMock(isDarkMode),
-              ],
-            ),
-          ),
-        ],
-      );
-    }
-
-    // Narrow layout (Tablet/Mobile)
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        UniversityCloudLibraryWidget(
-          isDarkMode: isDarkMode,
-          user: user,
-        ),
-        const SizedBox(height: 24),
-        _buildSectionHeader('إجراءات سريعة', isDarkMode),
-        const SizedBox(height: 12),
-        _buildQuickActionChips(context, isDarkMode),
-        const SizedBox(height: 48),
-        _buildSectionHeader('إعلانات هامة', isDarkMode),
-        const SizedBox(height: 20),
-        _buildAnnouncementsSection(isDarkMode),
-        const SizedBox(height: 32),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            _buildSectionHeader('مهام اليوم', isDarkMode),
-            IconButton(
-              onPressed: () => _showAddTaskDialog(context),
-              icon: const Icon(LucideIcons.plusCircle, size: 18),
-              color: Colors.indigo,
-            ),
-          ],
-        ),
-        const SizedBox(height: 20),
-        _buildToDoListMock(isDarkMode),
-      ],
-    );
-  }
-
-  // Legacy layout for non-university users
-  final content = [
-    // Left/Primary Column Logic
-    Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // ── Legacy Personal Folders ──────────────────────────────────
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      if (hasUniversity)
+        UniversityCloudLibraryWidget(isDarkMode: isDarkMode, user: user)
+      else ...[
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -358,103 +206,94 @@ Widget _buildMainContentArea(
               onPressed: () => _showCreateFolderDialog(context),
               icon: const Icon(LucideIcons.plus, size: 16),
               label: const Text('مجلد جديد'),
-              style: TextButton.styleFrom(foregroundColor: Colors.blue[600]),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.blue[600],
+              ),
             ),
           ],
         ),
         const SizedBox(height: 16),
         _buildRealFolderGrid(isDarkMode),
-        const SizedBox(height: 32),
-        // ── Setup University button (for legacy admins without universityId) ──
-        if (user != null && !hasUniversity && user.isAdmin)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () => _migrateAdminAccount(context),
-                icon: const Icon(LucideIcons.graduationCap, size: 18),
-                label: const Text('Setup University (Admin Migration)'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.indigo,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
+      ],
+      if (user != null && user.isAdmin && !hasUniversity) ...[
+        const SizedBox(height: 24),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: () => _migrateAdminAccount(context),
+            icon: const Icon(LucideIcons.graduationCap, size: 18),
+            label: const Text('Setup University (Admin Migration)'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.indigo,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
               ),
             ),
           ),
-        _buildSectionHeader('إجراءات سريعة', isDarkMode),
-        const SizedBox(height: 16),
-        _buildQuickActionChips(context, isDarkMode),
-      ],
-    ),
-
-    if (isWide) const SizedBox(width: 32) else const SizedBox(height: 32),
-
-    // Right/Secondary Column Logic
-    Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            const Icon(LucideIcons.bell, size: 20, color: Color(0xFFD97706)),
-            const SizedBox(width: 8),
-            _buildSectionHeader('إعلانات هامة', isDarkMode),
-          ],
         ),
-        const SizedBox(height: 16),
-        _buildAnnouncementsSection(isDarkMode),
-        const SizedBox(height: 32),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              children: [
-                const Icon(
-                  LucideIcons.checkSquare,
-                  size: 20,
-                  color: Color(0xFF2563EB),
-                ),
-                const SizedBox(width: 8),
-                _buildSectionHeader('مهام اليوم', isDarkMode),
-              ],
-            ),
-            TextButton(
-              onPressed: () => _showAddTaskDialog(context),
-              child: const Text('إضافة مهمة', style: TextStyle(fontSize: 12)),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        _buildToDoListMock(isDarkMode),
       ],
-    ),
-  ];
+    ],
+  );
+}
+
+// ─── ANNOUNCEMENTS + TO-DO (BOTTOM BLOCK) ────────────────────────────────────
+
+Widget _buildAnnouncementsTodosSection(
+  BuildContext context,
+  AppProvider app,
+  bool isDarkMode,
+  bool isWide,
+) {
+  final announcements = _AnnouncementsSection(
+    isDarkMode: isDarkMode,
+    canPublish:
+        (app.currentUser?.isLecturer ?? false) ||
+        (app.currentUser?.isAdmin ?? false),
+    authorName: app.currentUser?.displayName ?? 'User',
+    userRole: app.currentUser?.role ?? 'student',
+  );
+  final todos = _buildToDoSection(context, isDarkMode);
 
   if (isWide) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(flex: 2, child: content[0]),
-        content[1],
-        Expanded(flex: 1, child: content[2]),
+        Expanded(flex: 5, child: announcements),
+        const SizedBox(width: 48),
+        Expanded(flex: 2, child: todos),
       ],
     );
-  } else if (isTablet) {
-    return Column(
-      children: [
-        content[0],
-        const SizedBox(height: 24),
-        content[1],
-        const SizedBox(height: 24),
-        content[2],
-      ],
-    );
-  } else {
-    return Column(children: [content[0], content[1], content[2]]);
   }
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      announcements,
+      const SizedBox(height: 32),
+      todos,
+    ],
+  );
+}
+
+Widget _buildToDoSection(BuildContext context, bool isDarkMode) {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          _buildSectionHeader('مهام اليوم', isDarkMode),
+          IconButton(
+            onPressed: () => _showAddTaskDialog(context),
+            icon: const Icon(LucideIcons.plusCircle, size: 18),
+            color: Colors.indigo,
+          ),
+        ],
+      ),
+      const SizedBox(height: 20),
+      _buildToDoListMock(isDarkMode),
+    ],
+  );
 }
 
 // ─── ADMIN ANNOUNCEMENT SENDER ──────────────────────────────────────────────
@@ -897,7 +736,74 @@ class _JoinSessionBarState extends State<JoinSessionBar> {
 
 // ─── ANNOUNCEMENTS SECTION ──────────────────────────────────────────────────
 
-Widget _buildAnnouncementsSection(bool isDarkMode) {
+class _AnnouncementsSection extends StatefulWidget {
+  final bool isDarkMode;
+  final bool canPublish;
+  final String authorName;
+  final String userRole;
+
+  const _AnnouncementsSection({
+    required this.isDarkMode,
+    required this.canPublish,
+    required this.authorName,
+    required this.userRole,
+  });
+
+  @override
+  State<_AnnouncementsSection> createState() => _AnnouncementsSectionState();
+}
+
+class _AnnouncementsSectionState extends State<_AnnouncementsSection> {
+  bool _showSender = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDarkMode = widget.isDarkMode;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                const Icon(
+                  LucideIcons.bell,
+                  size: 20,
+                  color: Color(0xFFD97706),
+                ),
+                const SizedBox(width: 8),
+                _buildSectionHeader('إعلانات هامة', isDarkMode),
+              ],
+            ),
+            if (widget.canPublish)
+              TextButton.icon(
+                onPressed: () => setState(() => _showSender = !_showSender),
+                icon: Icon(
+                  _showSender ? LucideIcons.chevronUp : LucideIcons.send,
+                  size: 16,
+                ),
+                label: Text(_showSender ? 'إغلاق' : 'نشر إشعار'),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (_showSender) ...[
+          _buildAdminAnnouncementSender(
+            isDarkMode,
+            widget.authorName,
+            widget.userRole,
+          ),
+          const SizedBox(height: 16),
+        ],
+        _buildAnnouncementsList(isDarkMode),
+      ],
+    );
+  }
+}
+
+Widget _buildAnnouncementsList(bool isDarkMode) {
   return Consumer<AppProvider>(
     builder: (context, app, _) {
       final currentUserRole = app.currentUser?.role ?? 'student';
@@ -1611,93 +1517,6 @@ Widget _buildRealFolderGrid(bool isDarkMode) {
             },
           );
         },
-      );
-    },
-  );
-}
-
-Widget _buildRecentVerticalList(
-  BuildContext context,
-  List<PdfDocument> docs,
-  bool isDarkMode,
-) {
-  if (docs.isEmpty) return const Text('لا توجد ملفات حديثة');
-
-  return ListView.separated(
-    shrinkWrap: true,
-    physics: const NeverScrollableScrollPhysics(),
-    itemCount: docs.length,
-    separatorBuilder: (_, __) => const SizedBox(height: 12),
-    itemBuilder: (context, index) {
-      final doc = docs[index];
-      return InkWell(
-        onTap: () {
-          final app = context.read<AppProvider>();
-          if (app.isSplitMode && app.activePdfId != doc.uuid) {
-            app.setSecondaryPdf(doc.uuid);
-          } else {
-            app.setActivePdf(doc.uuid);
-          }
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: isDarkMode
-                ? const Color(0xFF1E293B).withValues(alpha: 0.5)
-                : const Color(0xFFF1F5F9),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: Colors.red.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  LucideIcons.fileText,
-                  color: Colors.red,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      doc.originalPath.split(Platform.pathSeparator).last,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: isDarkMode
-                            ? Colors.white
-                            : const Color(0xFF0F172A),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    Text(
-                      'آخر مرة: منذ يومين',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: const Color(0xFF64748B),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(
-                LucideIcons.chevronLeft,
-                size: 16,
-                color: Color(0xFF94A3B8),
-              ),
-            ],
-          ),
-        ),
       );
     },
   );

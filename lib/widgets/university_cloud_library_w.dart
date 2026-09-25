@@ -8,9 +8,11 @@ import 'package:file_picker/file_picker.dart';
 import '../models/app_user.dart';
 import '../models/university_folder.dart';
 import '../models/university_file.dart';
+import '../models/university_video.dart';
 import '../services/university_service.dart';
-import '../services/file_manager_service.dart';
 import '../providers/app_state.dart';
+import 'university_video_dialog.dart';
+import 'viewer_components/youtube_player_w.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UniversityCloudLibraryWidget
@@ -628,9 +630,12 @@ class _FolderDetailScreen extends StatefulWidget {
 class _FolderDetailScreenState extends State<_FolderDetailScreen> {
   StreamSubscription<List<UniversityFile>>? _fileSub;
   List<UniversityFile> _files = [];
+  StreamSubscription<List<UniversityVideo>>? _videoSub;
+  List<UniversityVideo> _videos = [];
   bool _isLoading = true;
   String? _error;
   final Set<String> _downloadingHashes = {};
+  final Set<String> _openingVideoIds = {};
   bool _isUploading = false;
   String? _uploadError;
   bool _uploadSuccess = false;
@@ -663,11 +668,25 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
             }
           },
         );
+
+    _videoSub = widget.universityService
+        .streamVideosInFolder(widget.folder.id)
+        .listen(
+          (videos) {
+            if (mounted) {
+              setState(() => _videos = videos);
+            }
+          },
+          onError: (err) {
+            debugPrint('⚠️ [FolderDetail] Video stream error: $err');
+          },
+        );
   }
 
   @override
   void dispose() {
     _fileSub?.cancel();
+    _videoSub?.cancel();
     super.dispose();
   }
 
@@ -705,6 +724,51 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
       }
     } finally {
       if (mounted) setState(() => _downloadingHashes.remove(hash));
+    }
+  }
+
+  // ── Delete file (Admin only) ─────────────────────────────────────────
+
+  Future<void> _deleteFile(UniversityFile file) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('حذف الملف؟'),
+        content: Text(
+          'حذف "${file.name}" من المكتبة الجامعية؟\n'
+          'سيُحذف من التخزين لجميع الأعضاء.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('حذف', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      try {
+        await widget.universityService.deleteFile(file);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('🗑️ تم حذف الملف'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('❌ $e'), backgroundColor: Colors.red),
+          );
+        }
+      }
     }
   }
 
@@ -787,7 +851,7 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
                               ),
                             ),
                             Text(
-                              '${_files.length} ملفات تعليمية',
+                              '${_files.length} ملفات · ${_videos.length} دروس فيديو',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: textMuted,
@@ -935,6 +999,19 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
                                 ),
                               ),
                             const Spacer(),
+                            TextButton.icon(
+                              onPressed: _adminAddVideo,
+                              icon: const Icon(
+                                LucideIcons.youtube,
+                                size: 18,
+                                color: Color(0xFFEF4444),
+                              ),
+                              label: const Text('إضافة درس فيديو'),
+                              style: TextButton.styleFrom(
+                                foregroundColor: Colors.red,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
                             ElevatedButton.icon(
                               onPressed: _isUploading ? null : _adminUpload,
                               icon: const Icon(LucideIcons.upload, size: 18),
@@ -1001,19 +1078,19 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
         ),
       );
     }
-    if (_files.isEmpty) {
+    if (_files.isEmpty && _videos.isEmpty) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              LucideIcons.fileX,
+              LucideIcons.folderOpen,
               size: 48,
               color: textMuted.withOpacity(0.3),
             ),
             const SizedBox(height: 16),
             Text(
-              'لا توجد ملفات في هذا المجلد',
+              'لا توجد ملفات أو فيديوهات في هذا المجلد',
               style: TextStyle(color: textMuted, fontWeight: FontWeight.w500),
             ),
           ],
@@ -1021,92 +1098,309 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
       );
     }
 
-    return ListView.builder(
+    return ListView(
       padding: const EdgeInsets.all(20),
       physics: const BouncingScrollPhysics(),
-      itemCount: _files.length,
-      itemBuilder: (context, index) {
-        final file = _files[index];
-        final isDownloading = _downloadingHashes.contains(file.fileHash);
-
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          decoration: BoxDecoration(
-            color: isDarkMode
-                ? Colors.white.withOpacity(0.02)
-                : Colors.black.withOpacity(0.01),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: isDarkMode
-                  ? Colors.white.withOpacity(0.05)
-                  : Colors.black.withOpacity(0.05),
-            ),
+      children: [
+        if (_videos.isNotEmpty) ...[
+          _sectionHeader('🎬 دروس فيديو', textMuted),
+          ..._videos.map(
+            (video) => _buildVideoTile(isDarkMode, textPrimary, textMuted, video),
           ),
-          child: Material(
-            color: Colors.transparent,
-            borderRadius: BorderRadius.circular(20),
-            child: InkWell(
-              onTap: isDownloading ? null : () => _handleDownload(file),
-              borderRadius: BorderRadius.circular(20),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Row(
+        ],
+        if (_files.isNotEmpty) ...[
+          if (_videos.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            _sectionHeader('📄 ملفات PDF', textMuted),
+          ],
+          ..._files.map(
+            (file) => _buildFileTile(isDarkMode, textPrimary, textMuted, file),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _sectionHeader(String label, Color textMuted) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, right: 4, bottom: 10, top: 4),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          color: textMuted.withOpacity(0.8),
+          letterSpacing: 0.3,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFileTile(
+    bool isDarkMode,
+    Color textPrimary,
+    Color textMuted,
+    UniversityFile file,
+  ) {
+    final isDownloading = _downloadingHashes.contains(file.fileHash);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: isDarkMode
+            ? Colors.white.withOpacity(0.02)
+            : Colors.black.withOpacity(0.01),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isDarkMode
+              ? Colors.white.withOpacity(0.05)
+              : Colors.black.withOpacity(0.05),
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          onTap: isDownloading ? null : () => _handleDownload(file),
+          borderRadius: BorderRadius.circular(20),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                Stack(
+                  alignment: Alignment.center,
                   children: [
-                    Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            color: Colors.red.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: const Icon(
-                            LucideIcons.fileText,
-                            color: Colors.red,
-                            size: 22,
-                          ),
-                        ),
-                        if (isDownloading)
-                          const SizedBox(
-                            width: 48,
-                            height: 48,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.red,
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            file.name,
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14,
-                              color: textPrimary,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          Text(
-                            _formatBytes(file.sizeBytes),
-                            style: TextStyle(fontSize: 11, color: textMuted),
-                          ),
-                        ],
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: Colors.red.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Icon(
+                        LucideIcons.fileText,
+                        color: Colors.red,
+                        size: 22,
                       ),
                     ),
+                    if (isDownloading)
+                      const SizedBox(
+                        width: 48,
+                        height: 48,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.red,
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        file.name,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                          color: textPrimary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        _formatBytes(file.sizeBytes),
+                        style: TextStyle(fontSize: 11, color: textMuted),
+                      ),
+                    ],
+                  ),
+                ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_isAdmin)
+                      IconButton(
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
+                        icon: const Icon(
+                          LucideIcons.trash2,
+                          color: Color(0xFFF87171),
+                          size: 18,
+                        ),
+                        tooltip: 'حذف الملف',
+                        onPressed: () => _deleteFile(file),
+                      ),
                     const Icon(
                       LucideIcons.downloadCloud,
                       color: Colors.indigo,
                       size: 20,
                     ),
                   ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVideoTile(
+    bool isDarkMode,
+    Color textPrimary,
+    Color textMuted,
+    UniversityVideo video,
+  ) {
+    return DragTarget<Map<String, String>>(
+      onWillAcceptWithDetails: (details) {
+        final data = details.data;
+        return _isAdmin &&
+            data['dragType'] == 'uniVideo' &&
+            data['folderId'] == widget.folder.id &&
+            data['videoId'] != video.id;
+      },
+      onAcceptWithDetails: (details) {
+        final draggedId = details.data['videoId'];
+        if (draggedId != null) _reorderVideos(draggedId, video.id);
+      },
+      builder: (context, candidates, rejected) {
+        final hovering = candidates.isNotEmpty;
+        return Draggable<Map<String, String>>(
+          data: {
+            'dragType': 'uniVideo',
+            'folderId': widget.folder.id,
+            'videoId': video.id,
+          },
+          maxSimultaneousDrags: _isAdmin ? null : 0,
+          feedback: Material(
+            color: Colors.transparent,
+            child: Container(
+              width: 280,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEF4444).withOpacity(0.9),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    LucideIcons.youtube,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      video.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              color: hovering
+                  ? const Color(0xFFEF4444).withOpacity(0.06)
+                  : (isDarkMode
+                      ? Colors.white.withOpacity(0.02)
+                      : Colors.black.withOpacity(0.01)),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: hovering
+                    ? const Color(0xFFEF4444).withOpacity(0.4)
+                    : (isDarkMode
+                        ? Colors.white.withOpacity(0.05)
+                        : Colors.black.withOpacity(0.05)),
+              ),
+            ),
+            child: Material(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(20),
+              child: InkWell(
+                onTap: () => _openVideo(video),
+                borderRadius: BorderRadius.circular(20),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEF4444).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(
+                          LucideIcons.youtube,
+                          color: Color(0xFFEF4444),
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              video.title,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14,
+                                color: textPrimary,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              'يوتيوب',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: textMuted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_isAdmin)
+                            IconButton(
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(
+                                minWidth: 32,
+                                minHeight: 32,
+                              ),
+                              icon: const Icon(
+                                LucideIcons.trash2,
+                                color: Color(0xFFF87171),
+                                size: 18,
+                              ),
+                              tooltip: 'حذف الفيديو',
+                              onPressed: () => _deleteVideo(video),
+                            ),
+                          const Icon(
+                            LucideIcons.play,
+                            color: Color(0xFFEF4444),
+                            size: 22,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -1161,5 +1455,82 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  // ── Video links (Admin add / delete / reorder) ────────────────────────
+
+  Future<void> _adminAddVideo() async {
+    await showDialog(
+      context: context,
+      builder: (_) => UniversityVideoDialog(
+        folderId: widget.folder.id,
+        user: widget.user,
+      ),
+    );
+  }
+
+  void _openVideo(UniversityVideo video) {
+    if (_openingVideoIds.contains(video.id)) return;
+    _openingVideoIds.add(video.id);
+    showYouTubeVideoPlayer(context, video).whenComplete(() {
+      _openingVideoIds.remove(video.id);
+    });
+  }
+
+  Future<void> _deleteVideo(UniversityVideo video) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('حذف الفيديو؟'),
+        content: Text('حذف "${video.title}" من المكتبة الجامعية؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('حذف', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      try {
+        await widget.universityService.deleteVideo(video);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('🗑️ تم حذف الفيديو'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('❌ $e'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _reorderVideos(String draggedVideoId, String targetVideoId) async {
+    if (!_isAdmin) return;
+    try {
+      await widget.universityService.reorderVideos(
+        folderId: widget.folder.id,
+        draggedVideoId: draggedVideoId,
+        targetVideoId: targetVideoId,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
   }
 }
