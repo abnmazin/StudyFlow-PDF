@@ -361,6 +361,11 @@ class AuthService {
         'role': role,
         'authProvisioned': true,
         'createdAt': FieldValue.serverTimestamp(),
+        // Written explicitly, not left absent: a rule that compares isBanned
+        // against the stored document errors out when the field is missing,
+        // and that error denies the whole rule, including the owner writing
+        // their own first-login device binding.
+        'isBanned': false,
         // primaryDeviceFingerprint is intentionally left unset. The first
         // person to sign in binds their own device, and a second one from
         // anywhere else is what the sharing policy is for.

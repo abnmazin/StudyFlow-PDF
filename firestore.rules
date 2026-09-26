@@ -37,12 +37,22 @@ service cloud.firestore {
     //    - Self-service update: only your own document, and role, isBanned,
     //      universityId and username can never change through it
     //    - Admin: may create, edit and delete any profile
-    //    The old blanket "update your own document" was a privilege escalation
-    //    hole. userRole() reads straight from this document, so a single
-    //    update({'role': 'admin'}) unlocked every admin-only rule in the
-    //    project, and update({'isBanned': false}) undid the ban. username is
-    //    pinned because the login address is derived from it, so changing it
-    //    would lock the account out of its own mailbox.
+    //     The old blanket "update your own document" was a privilege escalation
+    //     hole. userRole() reads straight from this document, so a single
+    //     update({'role': 'admin'}) unlocked every admin-only rule in the
+    //     project, and update({'isBanned': false}) undid the ban. username is
+    //     pinned because the login address is derived from it, so changing it
+    //     would lock the account out of its own mailbox.
+    //
+    //     The privileged fields are blocked by NAME through diff().affectedKeys()
+    //     rather than by comparing values. Comparing values, as this rule
+    //     originally did, reads fields that a provisioner never wrote:
+    //     provisionAccount() creates a profile without isBanned, and comparing
+    //     a missing field raises an error, which denies the whole rule. Every
+    //     such account was therefore unable to bind its device on first login
+    //     and could never sign in. Keying off the diff touches only fields the
+    //     write actually changes, and it additionally blocks deleting a pinned
+    //     field instead of silently allowing it.
     // ================================================================
     match /users/{userId} {
       allow read: if isAuthenticated() && request.auth.uid == userId;
@@ -57,10 +67,8 @@ service cloud.firestore {
 
       allow update: if isAuthenticated()
         && request.auth.uid == userId
-        && request.resource.data.role == resource.data.role
-        && request.resource.data.isBanned == resource.data.isBanned
-        && request.resource.data.universityId == resource.data.universityId
-        && request.resource.data.username == resource.data.username;
+        && !request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['role', 'isBanned', 'universityId', 'username']);
 
       allow update: if isAuthenticated() && userRole() == 'admin';
 
