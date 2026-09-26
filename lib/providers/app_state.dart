@@ -88,16 +88,27 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void _initConnectivity() {
-    _connectivitySub = Connectivity().onConnectivityChanged.listen((results) {
-      final isNowOffline = results.contains(ConnectivityResult.none);
-      if (_isOffline != isNowOffline) {
-        _isOffline = isNowOffline;
-        _notify();
-        debugPrint(
-          '🌐 Network Status Changed: ${_isOffline ? 'OFFLINE' : 'ONLINE'}',
-        );
-      }
-    });
+    // connectivity_plus 6.x activates a Windows Network List Manager listener
+    // that fails with PlatformException(0, NetworkManager::StartListen) where
+    // that service is unavailable, and the EventChannel surfaced it to the
+    // zone as an unhandled exception on every cold start, with a stack trace
+    // that looks alarming but blocks nothing. Nothing in the app reads
+    // isOffline, so the failure is contained here rather than reported.
+    _connectivitySub = Connectivity().onConnectivityChanged.listen(
+      (results) {
+        final isNowOffline = results.contains(ConnectivityResult.none);
+        if (_isOffline != isNowOffline) {
+          _isOffline = isNowOffline;
+          _notify();
+          debugPrint(
+            '🌐 Network Status Changed: ${_isOffline ? 'OFFLINE' : 'ONLINE'}',
+          );
+        }
+      },
+      onError: (Object error) {
+        debugPrint('⚠️ [Network] Connectivity stream unavailable, staying online: $error');
+      },
+    );
   }
 
   @override
