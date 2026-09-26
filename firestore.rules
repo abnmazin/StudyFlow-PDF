@@ -55,7 +55,15 @@ service cloud.firestore {
     //     field instead of silently allowing it.
     // ================================================================
     match /users/{userId} {
-      allow read: if isAuthenticated() && request.auth.uid == userId;
+      //     An admin is handed the whole user directory by the admin console,
+      //     which reads it through a collection query, not doc by doc. A rule
+      //     gated on request.auth.uid == userId cannot be satisfied by a list
+      //     query, because nothing in the query constrains the document id, so
+      //     the console was refused and every tab it drives showed nothing.
+      //     userRole() reads the caller's own document, so it is the same for
+      //     every result and the engine can evaluate it for the whole query.
+      allow read: if isAuthenticated()
+        && (request.auth.uid == userId || userRole() == 'admin');
 
       allow create: if isAuthenticated()
         && request.auth.uid == userId

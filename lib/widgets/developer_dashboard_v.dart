@@ -164,6 +164,50 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
       );
     }
 
+  /// Turns a failed query into a readable message. A StreamBuilder keeps
+  /// hasData false when the stream errors, so guarding on hasData alone spins
+  /// forever: a denied rule, a missing composite index or an offline socket
+  /// are all indistinguishable from "still loading" and the panel never
+  /// recovers. Checking hasError first is what makes the failure visible.
+  Widget _buildStreamFailure(Object? error) {
+    final isDenied = error is FirebaseException && error.code == 'permission-denied';
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isDenied ? LucideIcons.shieldAlert : LucideIcons.plugZap,
+              size: 28,
+              color: isDenied ? Colors.amber : Colors.blueGrey,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              isDenied
+                  ? 'لا تملك صلاحية عرض هذه البيانات'
+                  : 'تعذّر تحميل البيانات',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.blueGrey.shade700,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              isDenied
+                  ? 'راجع نطاق الصلاحيات في قواعد Firestore'
+                  : '${error ?? 'خطأ غير معروف'}',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.blueGrey.shade400, fontSize: 11),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildAdminCard(Color bg, Color border, Widget child) {
     return Card(
       elevation: 0,
@@ -189,6 +233,15 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
             return StreamBuilder<QuerySnapshot>(
               stream: _firestore.collection('master_sessions').snapshots(),
               builder: (context, masterSnap) {
+                if (userSnap.hasError ||
+                    sessionSnap.hasError ||
+                    masterSnap.hasError) {
+                  return _buildStreamFailure(
+                    userSnap.error ??
+                        sessionSnap.error ??
+                        masterSnap.error,
+                  );
+                }
                 if (!userSnap.hasData ||
                     !sessionSnap.hasData ||
                     !masterSnap.hasData) {
@@ -346,6 +399,9 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
           .orderBy('createdAt', descending: true)
           .snapshots(),
       builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return _buildStreamFailure(snapshot.error);
+        }
         if (!snapshot.hasData)
           return const Padding(
             padding: EdgeInsets.all(20),
@@ -473,6 +529,9 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
     return StreamBuilder<QuerySnapshot>(
       stream: _firestore.collection('blacklisted_devices').snapshots(),
       builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return _buildStreamFailure(snapshot.error);
+        }
         if (!snapshot.hasData)
           return const Padding(
             padding: EdgeInsets.all(20),
@@ -539,6 +598,9 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
     return StreamBuilder<QuerySnapshot>(
       stream: _firestore.collection('master_sessions').snapshots(),
       builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return _buildStreamFailure(snapshot.error);
+        }
         if (!snapshot.hasData)
           return const Padding(
             padding: EdgeInsets.all(20),
@@ -637,6 +699,9 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
     return StreamBuilder<QuerySnapshot>(
       stream: _firestore.collection('sync_sessions').snapshots(),
       builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return _buildStreamFailure(snapshot.error);
+        }
         if (!snapshot.hasData)
           return const Padding(
             padding: EdgeInsets.all(20),
@@ -724,6 +789,9 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
     return StreamBuilder<QuerySnapshot>(
       stream: _firestore.collection('announcements').snapshots(),
       builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return _buildStreamFailure(snapshot.error);
+        }
         if (!snapshot.hasData)
           return const Padding(
             padding: EdgeInsets.all(20),
