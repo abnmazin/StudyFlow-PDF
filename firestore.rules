@@ -251,7 +251,13 @@ service cloud.firestore {
         && !('bannedUsernames' in resource.data
             && userName() in resource.data.bannedUsernames);
 
-      allow list: if isAuthenticated() && userRole() == 'admin';
+      // A non-admin may list only bundles they own. Firestore can prove that
+      // for a query constrained on ownerName, which is exactly the shape
+      // watchMasterBundlesByOwner sends, so the "my bundles" list works for a
+      // student while enumerating everybody else's stays refused. Admin keeps
+      // the unconstrained list.
+      allow list: if isAuthenticated()
+        && (userRole() == 'admin' || resource.data.ownerName == userName());
 
       allow create: if isAuthenticated()
         && request.resource.data.ownerName == userName();

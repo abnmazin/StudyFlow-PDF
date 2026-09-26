@@ -70,7 +70,8 @@ class AuthService {
     // This has to come first. No Firestore read can succeed until
     // request.auth is non-null, and getUserData() resolves the caller as
     // users/{uid}, so the account's uid must be the users document id.
-    await _signIn(normalizedUsername, password);
+    final signedInUid = await _signIn(normalizedUsername, password);
+
 
     // 3. BLACKLIST CHECK: Prevent blocked devices from logging in
     final blacklistDoc = await _firestore.collection('blacklisted_devices').doc(currentFingerprint).get();
@@ -81,19 +82,24 @@ class AuthService {
     }
 
     // 3. FETCH USER
-    final query = await _firestore
-        .collection('users')
-        .where('username', isEqualTo: normalizedUsername)
-        .limit(1)
-        .get();
+    // Read by document id, taken from the verified credential rather than
+    // from what was typed. The /users rule only grants a get when the id
+    // equals request.auth.uid, so a get succeeds while a query on username
+    // can never be proven safe by the rules and is denied outright. Reading
+    // the credential also means the typed name can no longer decide whose
+    // profile is loaded.
+    final doc = await _firestore.collection('users').doc(signedInUid).get();
 
-    if (query.docs.isEmpty) {
+    if (!doc.exists) {
+      debugPrint(
+        '🚫 [Security] No users document for uid=$signedInUid. The Auth '
+        'account exists but the profile was never provisioned.',
+      );
       throw Exception('هذا الحساب غير مسجل، يرجى مراجعة المطور');
     }
 
-    final doc = query.docs.first;
     final data = doc.data();
-    final user = AppUser.fromFirestore(doc.id, data);
+    final user = AppUser.fromFirestore(doc.id, data!);
 
     // 4. USER BAN CHECK: Zero-tolerance policy
     if (user.isBanned) {
@@ -140,23 +146,26 @@ class AuthService {
     return user;
   }
 
-  /// Signs in with Firebase Auth before touching Firestore.
+  /// Returns the uid Firebase Auth resolved for these credentials.
   ///
   /// Every rule in firestore.rules is gated on isAuthenticated(), and
   /// getUserData() resolves the caller as users/{request.auth.uid}, so the
   /// Firebase uid has to equal the users document id. tools/provision_auth.mjs
   /// creates the accounts with exactly that uid; this method only has to find
   /// the address derived from the username.
-  Future<void> _signIn(String username, String password) async {
+  Future<String> _signIn(String username, String password) async {
     final email = emailForUsername(username);
     try {
       final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
-      debugPrint(
-        '🔐 [Auth] Firebase session established for uid=${credential.user?.uid}',
-      );
+      final uid = credential.user?.uid;
+      if (uid == null || uid.isEmpty) {
+        throw Exception('تعذّر تسجيل الدخول: لم يُرجَع معرّف المستخدم.');
+      }
+      debugPrint('🔐 [Auth] Firebase session established for uid=$uid');
+      return uid;
     } on FirebaseAuthException catch (e) {
       switch (e.code) {
         case 'invalid-email':
