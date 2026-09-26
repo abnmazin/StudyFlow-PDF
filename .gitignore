@@ -129,6 +129,10 @@ firebase-debug.log
 firebase-debug.*.log
 firestore-debug.log
 ui-debug.log
+# Service account keys grant full admin access. Never commit one, whatever it
+# is named: the CLI names them <project>-firebase-adminsdk-<hash>.json
 *service-account*.json
 *serviceAccount*.json
+*adminsdk*.json
+*firebase-adminsdk*.json
 tools/*.csv

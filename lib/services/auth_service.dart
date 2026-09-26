@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -26,11 +29,25 @@ class AuthService {
 
   /// Firebase Auth address for a username.
   ///
-  /// Must stay identical to tools/provision_auth.mjs, otherwise the account
-  /// that script created cannot be found at login time.
+  /// Many usernames in this project are Arabic or contain spaces, and Firebase
+  /// rejects a local part containing a space, so everything outside
+  /// [a-z0-9._-] is dropped. A name that reduces to nothing falls back to a
+  /// hash of the username, which is computable before signing in.
+  ///
+  /// MUST stay identical to emailLocalPart in
+  /// tools/provision_auth.mjs, otherwise this looks for an address that script
+  /// never created and login fails.
   static String emailForUsername(String username) {
-    final normalized = username.trim().toLowerCase();
-    return '$normalized@$authEmailDomain';
+    final lower = username.trim().toLowerCase();
+    var ascii = lower.replaceAll(RegExp(r'[^a-z0-9._-]'), '');
+    ascii = ascii.replaceAll(RegExp(r'^[._-]+'), '');
+    ascii = ascii.replaceAll(RegExp(r'[._-]+$'), '');
+    ascii = ascii.replaceAll(RegExp(r'\.{2,}'), '.');
+    if (ascii.length < 2) {
+      final digest = sha256.convert(utf8.encode(lower)).toString();
+      return 'u${digest.substring(0, 12)}@$authEmailDomain';
+    }
+    return '$ascii@$authEmailDomain';
   }
 
 

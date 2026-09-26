@@ -19,10 +19,37 @@
  * *service-account*.json.
  */
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { randomBytes } from "node:crypto";
+import { randomBytes, createHash } from "node:crypto";
 import { cert, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
+
+/**
+ * Builds the email local part from a username.
+ *
+ * MUST stay byte for byte identical to AuthService.emailForUsername in
+ * lib/services/auth_service.dart. If the two ever disagree, the app looks for
+ * an address this script never created and login fails with
+ * "user-not-found".
+ *
+ * Many usernames in this project are Arabic or contain spaces, and Firebase
+ * rejects a local part holding a space, so everything outside [a-z0-9._-] is
+ * dropped. A name that reduces to nothing falls back to a hash of the
+ * username, which both sides can compute without knowing the uid.
+ */
+export function emailLocalPart(username) {
+  const lower = String(username || "")
+    .trim()
+    .toLowerCase();
+  let ascii = lower.replace(/[^a-z0-9._-]/g, "");
+  ascii = ascii.replace(/^[._-]+/, "").replace(/[._-]+$/, "");
+  ascii = ascii.replace(/\.{2,}/g, ".");
+  if (ascii.length < 2) {
+    const digest = createHash("sha256").update(lower, "utf8").digest("hex");
+    return `u${digest.slice(0, 12)}`;
+  }
+  return ascii;
+}
 
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(`--${name}`);
@@ -104,7 +131,7 @@ for (const doc of users.docs) {
     continue;
   }
 
-  const email = `${username.toLowerCase()}@${domain}`;
+  const email = `${emailLocalPart(username)}@${domain}`;
   let password = supplied.get(username.toLowerCase());
 
   let exists = false;
