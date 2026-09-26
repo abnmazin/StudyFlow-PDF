@@ -915,6 +915,28 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     _notify();
   }
 
+  /// Resolves the live Firebase session once Auth has finished restoring.
+  ///
+  /// [FirebaseAuth.currentUser] is null while a persisted token is still being
+  /// read back from disk, so reading it straight away would throw away a
+  /// perfectly valid session. [FirebaseAuth.authStateChanges] deliberately does
+  /// not emit until the initial state is known, which is what makes the value
+  /// trustworthy. Returns null when there is no session and also when the
+  /// restore never completes, and callers treat both the same way.
+  static Future<User?> _awaitInitialAuthUser() async {
+    try {
+      final restored = FirebaseAuth.instance.currentUser;
+      if (restored != null) return restored;
+      return await FirebaseAuth.instance
+          .authStateChanges()
+          .first
+          .timeout(const Duration(seconds: 10));
+    } catch (e) {
+      debugPrint('⚠️ Auth state restore failed: $e');
+      return null;
+    }
+  }
+
   Future<void> _preloadLecturerSessions(String username) async {
     try {
       final snap = await FirebaseFirestore.instance
@@ -1449,8 +1471,24 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       final userJson = prefs.getString(_prefsKeyUser);
       if (userJson != null) {
         try {
-          _currentUser = AppUser.fromJson(jsonDecode(userJson));
-          debugPrint('✅ Auto-Login: Loaded user ${_currentUser?.username}');
+          final restored = AppUser.fromJson(jsonDecode(userJson));
+          // SharedPreferences holds a cached profile, it is not proof of an
+          // identity. Every rule keys off request.auth, so a cached user with
+          // no live Firebase session fails on the very first read with
+          // permission-denied. The cached profile is therefore kept only when
+          // a live session for exactly the same uid exists.
+          final live = await _awaitInitialAuthUser();
+          if (live == null || live.uid != restored.uid) {
+            debugPrint(
+              '⚠️ Auto-Login: no live Firebase session for '
+              '${restored.username} (cached=${restored.uid}, '
+              'live=${live?.uid}). Clearing cached session.',
+            );
+            await prefs.remove(_prefsKeyUser);
+          } else {
+            _currentUser = restored;
+            debugPrint('✅ Auto-Login: Loaded user ${_currentUser?.username}');
+          }
         } catch (e) {
           debugPrint('⚠️ Error decoding user session: $e');
         }

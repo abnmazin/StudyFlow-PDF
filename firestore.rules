@@ -262,5 +262,45 @@ service cloud.firestore {
       allow delete: if isAuthenticated()
         && resource.data.ownerName == userName();
     }
+
+    // ================================================================
+    // 15. BLACKLISTED DEVICES
+    //     - secureLogin reads its own fingerprint here right after signing
+    //       in, so a bare get has to be open to any signed-in user
+    //     - Enumerating the list is admin territory
+    //     - Writes are admin-only on purpose: _executeImmediateBan runs in
+    //       the client and is therefore not trustworthy. With this rule a
+    //       banned student cannot lift their own ban, and the client side
+    //       ban write simply fails for non-admins while the login itself is
+    //       still refused.
+    // ================================================================
+    match /blacklisted_devices/{fingerprint} {
+      allow get: if isAuthenticated();
+      allow list: if isAuthenticated() && userRole() == 'admin';
+      allow create, update: if isAuthenticated() && userRole() == 'admin';
+      allow delete: if false;
+    }
+
+    // ================================================================
+    // 16. SECURITY EVENTS
+    //     - Append-only audit trail for bans and device mismatches
+    //     - Clients may append, only admins may read, nobody may rewrite
+    // ================================================================
+    match /security_events/{eventId} {
+      allow create: if isAuthenticated();
+      allow read, list: if isAuthenticated() && userRole() == 'admin';
+      allow update, delete: if false;
+    }
+
+    // ================================================================
+    // 17. ANNOUNCEMENTS
+    //     - Global notices, readable by every signed-in user
+    //     - Only admins publish or edit them
+    // ================================================================
+    match /announcements/{announcementId} {
+      allow read, list: if isAuthenticated();
+      allow create, update: if isAuthenticated() && userRole() == 'admin';
+      allow delete: if false;
+    }
   }
 }
