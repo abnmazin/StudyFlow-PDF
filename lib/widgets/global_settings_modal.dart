@@ -771,6 +771,11 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
       StreamBuilder<QuerySnapshot>(
         stream: _firestore.collection('sync_sessions').snapshots(),
         builder: (context, sessionSnap) {
+          if (sessionSnap.hasError) {
+            debugPrint(
+              '⚠️ [Settings] sync session stream failed: ${sessionSnap.error}',
+            );
+          }
           final activeCodes = sessionSnap.hasData
               ? sessionSnap.data!.docs.map((d) => d.id).toSet()
               : <String>{};
@@ -780,6 +785,25 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
               app.currentUser?.username ?? '',
             ),
             builder: (context, snapshot) {
+              // A stream that is denied by firestore.rules reports hasData
+              // false forever, exactly like one that is still loading, so
+              // checking hasData alone turned a permission error into a
+              // spinner that never resolved and said nothing about why.
+              if (snapshot.hasError) {
+                debugPrint(
+                  '⚠️ [Settings] master bundle stream failed: ${snapshot.error}',
+                );
+                return Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    'تعذّر تحميل الحزم: ${snapshot.error}',
+                    style: TextStyle(
+                      color: Colors.red.shade300,
+                      fontSize: 13,
+                    ),
+                  ),
+                );
+              }
               if (!snapshot.hasData) {
                 return const Padding(
                   padding: EdgeInsets.all(16),

@@ -12,14 +12,21 @@ class HardwareService {
   /// Combines: device name, OS type, OS version, and machine UUID.
   Future<String> getDeviceFingerprint() async {
     try {
-      final deviceName = _safeHostName();
       final osType = Platform.operatingSystem;
-      final osVersion = Platform.operatingSystemVersion;
       final machineUuid = await getDeviceUUID();
 
-      final rawIdentity = "$deviceName|$osType|$osVersion|$machineUuid";
+      // Deliberately built from the machine UUID and the platform only.
+      // A Windows update changes Platform.operatingSystemVersion, and a DHCP
+      // lease or a rename changes the hostname, so folding either into the
+      // fingerprint re-issues a brand new identity to the same machine. Since
+      // a mismatch triggers a permanent ban with no client side undo, an
+      // ordinary OS update was enough to lock the owner out permanently.
+      // Win32_ComputerSystemProduct UUID is what actually identifies the
+      // machine, and it still differs per device, so account sharing across
+      // two computers is still caught.
+      final rawIdentity = "$machineUuid|$osType";
       final normalized = rawIdentity.toLowerCase().trim();
-      
+
       final bytes = utf8.encode(normalized);
       final digest = sha256.convert(bytes);
       final fingerprint = digest.toString();
@@ -62,14 +69,6 @@ class HardwareService {
     final generated = const Uuid().v4();
     await prefs.setString(_installIdKey, generated);
     return generated;
-  }
-
-  String _safeHostName() {
-    try {
-      final hostname = Platform.localHostname.trim();
-      if (hostname.isNotEmpty) return hostname;
-    } catch (_) {}
-    return 'unknown-host';
   }
 
   Future<String?> _fromWmic() async {
