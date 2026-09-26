@@ -4,8 +4,6 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../providers/app_state.dart';
 import '../models/models.dart';
 import '../utils/responsive_utils.dart';
-import '../services/library_sync_service.dart';
-import '../services/university_service.dart';
 import 'viewer_components/college_collection_widget.dart';
 
 class Sidebar extends StatefulWidget {
@@ -324,18 +322,6 @@ class _SidebarState extends State<Sidebar> {
                         folderStyle: true,
                       ),
                     ),
-
-                    // Library owner feed (sync code + member downloads) — the
-                    // owner account only. Management controls come later.
-                    if (_showUniversityFolders &&
-                        LibrarySyncService.isOwner(app.currentUser))
-                      _LibraryOwnerFeed(
-                        app: app,
-                        isDarkMode: isDarkMode,
-                        panelBorder: separatorColor,
-                        textPrimary: textPrimary,
-                        textMuted: textMuted,
-                      ),
 
                     // "Local Files" Header
                     const SizedBox(height: 24),
@@ -944,179 +930,6 @@ class _SidebarState extends State<Sidebar> {
           style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8)),
         ),
       ],
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Library owner feed — shown to the owner account (username "abnmazin") under
-// "المكتبة الجامعية". Shows the live downloads by members (auto-connected to
-// each file's own sync code). No sync code is displayed anywhere.
-// Management controls (kick/delete) are intentionally left for later work.
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _LibraryOwnerFeed extends StatefulWidget {
-  final AppProvider app;
-  final bool isDarkMode;
-  final Color panelBorder;
-  final Color textPrimary;
-  final Color textMuted;
-
-  const _LibraryOwnerFeed({
-    required this.app,
-    required this.isDarkMode,
-    required this.panelBorder,
-    required this.textPrimary,
-    required this.textMuted,
-  });
-
-  @override
-  State<_LibraryOwnerFeed> createState() => _LibraryOwnerFeedState();
-}
-
-class _LibraryOwnerFeedState extends State<_LibraryOwnerFeed> {
-  final LibrarySyncService _sync = LibrarySyncService();
-
-  @override
-  void initState() {
-    super.initState();
-    _initOwner();
-  }
-
-  /// Owner-only setup: backfill sync codes onto existing uploaded files so
-  /// every library booklet already has its own code linked.
-  Future<void> _initOwner() async {
-    final user = widget.app.currentUser;
-    if (user == null) return;
-    try {
-      final service = UniversityService();
-      if (!service.isReady) await service.init(user);
-      await service.backfillSyncCodes();
-    } catch (e) {
-      debugPrint('📡 [LibrarySync] Owner backfill failed: $e');
-    }
-  }
-
-  String _relative(DateTime time) {
-    final diff = DateTime.now().difference(time);
-    if (diff.inMinutes < 1) return 'الآن';
-    if (diff.inMinutes < 60) return 'منذ ${diff.inMinutes} د';
-    if (diff.inHours < 24) return 'منذ ${diff.inHours} س';
-    return 'منذ ${diff.inDays} يوم';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final user = widget.app.currentUser;
-    final universityId = user?.universityId ?? '';
-    if (universityId.isEmpty) return const SizedBox.shrink();
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 6),
-      child: StreamBuilder<List<Map<String, dynamic>>>(
-        stream: _sync.watchLibraryDownloads(universityId),
-        builder: (context, snapshot) {
-          final sessions = snapshot.data ?? [];
-          if (snapshot.hasError || !snapshot.hasData) {
-            return const SizedBox.shrink();
-          }
-
-          // Flatten every file-session's downloads into feed rows.
-          final rows = <({String username, String fileName, int atMillis})>[];
-          for (final session in sessions) {
-            final fileName = (session['fileName'] ?? '').toString();
-            final raw = session['downloads'];
-            if (raw is! List) continue;
-            for (final item in raw.whereType<Map>()) {
-              rows.add((
-                username: (item['username'] ?? 'member').toString(),
-                fileName: fileName,
-                atMillis: (item['downloadedAt'] as num?)?.toInt() ?? 0,
-              ));
-            }
-          }
-          rows.sort((a, b) => b.atMillis.compareTo(a.atMillis));
-
-          if (rows.isEmpty) {
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Text(
-                'لا توجد تحميلات بعد',
-                style: TextStyle(fontSize: 11.5, color: widget.textMuted),
-              ),
-            );
-          }
-
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'الأعضاء الذين حمّلوا (${rows.length})',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: widget.textMuted,
-                ),
-              ),
-              const SizedBox(height: 6),
-              ...rows.take(30).map((row) {
-                final time = row.atMillis > 0
-                    ? _relative(DateTime.fromMillisecondsSinceEpoch(
-                        row.atMillis,
-                      ))
-                    : '';
-
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(
-                        LucideIcons.download,
-                        size: 13,
-                        color: Color(0xFF22C55E),
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              row.username,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: widget.textPrimary,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            Text(
-                              row.fileName,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: widget.textMuted,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (time.isNotEmpty)
-                        Text(
-                          time,
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: widget.textMuted,
-                          ),
-                        ),
-                    ],
-                  ),
-                );
-              }),
-            ],
-          );
-        },
-      ),
     );
   }
 }

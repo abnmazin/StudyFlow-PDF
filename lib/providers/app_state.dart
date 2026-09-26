@@ -283,6 +283,16 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   final Map<String, Set<String>> _lockedLocalOnlyHighlightIds = {};
   final Set<String> _intentionallyDeletedIds = {};
 
+  /// fileHash values confirmed to belong to the university library, so the
+  /// reading position of those booklets is mirrored to Firestore.
+  final Set<String> _libraryLinkedHashes = {};
+
+  /// Last time a reading position was pushed per file, so scrolling does not
+  /// turn into a Firestore write on every debounce tick.
+  final Map<String, DateTime> _lastProgressPush = {};
+
+  static const Duration _progressPushInterval = Duration(seconds: 10);
+
   Future<void> triggerSync() async {
     if (_isSyncing) return;
     await performBidirectionalSync(silent: true);
@@ -1004,6 +1014,12 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
       _saveState();
       _notify();
+
+      // Attaching a code is the moment remote annotations become reachable, so
+      // reconcile now instead of waiting for the first local edit.
+      if (code != null && _currentUser != null) {
+        unawaited(performBidirectionalSync(silent: true));
+      }
     }
   }
 
@@ -2335,11 +2351,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         uploaderUid: file.uploadedBy,
       );
       if (ensured == null) return;
-
-      // Track the open for the library owner dashboard.
-      unawaited(
-        LibrarySyncService().ensureFileSession(owner: user, file: file),
-      );
+      _libraryLinkedHashes.add(hash);
 
       // An explicit code already chosen for this PDF wins over the library one.
       if (_pdfSessionCodes[hash] != null) return;
@@ -2736,6 +2748,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       if (scrollTop != null) cls.pdfs[pdfIndex].scrollTop = scrollTop;
       if (pageNumber != null) cls.pdfs[pdfIndex].lastPage = pageNumber;
 
+      final libraryHash = cls.pdfs[pdfIndex].fileHash;
+
       _readingStateTimer?.cancel();
       _readingStateTimer = Timer(const Duration(milliseconds: 600), () {
         FileManagerService().updateReadingState(
@@ -2747,10 +2761,41 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         debugPrint(
           '📍 [ReadingState] Saved for PDF: $pdfId page=$pageNumber scroll=$scrollTop zoom=$zoom',
         );
+        _pushUniversityReadingProgress(libraryHash, pageNumber, scrollTop);
       });
 
       return;
     }
+  }
+
+  /// Mirrors the reading position of a library booklet to Firestore so the same
+  /// file reopens where it was left on any device. Local-only PDFs are skipped
+  /// to avoid a network write per scroll event.
+  void _pushUniversityReadingProgress(
+    String? fileHash,
+    int? page,
+    double? scroll,
+  ) {
+    if (fileHash == null || fileHash.isEmpty) return;
+    if (!_libraryLinkedHashes.contains(fileHash)) return;
+    if (page == null && scroll == null) return;
+    if (_currentUser == null) return;
+
+    final now = DateTime.now();
+    final last = _lastProgressPush[fileHash];
+    if (last != null && now.difference(last) < _progressPushInterval) return;
+    _lastProgressPush[fileHash] = now;
+
+    final service = UniversityService();
+    if (!service.isReady) return;
+
+    unawaited(
+      service.saveReadingProgress(
+        fileHash: fileHash,
+        lastPage: page ?? 1,
+        scrollTop: scroll ?? 0.0,
+      ),
+    );
   }
 
   void removeHighlight(String pdfId, Highlight highlight) {

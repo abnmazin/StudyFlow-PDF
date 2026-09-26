@@ -122,6 +122,11 @@ __pycache__/
 # Env Variables
 .env
 
+# Local Windows toolchain clutter (dropped in the root, not part of the app)
+/icu.dll
+/VC_redist*.exe
+/New Text Document.txt
+
 # Firebase tooling
 node_modules/
 .firebase/

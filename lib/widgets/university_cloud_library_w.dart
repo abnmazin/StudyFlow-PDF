@@ -63,6 +63,11 @@ class _UniversityCloudLibraryWidgetState
         if (mounted) setState(() => _isLoading = false);
         return;
       }
+      // Guarantees every uploaded booklet carries its own sync code, so the
+      // viewer can auto-link to the shared session with no manual step.
+      if (widget.user.isLecturer) {
+        unawaited(_universityService.backfillSyncCodes());
+      }
       _folderSub = _universityService.streamFolders().listen(
         (folders) {
           if (mounted) {

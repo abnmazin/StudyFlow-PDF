@@ -25,23 +25,6 @@ service cloud.firestore {
       return getUserData().username;
     }
 
-    function isAdminOfUniversity(universityId) {
-      return isAuthenticated()
-        && userRole() == 'admin'
-        && userUniversityId() == universityId;
-    }
-
-    function isStudentOfUniversity(universityId) {
-      return isAuthenticated()
-        && userRole() == 'student'
-        && userUniversityId() == universityId;
-    }
-
-    function belongsToSameUniversity(universityId) {
-      return isAuthenticated()
-        && userUniversityId() == universityId;
-    }
-
     // ================================================================
     // 1. USERS COLLECTION
     //    - Users read/write only their own record
@@ -193,7 +176,13 @@ service cloud.firestore {
     //    - Users read/write only their own progress documents
     // ================================================================
     match /university_file_progress/{progressId} {
-      allow read: if isAuthenticated()
+      // The doc id is "{fileHash}_{authUid}", so the path alone proves
+      // ownership. A data-based check would resolve the very first read
+      // (before any progress exists) to PERMISSION_DENIED, because `resource`
+      // is null for a missing document.
+      allow get: if isAuthenticated()
+        && progressId.matches('_' + request.auth.uid + '$');
+      allow list: if isAuthenticated()
         && resource.data.userId == request.auth.uid;
       allow create: if isAuthenticated()
         && request.resource.data.userId == request.auth.uid;
@@ -236,26 +225,6 @@ service cloud.firestore {
     // ================================================================
     match /pdfs/{fileHash}/mutations/{mutationId} {
       allow read, write: if isAuthenticated();
-    }
-
-    // ================================================================
-    // 12. LIBRARY FILE SESSIONS
-    //     - Per-file download tracking for the university library owner
-    //     - Scoped to the university so only its members can read the feed
-    // ================================================================
-    match /library_file_sessions/{code} {
-      allow read: if isAuthenticated()
-        && resource.data.universityId == userUniversityId();
-
-      allow create: if isAuthenticated()
-        && request.resource.data.universityId == userUniversityId();
-
-      // recordDownload merges downloads/lastDownloadAt onto the existing doc,
-      // which Firestore evaluates as an update against the stored fields.
-      allow update: if isAuthenticated()
-        && resource.data.universityId == userUniversityId();
-
-      allow delete: if false;
     }
 
     // ================================================================

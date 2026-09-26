@@ -8,7 +8,6 @@ import '../../models/university_file.dart';
 import '../../models/university_video.dart';
 import '../../services/university_service.dart';
 import '../../services/file_manager_service.dart';
-import '../../services/library_sync_service.dart';
 import '../../providers/app_state.dart';
 import 'youtube_player_w.dart';
 
@@ -1198,14 +1197,6 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
         classId: quickAccess.uuid,
       );
       await app.importPdfFromPath(doc.uuid, quickAccess.uuid);
-
-      // 4. Track the download for the university library sync (member only).
-      final user = app.currentUser;
-      if (user != null) {
-        unawaited(
-          LibrarySyncService().recordDownload(user: user, file: file),
-        );
-      }
 
       if (mounted) {
         ScaffoldMessenger.of(context)

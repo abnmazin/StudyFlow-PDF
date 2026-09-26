@@ -54,7 +54,8 @@ There are **no tests** (`test/widget_test.dart` is empty). Do not attempt to run
 | `auth_service.dart` | `secureLogin()` — device-bound auth, blacklist check |
 | `sync_service.dart` | Firestore session code sync, bidirectional annotation reconciliation |
 | `file_manager_service.dart` | Isar DB wrapper (folders, PDFs, trash, tasks) — `ChangeNotifier` |
-| `university_service.dart` | Multi-tenant university folders/files, Supabase upload/download |
+| `university_service.dart` | Multi-tenant university folders/files, Supabase upload/download, reading-progress sync |
+| `library_sync_service.dart` | Per-file `syncCode` for library booklets (generate / derive / owner check) |
 | `pdf_mutation_service.dart` | Add/delete PDF pages via Syncfusion isolates |
 | `math_engine.dart` | Dart-native math evaluation (replaced old Python bridge) |
 | `mcp_client_service.dart` | Optional 3rd AI provider — bridges to `gemini-app-mcp` (Node.js) using the user's personal Google account via browser automation, no API key. Fallback ring: `gemini → groq → mcp` |
@@ -89,6 +90,8 @@ There are **no tests** (`test/widget_test.dart` is empty). Do not attempt to run
 - `analysis_options.yaml` suppresses `deprecated_member_use`, `invalid_use_of_protected_member` globally (needed for part-file setState access)
 - `developer_dashboard_v.dart` had a shadowed duplicate `GlobalSettingsModal` — only `DeveloperDashboardView` is live (canonical `GlobalSettingsModal` is in `global_settings_modal.dart`)
 - `university_hub.dart` is deprecated — replaced by `university_cloud_library_w.dart` for university users
+- Library booklets are NOT a separate sync system: `university_files.syncCode` is the same session id used by `sync_service.dart` (`sync_sessions/{code}/annotations/{fileHash}`), auto-linked in `AppProvider._autoLinkLibrarySession`. There is no download tracking — opening a file never writes a "downloaded" record
+- `sync_sessions` documents are created lazily by `ensureLibrarySession` on first open, so an empty collection simply means nothing has been opened yet
 - The CI workflow (`.github/workflows/deploy.yml`) deploys to GitHub Pages; Flutter version pinned to `3.10.7` in CI (may drift from local)
 - `mcp_client_service.dart` needs Node.js + a Chromium browser; MCP auth expires after ~24h (re-link in Settings). It is unofficial/reverse-engineered — `gemini-app-mcp` may break if Google changes the web UI
 
