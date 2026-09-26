@@ -245,6 +245,12 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   bool _isJoiningSession = false;
   bool get isJoiningSession => _isJoiningSession;
   Timer? _syncDebounce; // Debouncer for background sync
+
+  /// Window that coalesces bursts of annotation edits (drag frames, text
+  /// keystrokes) into a single sync pass. Because every call cancels the
+  /// previous timer, a continuous drag keeps deferring the sync until the
+  /// pointer settles, which is exactly the desired coalescing behaviour.
+  static const Duration _syncDebounceWindow = Duration(milliseconds: 1200);
   ToolType _currentTool = ToolType.cursor;
   ToolType get currentTool => _currentTool;
 
@@ -466,9 +472,12 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       debugPrint('ERROR: performBidirectionalSync failed: $e');
     } finally {
       _isSyncing = false;
-      if (!silent) {
-        _notify();
-      }
+      // Unconditional: every caller passes silent: true, and the injected
+      // remote highlights/comments live in the model only. Gating this on
+      // !silent meant synced annotations were applied but never rendered until
+      // some unrelated interaction happened to notify. _notify() is already
+      // coalesced through a microtask, so this is cheap.
+      _notify();
       _startRealtimeAnnotationListener();
     }
   }
@@ -497,11 +506,18 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     ));
   }
 
-  /// Triggers a debounced bidirectional sync (default 1.8s).
-  /// Used for gestures and tool changes to avoid UI lag.
+  /// Schedules a debounced [performBidirectionalSync] after
+  /// [_syncDebounceWindow]. Used for gestures and tool changes to avoid UI lag.
+  ///
+  /// `silent` is retained for call-site compatibility but is intentionally
+  /// unused: [performBidirectionalSync] now always notifies after injecting
+  /// remote data, and callers must not reintroduce a UI-suppressing path.
   void triggerDebouncedSync({bool silent = true}) {
-    // Auto-sync disabled: keep method as a no-op for compatibility.
     _syncDebounce?.cancel();
+    _syncDebounce = Timer(_syncDebounceWindow, () {
+      _syncDebounce = null;
+      unawaited(performBidirectionalSync());
+    });
   }
 
   /// Cancels any pending debounced sync.
@@ -527,7 +543,14 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void _triggerSync(String fileHash) {
-    // Auto-sync disabled: no periodic/background push.
+    // Guard against a stale hash: if the caller already knows which document it
+    // touched, only push when that document is still the active one. An empty
+    // hash means the caller could not identify it, so the sync is allowed
+    // through rather than silently dropped.
+    if (fileHash.isNotEmpty && fileHash != activePdf?.fileHash) {
+      return;
+    }
+    triggerSync();
   }
 
   void _notify() {
@@ -588,9 +611,18 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
       final index = pdf.highlights.indexWhere((h) => h.id == oldHighlight.id);
       if (index != -1) {
-        pdf.highlights[index] = newHighlight;
+        // Transform and style edits arrive as a copyWith of the original, so
+        // without restamping here the element keeps its previous updatedAt and
+        // its synced=true flag. The LWW diff would then classify the drag as a
+        // no-op and never upload it, which is why moving a shape or a text
+        // annotation never reached the other client.
+        final stored = newHighlight.copyWith(
+          updatedAt: DateTime.now().millisecondsSinceEpoch,
+          isSynced: false,
+        );
+        pdf.highlights[index] = stored;
         if (isLockedDrawingForCurrentUser) {
-          _markLockedLocalOnlyHighlight(pdf.fileHash, newHighlight.id);
+          _markLockedLocalOnlyHighlight(pdf.fileHash, stored.id);
         }
         // سجل التعديل في سجل العمليات
         recordUpdate(
