@@ -27,6 +27,9 @@ class SyncService {
       _annotationSubscription;
   String? _activeAnnotationPath;
   final FirebaseFirestore _db;
+  /// uid -> username, so library session creation does not re-read the same
+  /// uploader profile on every file open.
+  final Map<String, String> _usernameCache = {};
 
   SyncService({FirebaseFirestore? firestore})
     : _deviceSessionId = 'device_${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(99999)}',
@@ -155,6 +158,94 @@ class SyncService {
       }
     } catch (_) {}
     return null;
+  }
+
+  /// Creates the `sync_sessions/{code}` document for a library file on first
+  /// open, so every client that opens the same file content lands on one shared
+  /// session without anyone typing a code.
+  ///
+  /// The uploader owns the session: `createdBy` is anchored to the uploader's
+  /// username, exactly like [generateSessionCode], so [findExistingSession]
+  /// keeps working for them. The document is only written when missing, making
+  /// this safe to call on every open and for students and lecturers alike.
+  Future<String?> ensureLibrarySession({
+    required String code,
+    required String fileHash,
+    required String fileName,
+    required int pageCount,
+    required String uploaderUid,
+  }) async {
+    try {
+      final ref = _db.collection('sync_sessions').doc(code);
+      final existing = await _withTimeout(
+        ref.get(),
+        operationName: 'ensureLibrarySession (Lookup)',
+      );
+      if (existing.exists) return code;
+
+      final uploaderName = await _resolveUsername(uploaderUid);
+      await _withTimeout(
+        ref.set({
+          'createdBy': uploaderName,
+          'ownerName': uploaderName,
+          'ownerUid': uploaderUid,
+          'displayName': fileName,
+          'fileHash': fileHash,
+          'pdfName': fileName,
+          'pageCount': pageCount,
+          'isLocked': false,
+          'joinLocked': false,
+          'kicked_usernames': <String>[],
+          'notesPurgeFor': '',
+          'notesPurgeRequestId': '',
+          'participants': <Map<String, dynamic>>[],
+          'isLibraryFile': true,
+          'createdAt': FieldValue.serverTimestamp(),
+        }),
+        operationName: 'ensureLibrarySession (Main Doc)',
+      );
+
+      // Initialize the annotations leaf so the document is visible in the
+      // Firestore console, matching generateSessionCode.
+      await _withTimeout(
+        _db
+            .collection('sync_sessions')
+            .doc(code)
+            .collection('annotations')
+            .doc(fileHash)
+            .set({'data': <dynamic>[]}),
+        operationName: 'ensureLibrarySession (Annotations Leaf)',
+      );
+
+      debugPrint(
+        '📚 [SYNC] Created library session $code for $fileName (owner $uploaderName)',
+      );
+      return code;
+    } catch (e) {
+      debugPrint('📚 [SYNC] ensureLibrarySession failed for $code: $e');
+      return null;
+    }
+  }
+
+  /// Resolves a uid to its username, which is the key every sync_sessions
+  /// document is anchored to. Falls back to the uid when the profile doc is
+  /// missing so session creation is never blocked. Results are cached because
+  /// the same uploader resolves on every file open.
+  Future<String> _resolveUsername(String uid) async {
+    if (_usernameCache[uid] != null) return _usernameCache[uid]!;
+    var name = uid;
+    try {
+      final snap = await _withTimeout(
+        _db.collection('users').doc(uid).get(),
+        operationName: 'ensureLibrarySession (Uploader Profile)',
+      );
+      final resolved = snap.data()?['username'];
+      if (resolved is String && resolved.trim().isNotEmpty) {
+        name = resolved.trim();
+      }
+    } catch (_) {}
+    _usernameCache[uid] = name;
+    return name;
   }
 
   /// Generates a new code (or uses custom), creates the Firestore document, returns code.

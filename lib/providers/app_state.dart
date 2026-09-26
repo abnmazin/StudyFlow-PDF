@@ -25,6 +25,8 @@ import '../services/file_manager_service.dart';
 import '../services/file_hash_service.dart';
 import '../services/sync_service.dart';
 import '../services/pdf_mutation_service.dart';
+import '../services/university_service.dart';
+import '../services/library_sync_service.dart';
 import '../services/hardware_service.dart';
 import '../services/mcp_client_service.dart';
 import '../screens/auth/login_screen.dart';
@@ -2210,6 +2212,79 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
               }
             });
       }
+    }
+
+    // UNIVERSITY LIBRARY AUTO-LINK: a library file carries its own sync code,
+    // so neither the lecturer lookup (which filters on createdBy) nor the
+    // student lookup (which needs a locally remembered code) can find it. This
+    // resolves the code from the library metadata instead, so both roles join
+    // the same session with no manual code entry.
+    if (hash != null && hash.isNotEmpty) {
+      _autoLinkLibrarySession(hash);
+    }
+  }
+
+  /// Joins the shared session for a university library file, creating the
+  /// Firestore session document on first open. No-ops for PDFs that are not in
+  /// the library, leaving the existing lecturer/student flows untouched.
+  Future<void> _autoLinkLibrarySession(String hash) async {
+    final user = _currentUser;
+    if (user == null) return;
+
+    try {
+      final service = UniversityService();
+      // isReady also requires a universityId, so a user without one simply
+      // falls through and the normal session flows apply.
+      if (!service.isReady) await service.init(user);
+      if (!service.isReady) return;
+
+      final file = await service.findUniversityFileByHash(hash);
+      if (file == null) return; // Not a library file.
+
+      // syncCode is generated at upload time; the deterministic hash fallback
+      // keeps pre-backfill files working with a stable code.
+      final code =
+          file.syncCode ?? LibrarySyncService.codeFromHash(file.fileHash);
+
+      final ensured = await _syncService.ensureLibrarySession(
+        code: code,
+        fileHash: file.fileHash,
+        fileName: file.name,
+        pageCount: activePdf?.pageCount ?? file.totalPages ?? 0,
+        uploaderUid: file.uploadedBy,
+      );
+      if (ensured == null) return;
+
+      // Track the open for the library owner dashboard.
+      unawaited(
+        LibrarySyncService().ensureFileSession(owner: user, file: file),
+      );
+
+      // An explicit code already chosen for this PDF wins over the library one.
+      if (_pdfSessionCodes[hash] != null) return;
+
+      if (user.isLecturer) {
+        // Lecturers and admins own the session outright; no join handshake.
+        setSessionCode(ensured);
+        debugPrint('📚 [LIBRARY] Lecturer linked to session $ensured.');
+      } else {
+        final error = await _syncService.joinSession(
+          code: ensured,
+          uid: user.uid,
+          username: user.username,
+          studentFileHash: hash,
+          studentPageCount: activePdf?.pageCount ?? file.totalPages ?? 0,
+        );
+        if (error == null) {
+          setSessionCode(ensured);
+          debugPrint('📚 [LIBRARY] Student joined session $ensured.');
+        } else {
+          debugPrint('📚 [LIBRARY] Auto-join failed for $ensured: $error');
+        }
+      }
+    } catch (e) {
+      // Never block opening a PDF on this; manual code entry still works.
+      debugPrint('📚 [LIBRARY] auto-link skipped: $e');
     }
   }
 

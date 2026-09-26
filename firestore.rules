@@ -174,5 +174,54 @@ service cloud.firestore {
     match /sync_sessions/{sessionCode} {
       allow read, write: if isAuthenticated();
     }
+
+    // NOTE: A rule on a document does not cover its subcollections, so every
+    // subcollection written by SyncService needs its own match block.
+
+    // ================================================================
+    // 9. SYNC SESSION ANNOTATIONS
+    //    - Highlights, comments and page state for one file in a session
+    //    - Written by every participant, so mirrors the parent session rule
+    // ================================================================
+    match /sync_sessions/{sessionCode}/annotations/{fileHash} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // ================================================================
+    // 10. SYNC SESSION TRASH
+    //     - Soft-deleted annotation items awaiting purge
+    // ================================================================
+    match /sync_sessions/{sessionCode}/trash/{itemId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // ================================================================
+    // 11. PDF MUTATIONS (structural sync: add/delete/reorder pages)
+    //     - Top-level pdfs/{fileHash}/mutations, keyed by content hash so the
+    //       same file content shares mutations across sessions
+    // ================================================================
+    match /pdfs/{fileHash}/mutations/{mutationId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // ================================================================
+    // 12. LIBRARY FILE SESSIONS
+    //     - Per-file download tracking for the university library owner
+    //     - Scoped to the university so only its members can read the feed
+    // ================================================================
+    match /library_file_sessions/{code} {
+      allow read: if isAuthenticated()
+        && resource.data.universityId == userUniversityId();
+
+      allow create: if isAuthenticated()
+        && request.resource.data.universityId == userUniversityId();
+
+      // recordDownload merges downloads/lastDownloadAt onto the existing doc,
+      // which Firestore evaluates as an update against the stored fields.
+      allow update: if isAuthenticated()
+        && resource.data.universityId == userUniversityId();
+
+      allow delete: if false;
+    }
   }
 }
