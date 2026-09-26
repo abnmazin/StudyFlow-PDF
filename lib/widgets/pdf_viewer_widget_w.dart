@@ -1396,6 +1396,9 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                               child: ListenableBuilder(
                                                 listenable: primaryController,
                                                 builder: (context, _) {
+                                                  if (!primaryController
+                                                      .isReady)
+                                                    return const SizedBox.shrink();
                                                   final int pageCount =
                                                       primaryController
                                                           .pages
