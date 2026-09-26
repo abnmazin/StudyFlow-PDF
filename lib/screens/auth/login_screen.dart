@@ -22,6 +22,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final HardwareService _hardwareService = HardwareService();
   final AuthService _authService = AuthService();
   final TextEditingController _usernameController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  bool _obscurePassword = true;
   String _deviceId = 'جاري التحميل...';
   bool _isLoading = false;
   String? _errorMessage;
@@ -58,6 +60,14 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
+    final password = _passwordController.text;
+    if (password.isEmpty) {
+      setState(() {
+        _errorMessage = 'الرجاء إدخال كلمة المرور';
+      });
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -65,7 +75,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       // MANDATORY SECURE LOGIN: No bypasses allowed
-      final user = await _authService.secureLogin(username);
+      final user = await _authService.secureLogin(username, password);
       _currentUser = user;
 
       debugPrint('🛡️ [Security] Login Success: ${user.username}');
@@ -111,6 +121,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void dispose() {
     _usernameController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
@@ -289,6 +300,63 @@ class _LoginScreenState extends State<LoginScreen> {
                                 vertical: 18,
                               ),
                             ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          // ─── حقل كلمة المرور ───────────────────────────────────
+                          TextField(
+                            controller: _passwordController,
+                            obscureText: _obscurePassword,
+                            style: TextStyle(
+                              color: textPrimary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            decoration: InputDecoration(
+                              labelText: 'كلمة المرور',
+                              labelStyle: TextStyle(
+                                color: textMuted,
+                                fontSize: 14,
+                              ),
+                              prefixIcon: Icon(
+                                LucideIcons.lock,
+                                color: textMuted,
+                                size: 20,
+                              ),
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _obscurePassword
+                                      ? LucideIcons.eye
+                                      : LucideIcons.eyeOff,
+                                  color: textMuted,
+                                  size: 20,
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _obscurePassword = !_obscurePassword;
+                                  });
+                                },
+                              ),
+                              filled: true,
+                              fillColor: isDark
+                                  ? Colors.black26
+                                  : Colors.grey.shade100,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                borderSide: BorderSide.none,
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                borderSide: const BorderSide(
+                                  color: Color(0xFF38BDF8),
+                                  width: 1.5,
+                                ),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 18,
+                              ),
+                            ),
+                            onSubmitted: (_) => _goToSystem(),
                           ),
                           const SizedBox(height: 16),
 

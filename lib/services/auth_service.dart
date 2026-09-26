@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -13,19 +14,48 @@ class AuthService {
     : _firestore = firestore ?? FirebaseFirestore.instance,
       _hardwareService = hardwareService ?? HardwareService();
 
+  /// Domain used to derive the Firebase Auth address from a username.
+  ///
+  /// AppUser has no email field, and the address cannot be looked up in
+  /// Firestore before signing in, so it has to be derivable offline. The
+  /// `users` domain keeps these addresses out of real inboxes.
+  static const String authEmailDomain = String.fromEnvironment(
+    'AUTH_EMAIL_DOMAIN',
+    defaultValue: 'users.studyflow.app',
+  );
+
+  /// Firebase Auth address for a username.
+  ///
+  /// Must stay identical to tools/provision_auth.mjs, otherwise the account
+  /// that script created cannot be found at login time.
+  static String emailForUsername(String username) {
+    final normalized = username.trim().toLowerCase();
+    return '$normalized@$authEmailDomain';
+  }
+
+
   /// Strictly enforces device binding and account sharing prevention.
   /// NO developers or special usernames (e.g., 'abn') can bypass these checks.
-  Future<AppUser> secureLogin(String username) async {
+  Future<AppUser> secureLogin(String username, String password) async {
     final normalizedUsername = username.trim();
     if (normalizedUsername.isEmpty) {
       throw Exception('اسم المستخدم مطلوب');
+    }
+    if (password.isEmpty) {
+      throw Exception('كلمة المرور مطلوبة');
     }
     final appVersion = await _resolveAppVersion();
 
     // 1. GENERATE FINGERPRINT
     final currentFingerprint = await _hardwareService.getDeviceFingerprint();
 
-    // 2. BLACKLIST CHECK: Prevent blocked devices from logging in
+    // 2. ESTABLISH THE FIREBASE AUTH SESSION
+    // This has to come first. No Firestore read can succeed until
+    // request.auth is non-null, and getUserData() resolves the caller as
+    // users/{uid}, so the account's uid must be the users document id.
+    await _signIn(normalizedUsername, password);
+
+    // 3. BLACKLIST CHECK: Prevent blocked devices from logging in
     final blacklistDoc = await _firestore.collection('blacklisted_devices').doc(currentFingerprint).get();
     if (blacklistDoc.exists) {
       final reason = blacklistDoc.data()?['reason'] ?? 'هذا الجهاز محظور من الاستخدام بشكل نهائي';
@@ -91,6 +121,43 @@ class AuthService {
     await _updateLoginMetadata(doc.reference, appVersion);
     debugPrint('✅ [Security] Secure Login successful for: ${user.username}');
     return user;
+  }
+
+  /// Signs in with Firebase Auth before touching Firestore.
+  ///
+  /// Every rule in firestore.rules is gated on isAuthenticated(), and
+  /// getUserData() resolves the caller as users/{request.auth.uid}, so the
+  /// Firebase uid has to equal the users document id. tools/provision_auth.mjs
+  /// creates the accounts with exactly that uid; this method only has to find
+  /// the address derived from the username.
+  Future<void> _signIn(String username, String password) async {
+    final email = emailForUsername(username);
+    try {
+      final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      debugPrint(
+        '🔐 [Auth] Firebase session established for uid=${credential.user?.uid}',
+      );
+    } on FirebaseAuthException catch (e) {
+      switch (e.code) {
+        case 'invalid-email':
+        case 'user-not-found':
+        case 'wrong-password':
+        case 'invalid-credential':
+          throw Exception('اسم المستخدم أو كلمة المرور غير صحيحة.');
+        case 'user-disabled':
+          throw Exception('هذا الحساب معطّل. راجع مدير النظام.');
+        case 'too-many-requests':
+          throw Exception('محاولات كثيرة متتالية. انتظر قليلاً ثم حاول مجدداً.');
+        default:
+          throw Exception('تعذّر تسجيل الدخول: ${e.message ?? e.code}');
+      }
+    } catch (e) {
+      debugPrint('❌ [Auth] sign-in failed: $e');
+      throw Exception('تعذّر الاتصال بخادم المصادقة. تحقق من الاتصال.');
+    }
   }
 
   Future<String> _resolveAppVersion() async {
