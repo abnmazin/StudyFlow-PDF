@@ -696,6 +696,50 @@ class UniversityService {
     return null;
   }
 
+  /// The directory downloaded library PDFs are kept in.
+  Future<Directory> _downloadedDir() async {
+    final appDocDir = await getApplicationDocumentsDirectory();
+    final dir = Directory(p.join(appDocDir.path, 'university_pdfs'));
+    if (!await dir.exists()) await dir.create(recursive: true);
+    return dir;
+  }
+
+  /// The on-disk path a library file occupies once downloaded, whether or not
+  /// it still has a local database record.
+  String _downloadedPathFor(Directory dir, UniversityFile file) {
+    final name = file.storagePath.split('/').last;
+    return p.join(dir.path, name.isEmpty ? file.name : name);
+  }
+
+  /// Local path of an already-downloaded file, or null when it has to be
+  /// fetched. This asks the disk only, with no database and no network, so a
+  /// file that is present opens instantly and while offline even if its local
+  /// record is missing.
+  Future<String?> getDownloadedPath(UniversityFile file) async {
+    try {
+      final dir = await _downloadedDir();
+      final path = _downloadedPathFor(dir, file);
+      return await File(path).exists() ? path : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Basenames of every library PDF already sitting on disk, so a listing can
+  /// tell downloaded files from the rest without one database read per file.
+  Future<Set<String>> getDownloadedFileNames() async {
+    try {
+      final dir = await _downloadedDir();
+      final names = <String>{};
+      await for (final entity in dir.list()) {
+        if (entity is File) names.add(p.basename(entity.path));
+      }
+      return names;
+    } catch (_) {
+      return <String>{};
+    }
+  }
+
   // =========================================================================
   // SECTION 5: READING PROGRESS SYNC (CROSS-DEVICE)
   // =========================================================================

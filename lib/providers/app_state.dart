@@ -2542,12 +2542,15 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       // Hydrate state to update UI
       await _hydrateClassesFromIsar();
 
-      // Set active
+      // Set active.
+      // This must go through setActivePdf, not a direct assignment. Everything
+      // that makes an opened file live lives in there: the mutation listener,
+      // the lecturer session lookup, the student saved-code rejoin, and the
+      // university library auto-link. Assigning _activePdfId here bypassed all
+      // of them, so a file opened this way never received a sync code and the
+      // right panel showed an empty session card with no error anywhere.
       _activeClassId = doc.classId;
-      _activePdfId = doc.uuid;
-
-      _saveState();
-      _notify();
+      setActivePdf(doc.uuid);
     } catch (e) {
       debugPrint('Error loading PDF from path: $e');
     }

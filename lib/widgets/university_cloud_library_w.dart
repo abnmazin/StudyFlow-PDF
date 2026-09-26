@@ -641,6 +641,7 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
   String? _error;
   final Set<String> _downloadingHashes = {};
   final Set<String> _openingVideoIds = {};
+  final Set<String> _cachedHashes = {};
   bool _isUploading = false;
   String? _uploadError;
   bool _uploadSuccess = false;
@@ -649,6 +650,27 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
   void initState() {
     super.initState();
     _startStream();
+  }
+
+  /// Marks which library files already exist on disk. A file that is present
+  /// opens instantly and offline, so it is worth telling apart from one that
+  /// still has to be fetched. One directory listing covers the whole page.
+  Future<void> _refreshCachedHashes(List<UniversityFile> files) async {
+    final names = await widget.universityService.getDownloadedFileNames();
+    if (names.isEmpty && files.isEmpty) return;
+    final result = <String>{};
+    for (final f in files) {
+      final stored = f.storagePath.split('/').last;
+      if (names.contains(stored) || names.contains(f.name)) {
+        result.add(f.fileHash);
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _cachedHashes
+        ..clear()
+        ..addAll(result);
+    });
   }
 
   void _startStream() {
@@ -663,6 +685,7 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
                 _error = null;
               });
             }
+            unawaited(_refreshCachedHashes(files));
           },
           onError: (err) {
             if (mounted) {
@@ -704,20 +727,27 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
     setState(() => _downloadingHashes.add(hash));
 
     try {
-      // 1. Download to app documents directory
-      final localPath = await widget.universityService.downloadPdfToLocal(file);
+      // 1. Open the local copy when one already exists. This is the fast path
+      //    and the only one that works offline: the university library is in
+      //    Firestore and Supabase, so a file that was never downloaded cannot
+      //    be reached without a connection, while a cached one must never be
+      //    made to wait on the network. The disk is asked first because a
+      //    downloaded file stays openable even if its local record is gone.
+      var localPath = await widget.universityService.getDownloadedPath(file);
+      localPath ??= await widget.universityService.getCachedPath(hash);
+
+      // 2. Only download when there is genuinely nothing on disk.
+      if (localPath == null) {
+        localPath = await widget.universityService.downloadPdfToLocal(file);
+      }
 
       if (!mounted) return;
 
-      // 2. Import into StudyFlow library and open
+      // 3. Import into StudyFlow library and open
       await context.read<AppProvider>().loadPdfFromPath(localPath);
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('✅ تم التحميل والفتح'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      // No confirmation snackbar: the file opens either way, and announcing a
+      // download that mostly did not happen is noise.
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1209,7 +1239,13 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
                         style: TextStyle(
                           fontWeight: FontWeight.w700,
                           fontSize: 14,
-                          color: textPrimary,
+                          // Files already on disk read brighter than the ones
+                          // that still need fetching, so the ones that open
+                          // instantly and work offline are recognisable at a
+                          // glance.
+                          color: _cachedHashes.contains(file.fileHash)
+                              ? Colors.white
+                              : textPrimary,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
