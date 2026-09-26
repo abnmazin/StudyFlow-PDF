@@ -2318,6 +2318,11 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     // the same session with no manual code entry.
     if (hash != null && hash.isNotEmpty) {
       _autoLinkLibrarySession(hash);
+    } else {
+      debugPrint(
+        '📚 [LIBRARY] skip: the opened file has no content hash, so it cannot '
+        'be matched against the university library.',
+      );
     }
   }
 
@@ -2326,17 +2331,30 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// the library, leaving the existing lecturer/student flows untouched.
   Future<void> _autoLinkLibrarySession(String hash) async {
     final user = _currentUser;
-    if (user == null) return;
+    if (user == null) {
+      debugPrint('📚 [LIBRARY] skip: nobody is signed in (hash $hash).');
+      return;
+    }
 
     try {
       final service = UniversityService();
       // isReady also requires a universityId, so a user without one simply
       // falls through and the normal session flows apply.
       if (!service.isReady) await service.init(user);
-      if (!service.isReady) return;
+      if (!service.isReady) {
+        debugPrint(
+          '📚 [LIBRARY] skip: university service is not ready for '
+          '${user.username} (hash $hash).',
+        );
+        return;
+      }
 
       final file = await service.findUniversityFileByHash(hash);
-      if (file == null) return; // Not a library file.
+      if (file == null) {
+        // Not a library file, which is the normal case for a local PDF.
+        debugPrint('📚 [LIBRARY] skip: $hash is not in the university library.');
+        return;
+      }
 
       // syncCode is generated at upload time; the deterministic hash fallback
       // keeps pre-backfill files working with a stable code.
@@ -2350,11 +2368,20 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         pageCount: activePdf?.pageCount ?? file.totalPages ?? 0,
         uploaderUid: file.uploadedBy,
       );
-      if (ensured == null) return;
+      if (ensured == null) {
+        debugPrint('📚 [LIBRARY] failed: session $code could not be opened.');
+        return;
+      }
       _libraryLinkedHashes.add(hash);
 
       // An explicit code already chosen for this PDF wins over the library one.
-      if (_pdfSessionCodes[hash] != null) return;
+      if (_pdfSessionCodes[hash] != null) {
+        debugPrint(
+          '📚 [LIBRARY] $hash is already on session ${_pdfSessionCodes[hash]}, '
+          'keeping that instead of $ensured.',
+        );
+        return;
+      }
 
       if (user.isLecturer) {
         // Lecturers and admins own the session outright; no join handshake.
@@ -2655,12 +2682,10 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     // Re-hydrate state
     await _hydrateClassesFromIsar();
 
-    // Set active
+    // Set active. Through setActivePdf, which is where a file receives its
+    // mutation listener and its sync session.
     _activeClassId = classId;
-    _activePdfId = pdfUuid;
-
-    _saveState();
-    _notify();
+    setActivePdf(pdfUuid);
   }
 
   /// Ensures the "Quick Access" folder exists and is hydrated into the
@@ -2692,12 +2717,10 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       // Re-hydrate state
       await _hydrateClassesFromIsar();
 
-      // Set active
+      // Set active. Through setActivePdf, which is where a file receives its
+      // mutation listener and its sync session.
       _activeClassId = classId;
-      _activePdfId = doc.uuid;
-
-      _saveState();
-      _notify();
+      setActivePdf(doc.uuid);
     }
   }
 
