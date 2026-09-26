@@ -47,11 +47,41 @@ service cloud.firestore {
     //    - Users read/write only their own record
     //    - Create is allowed during registration
     // ================================================================
+    // ================================================================
+    // 1. USERS
+    //    - Read: only your own document
+    //    - Self-service create: only a fresh student profile for yourself
+    //    - Self-service update: only your own document, and role, isBanned,
+    //      universityId and username can never change through it
+    //    - Admin: may create, edit and delete any profile
+    //    The old blanket "update your own document" was a privilege escalation
+    //    hole. userRole() reads straight from this document, so a single
+    //    update({'role': 'admin'}) unlocked every admin-only rule in the
+    //    project, and update({'isBanned': false}) undid the ban. username is
+    //    pinned because the login address is derived from it, so changing it
+    //    would lock the account out of its own mailbox.
+    // ================================================================
     match /users/{userId} {
       allow read: if isAuthenticated() && request.auth.uid == userId;
-      allow create: if isAuthenticated() && request.auth.uid == userId;
-      allow update: if isAuthenticated() && request.auth.uid == userId;
-      allow delete: if isAuthenticated() && request.auth.uid == userId;
+
+      allow create: if isAuthenticated()
+        && request.auth.uid == userId
+        && request.resource.data.role == 'student'
+        && request.resource.data.isBanned == false
+        && !('universityId' in request.resource.data);
+
+      allow create: if isAuthenticated() && userRole() == 'admin';
+
+      allow update: if isAuthenticated()
+        && request.auth.uid == userId
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.isBanned == resource.data.isBanned
+        && request.resource.data.universityId == resource.data.universityId
+        && request.resource.data.username == resource.data.username;
+
+      allow update: if isAuthenticated() && userRole() == 'admin';
+
+      allow delete: if isAuthenticated() && userRole() == 'admin';
     }
 
     // ================================================================

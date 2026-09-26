@@ -3,9 +3,10 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-
+import '../firebase_options.dart';
 import '../models/app_user.dart';
 import 'hardware_service.dart';
 
@@ -211,68 +212,188 @@ class AuthService {
 
   /// Part of the ZERO-TOLERANCE policy. Bans the user and blacklists both devices.
   Future<void> _executeImmediateBan(DocumentReference userRef, AppUser user, String newFingerprint) async {
-    final batch = _firestore.batch();
     final now = FieldValue.serverTimestamp();
 
-    // 1. BAN USER
-    batch.update(userRef, {
-      'isBanned': true,
-      'banReason': 'مشاركة الحساب',
-      'bannedAt': now,
-    });
+    // The durable ban record is admin-only in firestore.rules, so a client
+    // cannot write it. Firestore batches are atomic, so keeping it in one
+    // batch would have meant the refusal of a single write discarded the rest
+    // and the caller surfaced a permission error instead of the ban notice.
+    // The access denial itself does not depend on any of this succeeding.
+    try {
+      final batch = _firestore.batch();
 
-    // 2. BLACKLIST PRIMARY DEVICE
-    if (user.primaryDeviceFingerprint != null) {
-      final oldRef = _firestore.collection('blacklisted_devices').doc(user.primaryDeviceFingerprint);
-      batch.set(oldRef, {
-        'fingerprint': user.primaryDeviceFingerprint,
+      // 1. BAN USER
+      batch.update(userRef, {
+        'isBanned': true,
+        'banReason': 'مشاركة الحساب',
+        'bannedAt': now,
+      });
+
+      // 2. BLACKLIST PRIMARY DEVICE
+      if (user.primaryDeviceFingerprint != null) {
+        final oldRef = _firestore
+            .collection('blacklisted_devices')
+            .doc(user.primaryDeviceFingerprint!);
+        batch.set(oldRef, {
+          'fingerprint': user.primaryDeviceFingerprint,
+          'uid': user.uid,
+          'username': user.username,
+          'displayName': user.displayName,
+          'reason': 'مشاركة الحساب (الجهاز الأصلي)',
+          'bannedAt': now,
+        });
+      }
+
+      // 3. BLACKLIST NEW DEVICE
+      final newRef = _firestore.collection('blacklisted_devices').doc(newFingerprint);
+      batch.set(newRef, {
+        'fingerprint': newFingerprint,
         'uid': user.uid,
         'username': user.username,
         'displayName': user.displayName,
-        'reason': 'مشاركة الحساب (الجهاز الأصلي)',
+        'reason': 'مشاركة الحساب (جهاز غير مصرح به)',
         'bannedAt': now,
       });
+
+      // 4. CREATE GLOBAL ANNOUNCEMENT
+      final announceRef = _firestore.collection('announcements').doc();
+      final banMsg =
+          'تم حظر ${user.displayName.isEmpty ? user.username : user.displayName} بسبب مشاركة حسابه مع جهاز آخر';
+      batch.set(announceRef, {
+        'title': '⚠️ تنبيه أمني',
+        'body': banMsg,
+        'type': 'security',
+        'authorName': 'System',
+        'targetAudience': 'all',
+        'createdAt': now,
+      });
+
+      await batch.commit();
+    } catch (e) {
+      debugPrint(
+        '⚠️ [Security] Durable ban record not written, the rules reserve it '
+        'for admins and an admin has to record it from the dashboard: $e',
+      );
     }
 
-    // 3. BLACKLIST NEW DEVICE
-    final newRef = _firestore.collection('blacklisted_devices').doc(newFingerprint);
-    batch.set(newRef, {
-      'fingerprint': newFingerprint,
-      'uid': user.uid,
-      'username': user.username,
-      'displayName': user.displayName,
-      'reason': 'مشاركة الحساب (جهاز غير مصرح به)',
-      'bannedAt': now,
-    });
+    // 5. LOG SECURITY EVENT
+    // The one write a client is still allowed to make, and the one worth
+    // keeping even when the record above is refused, so it gets its own batch.
+    try {
+      await _firestore.collection('security_events').add({
+        'type': 'account_sharing_detected',
+        'uid': user.uid,
+        'username': user.username,
+        'displayName': user.displayName,
+        'oldFingerprint': user.primaryDeviceFingerprint,
+        'newFingerprint': newFingerprint,
+        'action': 'ban_both_devices',
+        'timestamp': now,
+      });
+    } catch (e) {
+      debugPrint('⚠️ [Security] Could not append the security event: $e');
+    }
 
-    // 4. LOG SECURITY EVENT
-    final eventRef = _firestore.collection('security_events').doc();
-    batch.set(eventRef, {
-      'type': 'account_sharing_detected',
-      'uid': user.uid,
-      'username': user.username,
-      'displayName': user.displayName,
-      'oldFingerprint': user.primaryDeviceFingerprint,
-      'newFingerprint': newFingerprint,
-      'action': 'ban_both_devices',
-      'timestamp': now,
-    });
-
-    // 5. CREATE GLOBAL ANNOUNCEMENT
-    final announceRef = _firestore.collection('announcements').doc();
-    final banMsg = 'تم حظر ${user.displayName.isEmpty ? user.username : user.displayName} بسبب مشاركة حسابه مع جهاز آخر';
-    batch.set(announceRef, {
-      'title': '⚠️ تنبيه أمني',
-      'body': banMsg,
-      'type': 'security',
-      'authorName': 'System',
-      'targetAudience': 'all',
-      'createdAt': now,
-    });
-
-    await batch.commit();
-    debugPrint('🛡️ [Security] Immediate ban executed for ${user.username}. Both devices blacklisted.');
-    debugPrint('📢 [Security] Security announcement published for ${user.username}');
+    debugPrint(
+      '🚫 [Security] Device mismatch handled for ${user.username}. The login is '
+      'refused whether or not the durable record could be written.',
+    );
   }
 
+  /// Creates a Firebase Auth account from the admin UI, with a password the
+  /// admin chooses, and writes the matching users/{uid} profile.
+  ///
+  /// Firebase Auth passwords are write-only, so no client API can set another
+  /// person's password. What a client *can* do is create an account, and
+  /// createUserWithEmailAndPassword signs the caller in as the new user. On
+  /// the default app instance that would sign the admin out mid-task, so the
+  /// account is created on a secondary FirebaseApp with the same options: its
+  /// session is independent, and signing out of it leaves the admin's own
+  /// session untouched.
+  ///
+  /// Note the account's address is derived from the username, so the username
+  /// is what the new owner types at the login screen, not the address.
+  Future<String> provisionAccount({
+    required String username,
+    required String password,
+    required String displayName,
+    required String role,
+    String? universityId,
+  }) async {
+    if (username.trim().isEmpty) {
+      throw Exception('اسم المستخدم مطلوب');
+    }
+    if (password.length < 6) {
+      throw Exception('كلمة المرور يجب ألا تقل عن 6 أحرف');
+    }
+
+    final email = emailForUsername(username);
+
+    const provisioningAppName = 'account-provisioning';
+    final existing = Firebase.apps
+        .where((a) => a.name == provisioningAppName)
+        .toList();
+    final provisioningApp = existing.isNotEmpty
+        ? existing.first
+        : await Firebase.initializeApp(
+            name: provisioningAppName,
+            options: DefaultFirebaseOptions.currentPlatform,
+          );
+    final auth = FirebaseAuth.instanceFor(app: provisioningApp);
+
+    String? uid;
+    try {
+      final credential = await auth.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      uid = credential.user?.uid;
+      if (uid == null || uid.isEmpty) {
+        throw Exception('لم يُرجع Firebase معرّفًا للمستخدم الجديد.');
+      }
+
+      // authProvisioned marks the profile as backed by a real Auth account,
+      // which is what separates it from the orphaned documents the old
+      // add-user form produced, where a random document id could never sign in.
+      await _firestore.collection('users').doc(uid).set({
+        'username': username.trim(),
+        'displayName': displayName.trim().isEmpty ? username.trim() : displayName.trim(),
+        'role': role,
+        'authProvisioned': true,
+        'createdAt': FieldValue.serverTimestamp(),
+        // primaryDeviceFingerprint is intentionally left unset. The first
+        // person to sign in binds their own device, and a second one from
+        // anywhere else is what the sharing policy is for.
+        if (universityId != null && universityId.isNotEmpty)
+          'universityId': universityId,
+      });
+    } on FirebaseAuthException catch (e) {
+      throw Exception(_describeProvisioningError(e.code));
+    } finally {
+      // Never leave the provisioning instance holding a session.
+      try {
+        await auth.signOut();
+      } catch (_) {}
+    }
+
+    debugPrint('✅ [Auth] Provisioned $email as uid=$uid with role=$role');
+    return uid;
   }
+
+  String _describeProvisioningError(String code) {
+    switch (code) {
+      case 'email-already-exists':
+        return 'يوجد حساب بهذا اسم المستخدم بالفعل.';
+      case 'invalid-email':
+        return 'اسم المستخدم لا ينتج بريدًا صالحًا.';
+      case 'weak-password':
+        return 'كلمة المرور ضعيفة، استخدم 6 أحرف على الأقل.';
+      case 'operation-not-allowed':
+        return 'يجب تفعيل Email/Password في Authentication ← Sign-in method.';
+      case 'network-request-failed':
+        return 'تعذّر الاتصال بخادم المصادقة. تحقق من الاتصال.';
+      default:
+        return 'تعذّر إنشاء الحساب: $code';
+    }
+  }
+}

@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
+import '../services/auth_service.dart';
 
 // ─── DEVELOPER DASHBOARD VIEW (ADMIN CONTROL PANEL UPGRADE) ─────────────────
 
@@ -823,6 +824,8 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
   }) {
     final nameCtrl = TextEditingController(text: currentName);
     final dispCtrl = TextEditingController(text: currentDisplayName);
+    final passCtrl = TextEditingController();
+    final passConfCtrl = TextEditingController();
     String role = currentRole ?? 'student';
     final isEdit = id != null;
     // Get the current admin's universityId to auto-assign
@@ -833,9 +836,10 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(isEdit ? 'تعديل بيانات المستخدم' : 'إضافة مستخدم جديد'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
             TextField(
               controller: nameCtrl,
               decoration: InputDecoration(
@@ -873,6 +877,60 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
               ],
               onChanged: (v) => role = v!,
             ),
+            if (!isEdit) ...[
+              const SizedBox(height: 16),
+              TextField(
+                controller: passCtrl,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: 'كلمة المرور',
+                  helperText:
+                      '6 أحرف على الأقل. سلّمها للمستخدم ليدخل بها الآن.',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: passConfCtrl,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: 'تأكيد كلمة المرور',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.amber.withOpacity(0.25)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(
+                      LucideIcons.fingerprint,
+                      size: 16,
+                      color: Colors.amber,
+                    ),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'يُنشأ الحساب بدون بصمة. أول من يسجّل الدخول يربط جهازه '
+                        'به، وأي جهاز ثانٍ لنفس الحساب يُرفض.',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             if (adminUniversityId != null && adminUniversityId.isNotEmpty) ...[
               const SizedBox(height: 16),
               Container(
@@ -897,6 +955,7 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
               ),
             ],
           ],
+          ),
         ),
         actions: [
           TextButton(
@@ -908,6 +967,39 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
               final uname = nameCtrl.text.trim();
               final dname = dispCtrl.text.trim();
               if (uname.isEmpty) return;
+
+              if (!isEdit) {
+                // Validate before touching the network, and refuse a
+                // mismatch rather than provisioning an account whose owner
+                // can never reproduce the password.
+                final pass = passCtrl.text;
+                if (pass.length < 6) {
+                  _toast(ctx, 'كلمة المرور يجب ألا تقل عن 6 أحرف');
+                  return;
+                }
+                if (pass != passConfCtrl.text) {
+                  _toast(ctx, 'كلمتا المرور غير متطابقتين');
+                  return;
+                }
+
+                try {
+                  final uid = await AuthService().provisionAccount(
+                        username: uname,
+                        password: pass,
+                        displayName: dname,
+                        role: role,
+                        universityId: adminUniversityId,
+                      );
+                  if (!context.mounted) return;
+                  Navigator.pop(ctx);
+                  _toast(context, 'تم إنشاء الحساب $uname ويمكنه الدخول الآن');
+                  debugPrint('🎉 [Dashboard] Provisioned $uname as uid=$uid');
+                } catch (e) {
+                  if (!context.mounted) return;
+                  _toast(context, 'تعذّر إنشاء الحساب: $e', isError: true);
+                }
+                return;
+              }
 
               if (isEdit) {
                 debugPrint('👤 Updating user: $id');
@@ -939,6 +1031,16 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
             child: Text(isEdit ? 'حفظ التعديلات' : 'إضافة'),
           ),
         ],
+      ),
+    );
+  }
+
+  void _toast(BuildContext context, String message, {bool isError = false}) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.redAccent : null,
       ),
     );
   }
