@@ -74,6 +74,22 @@ There are **no tests** (`test/widget_test.dart` is empty). Do not attempt to run
 
 `lib/widgets/pdf_viewer_widget_w.dart` is a part-based file split into 6 parts: `_actions`, `_print`, `_gestures`, `_style`, `_overlay`, `_dashboard`. Edits to the PDF viewer may need to go in the correct part file.
 
+## Knowledge Graph (Graphify)
+
+A local, deterministic code knowledge graph lives at `graphify-out/graph.json` (graphifyy v0.9.69):
+
+```bash
+graphify extract . --code-only   # rebuild locally: no API key, no embeddings (13.7s for this repo)
+graphify update .                # incremental sync (run after every git pull)
+graphify query "who writes reading progress to Firestore"
+graphify path "app_state.dart::AppProvider" "file_manager_service.dart::FileManagerService" --undirected
+graphify explain "lib/services/university_service.dart::UniversityService"
+```
+
+Current snapshot: 2309 nodes · 3021 edges · 86 communities · 100% `EXTRACTED`. Reported under `graphify-out/GRAPH_REPORT.md` (visual: `graph.html`). Cline reaches it through the `graphify` MCP server (`query_graph`, `get_node`, `get_neighbors`, `shortest_path`); agent protocol in `.clinerules/graphify.md`.
+
+Limits (verified): Dart uses a **regex** extractor (not tree-sitter) → `part` files/mixins need manual checks; `pubspec.yaml` is not a package manifest → no Flutter dependency edges; `firestore.rules` is unparsed; generated `lib/models/isar_models.g.dart` and platform folders are excluded by `.graphifyignore`.
+
 ## Conventions
 
 - **State management**: Provider only — `ChangeNotifier` + `Selector`/`select` for granular rebuilds

@@ -1,5 +1,13 @@
 # Architecture Map
 
+## Knowledge Graph Tooling (2026-09-27)
+- **Graphify** (`graphifyy` v0.9.69) builds a local, deterministic code graph at `graphify-out/graph.json` — no vector DB, no embeddings, no API key for the code path. Snapshot: **2309 nodes / 3021 edges / 86 communities, 100% `EXTRACTED`**, built from commit `001b0cd0` in 13.7s.
+- Edge vocabulary present in this repo: `defines` (1963), `references` (442), `imports` (439), `inherits` (93), `contains` (41), `configures` (11), `exports` (9), `extends` (8), `imports_from` (6), `mixes_in` (4), `reads_from` (2), `implements` (1).
+- Community hubs (navigation entry points): `app_state.dart` (242 nodes), `pdf_viewer_widget_w.dart` (112), `viewer_right_panel.dart` (108), `isar_models.dart` (89), `file_manager_service.dart` (65), `sync_service.dart` (62).
+- Cline integration: `graphify` MCP server (stdio) exposing `query_graph`, `get_node`, `get_neighbors`, `shortest_path`; agent protocol in `.clinerules/graphify.md` (+ section #6 in `.cursorrules`).
+- A graph-derived finding worth noting: `explain` shows `UniversityService` still referenced by `university_hub.dart` (L38) even though that file is documented here as deprecated — the widget is still wired into the app.
+- Coverage caveats: Dart extraction is **regex-based**, not tree-sitter, so `part`/`part of` relationships (the 6 viewer parts) and mixin/extension edges are partial; `pubspec.yaml` and `firestore.rules` are outside the graph — treat the tables below as the source of truth for Firestore/RLS.
+
 ## UX Fixes & Migration (Phase 3/4 Extension)
 - **`_migrateAdminAccount()`** (`lib/widgets/pdf_viewer_widget_dashboard.dart`): Temporary function that creates a `universities/southern_technical_university` Firestore document and updates the current user's profile with `universityId` and `role: 'admin'`. Triggered by a "Setup University" button visible only to `developer`-role users without a `universityId`.
 - **Dashboard Layout Optimization** (`lib/widgets/pdf_viewer_widget_dashboard.dart`): Rearranged the landing page for university users to a side-by-side layout on wide screens. **Quick Actions** are now positioned below the Library, and the **"Add Task" button** (plus icon) has been restored to the "مهام اليوم" section.

@@ -1,0 +1,24 @@
+# Graphify scope: local-first code graph (option A: --code-only, no API key).
+# .gitignore is honored automatically; these patterns only exclude more.
+
+# Generated Dart code (521 KB Isar output) - would dominate the graph with junk nodes
+lib/models/isar_models.g.dart
+
+# Platform boilerplate / toolchains, not part of the app architecture
+android/
+ios/
+macos/
+linux/
+windows/
+web/
+assets/
+
+# Configs the parser cannot model (not a code or doc extension)
+firestore.rules
+installer.iss
+
+# Binary / installer clutter in the repo root
+*.ico
+*.dll
+*.exe
+*.pdf

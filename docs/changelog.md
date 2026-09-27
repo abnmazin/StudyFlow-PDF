@@ -1,5 +1,48 @@
 # Changelog
 
+## [2026-09-27] Graphify Knowledge Graph (Local-First Code Graph)
+
+### Feature
+Added a **local, deterministic knowledge graph** of the codebase using Graphify
+(`graphifyy` v0.9.69 by Graphify-Labs), so an AI coding agent can query
+architecture/dependencies instead of reading files one by one. No vector store,
+no embeddings, no API key on the code path — every edge is tagged `EXTRACTED`.
+
+### What Was Built
+- `graphify-out/graph.json` — **2309 nodes, 3021 edges, 86 communities** (chain: `defines` 1963, `references` 442, `imports` 439, `inherits` 93, `contains` 41, `configures` 11, `exports` 9, `extends` 8, `imports_from` 6, `mixes_in` 4, `reads_from` 2, `implements` 1)
+- `graphify-out/GRAPH_REPORT.md` + `graph.html` (visual) + `graphify-out/cache/` (SHA256 incremental cache)
+- Extraction stats: detect 0.9s · AST 9.1s · build 2.5s · cluster 0.7s · export 0.3s — **13.7s total**, 0 input/0 output tokens
+- Built from commit `001b0cd0`; 78 code files detected, 14 docs skipped by `--code-only`
+
+### Files Added / Modified
+- **NEW `.graphifyignore`** — excludes generated `lib/models/isar_models.g.dart` (521 KB of Isar codegen that would dominate the graph), platform boilerplate (`android/ ios/ macos/ linux/ windows/ web/`), `assets/`, `firestore.rules`, `installer.iss`, root binaries
+- **NEW `.clinerules/graphify.md`** — graph-first retrieval protocol for Cline + documented coverage limits
+- **NEW MCP server** in `%APPDATA%\Code\User\globalStorage\saoudrizwan.claude-dev\settings\cline_mcp_settings.json` → `graphify` (stdio, `graphify-mcp.exe`) with `query_graph`, `get_node`, `get_neighbors`, `shortest_path` auto-approved (read-only)
+- `.cursorrules` — new `# === GRAPHIFY KNOWLEDGE GRAPH ===` section (#6 Graph-First Context Retrieval)
+- `.gitignore` — `graphify-out/` ignored (machine-local; force-add `graph.json` only to share)
+- `docs/AGENTS.md`, `docs/architecture_map.md` — documented the tool and its limits
+
+### Verification (real output, not assumed assumptions)
+- `graphify explain "lib/services/university_service.dart::UniversityService"` → degree 7, referenced by `university_cloud_library_w.dart` L622, `college_collection_widget.dart` L55, `university_folder_view.dart` L44, `university_hub.dart` L38, `university_video_dialog.dart` L29, `university_upload_dialog.dart` L29 — correctly proves `university_hub.dart` is still wired in code despite being documented as deprecated
+- `graphify path "app_state.dart::AppProvider" "file_manager_service.dart::FileManagerService" --undirected` → `AppProvider --inherits--> ChangeNotifier <--inherits-- FileManagerService` (2 hops)
+- Scope audit: 77 source files in graph; `isar_models.g.dart`, `build/`, `.dart_tool/`, `android/`, `windows/`, `node_modules/` → **0 nodes each**
+
+### Known Limitations / Caveats
+- **Dart is parsed by a regex extractor, not tree-sitter** (`graphify/extractors/dart.py`). `part`/`part of` files, mixins and extensions are only partially captured — verify manually
+- `pubspec.yaml` is not a recognized package manifest → no Flutter dependency edges (`pubspec.lock` / `dart pub deps` instead)
+- `firestore.rules` is not a supported extension → Firestore security rules are absent from the graph
+- Node names collide across files (e.g. `UniversityService` = 7 nodes) → qualify lookups as `<path>::<Symbol>`
+- `graphify path` is direction-biased; `--undirected` is needed for symmetric relationships like a shared superclass
+- Docs stay outside the graph under `--code-only`; adding them needs `graphify extract ./docs --backend gemini` (spends API credits)
+- Graph is a snapshot: requires `graphify update .` after `git pull` or it answers from stale code
+
+### Failed Attempts (do not repeat)
+- `uv tool install` first failed and left a **malformed tool** (`%APPDATA%\uv\tools\graphifyy\Scripts\python.exe` was 0 bytes) because the harness killed the process when uv's progress output hit stderr. Fix: `Remove-Item %APPDATA%\uv\tools\graphifyy -Recurse -Force`, then re-run the install with its output redirected to a file (via `cmd /c ... > log 2>&1`) instead of piping into PowerShell
+- `graphify extract --help` is not supported (prints only `Run 'graphify --help' for full usage.`) — flags must be read from source/README
+- Diskless `winget install` refreshed PATH only for new shells; use `%LOCALAPPDATA%\Microsoft\WinGet\Links\uv.exe` and `%USERPROFILE%\.local\bin\graphify.exe` absolute paths until the terminal is restarted
+
+---
+
 ## [2026-09-11] MCP Integration: Third AI Provider (Personal Gemini Account)
 
 ### Feature

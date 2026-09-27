@@ -141,3 +141,7 @@ ui-debug.log
 *adminsdk*.json
 *firebase-adminsdk*.json
 tools/*.csv
+
+# Graphify knowledge graph output (machine-local; see .clinerules/graphify.md)
+# Force-add graph.json + GRAPH_REPORT.md only if the team should share a graph.
+graphify-out/

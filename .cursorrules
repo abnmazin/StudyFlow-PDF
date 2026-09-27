@@ -60,3 +60,19 @@ At the very end of EVERY successful interaction or code modification, you must e
 - NEVER insert UI code, loops (`for`, `if`), or widget properties (like `border: Border.all`) directly into the class body. All executable logic and UI MUST be inside a method (e.g., `build()`, `initState()`, or a custom widget builder).
 - When applying patches, DOUBLE-CHECK the block scope ({ }). Do not break the Dart syntax tree by pasting code in the wrong indentation level.
 - If the terminal/linter outputs syntax errors (e.g., "Expected a function body"), YOU MUST NOT IGNORE THEM. Read the exact terminal output, admit the mistake, and fix the scope before finishing your response. DO NOT fake or hallucinate a successful error check.
+
+# === GRAPHIFY KNOWLEDGE GRAPH ===
+
+# 6. Graph-First Context Retrieval
+- A local knowledge graph of this codebase exists at `graphify-out/graph.json`, built with
+  `graphify extract . --code-only` (no API key, no embeddings, every edge `EXTRACTED`).
+- Full rules and known coverage limits: `.clinerules/graphify.md` (read it before relying on the graph).
+- BEFORE reading more than two files to answer an architecture/dependency question, query the graph:
+  - MCP tools: `query_graph`, `get_node`, `get_neighbors`, `shortest_path`
+  - CLI: `graphify query "..."` · `graphify path "A" "B" --undirected` · `graphify explain "path::Symbol"`
+- Ambiguity is expected (e.g. `UniversityService` matches 7 nodes) — always qualify with `<path>::<Symbol>`.
+- Trust `EXTRACTED` edges; verify `INFERRED`/`AMBIGUOUS` against the source file.
+- Dart here is parsed by a regex extractor (not tree-sitter): double-check `part`/`part of` files,
+  mixins and extensions manually. `pubspec.yaml` and `firestore.rules` are NOT in the graph.
+- Keep the graph fresh: `graphify update .` after `git pull`; `graphify extract . --code-only` after large edits.
+  A stale graph produces confident wrong answers.
