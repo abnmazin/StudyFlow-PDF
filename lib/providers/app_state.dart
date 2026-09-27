@@ -251,6 +251,11 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   bool _needsSave = false;
   bool _isSyncing = false;
   bool get isSyncing => _isSyncing;
+  /// Bumped whenever the open file or its session code changes. A sync that
+  /// resumes after an await and finds a different generation was started for a
+  /// file the user has already left, and its code and hash no longer describe
+  /// the same document, so it must not write anything.
+  int _syncGeneration = 0;
   bool _notifyScheduled = false;
   String? _lastMutationListenerHash;
   bool _isJoiningSession = false;
@@ -301,10 +306,17 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// Fetch → Purge orphans → Download missing → Upload new.
   /// Has a cooldown guard so concurrent calls are silently ignored.
   Future<void> performBidirectionalSync({bool silent = false}) async {
+    // Everything this run needs is captured in one synchronous block, before
+    // the first await. Reading the file and the session code separately, with
+    // network calls in between, let a run pick up the code of the file the
+    // user just opened and pair it with the hash of the one they just left.
     final activePdf = this.activePdf;
     if (activePdf == null) return;
     final fileHash = activePdf.fileHash;
     if (fileHash == null) return;
+    final sessionCode = currentSessionCode;
+    if (sessionCode == null) return;
+    final generation = _syncGeneration;
 
     // ── Phase 1: Wait for any pending buffered syncs to finish ────────────────
     if (_pendingSyncs[fileHash] == true) {
@@ -314,60 +326,63 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       await Future.delayed(const Duration(milliseconds: 500));
     }
 
+    // The lock is taken here, synchronously, rather than further down. Setting
+    // it after the awaits above let every caller that arrived in that window
+    // pass the check, which is how several syncs of one session ended up
+    // writing at the same time.
     if (_isSyncing) {
       debugPrint('DEBUG: Sync already in progress – skipping.');
       return;
     }
-
-    // --- STEP 0: ACCOUNT VALIDITY CHECK ---
-    if (_currentUser != null) {
-      final exists = await _syncService.checkUserExists(_currentUser!.uid);
-      if (!exists) {
-        _handleForceLogout('هذا الحساب لم يعد موجوداً في النظام (تم حذفه).');
-        return;
-      }
-    }
-
-    // --- STEP 0.1: SESSION KICK FALLBACK ---
-    final code = this.currentSessionCode;
-    if (code != null && _currentUser != null) {
-      final isKicked = await _syncService.isUserKicked(
-        code,
-        _currentUser!.username,
-      );
-      if (isKicked) {
-        _handleForceLogout(
-          'لقد تم إنهاء وصولك لهذه الجلسة من قبل المالك (Manual Check)',
-        );
-        return;
-      }
-    }
-
-    // Always lock sync flow, even for silent runs, to avoid overlapping
-    // reconciliation writes that can duplicate/override annotations.
     _isSyncing = true;
     if (!silent) {
       _notify();
     }
 
     try {
-      final sessionCode = currentSessionCode;
-      if (sessionCode == null) {
-        _isSyncing = false;
-        if (!silent) {
-          _notify();
+      // --- STEP 0: ACCOUNT VALIDITY CHECK ---
+      if (_currentUser != null) {
+        final exists = await _syncService.checkUserExists(_currentUser!.uid);
+        if (!exists) {
+          _handleForceLogout('هذا الحساب لم يعد موجوداً في النظام (تم حذفه).');
+          return;
         }
+      }
+
+      // --- STEP 0.1: SESSION KICK FALLBACK ---
+      if (_currentUser != null) {
+        final isKicked = await _syncService.isUserKicked(
+          sessionCode,
+          _currentUser!.username,
+        );
+        if (isKicked) {
+          _handleForceLogout(
+            'لقد تم إنهاء وصولك لهذه الجلسة من قبل المالك (Manual Check)',
+          );
+          return;
+        }
+      }
+
+      // The user may have moved on during those calls. The captured pair
+      // belongs to a file that is no longer open, so writing it now would mix
+      // one document's annotations into another's session.
+      if (generation != _syncGeneration) {
+        debugPrint(
+          'DEBUG: Sync for $sessionCode/$fileHash abandoned: the open file or '
+          'its session changed while the checks were running.',
+        );
         return;
       }
+
       debugPrint(
-        'DEBUG: performBidirectionalSync started (session: $sessionCode, hash: ${activePdf.fileHash}, silent: $silent).',
+        'DEBUG: performBidirectionalSync started (session: $sessionCode, hash: $fileHash, silent: $silent).',
       );
 
       _purgeLockedLocalOnlyHighlightsForPdf(activePdf);
 
       final result = await _syncService.syncExistingAnnotations(
         code: sessionCode,
-        fileHash: activePdf.fileHash ?? '',
+        fileHash: fileHash,
         highlights: activePdf.highlights,
         comments: activePdf.comments,
         locallyDeletedIds: _locallyDeletedIds[fileHash] ?? {},
@@ -454,12 +469,14 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       }
 
       // ── Collaborative Trash Sync ──────────────────────────────────────────
-      if (currentSessionCode != null) {
+      // The captured code is reused rather than re-read, so the trash lands in
+      // the same session as the annotations this run just reconciled.
+      if (generation == _syncGeneration) {
         try {
           final unsyncedTrash = await _fileManager
               .getUnsyncedDeletedAnnotations();
           final remoteTrashJson = await _syncService.syncDeletedAnnotations(
-            sessionCode: currentSessionCode!,
+            sessionCode: sessionCode,
             localUnsynced: unsyncedTrash.map((e) => e.toJson()).toList(),
           );
 
@@ -991,6 +1008,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     final pdf = activePdf;
     if (pdf != null && pdf.fileHash != null) {
       final hash = pdf.fileHash!;
+      // A different code for the same file is a different session, so any sync
+      // still running for the previous one must not be allowed to write.
+      if (code != _pdfSessionCodes[hash]) _syncGeneration++;
       if (code == null) {
         _pdfSessionCodes.remove(hash);
       } else {
@@ -2231,6 +2251,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     // so the listener restarts properly for the new file
     if (_activePdfId != id) {
       _lastMutationListenerHash = null;
+      // A sync in flight belongs to the file being left behind.
+      _syncGeneration++;
     }
     _activePdfId = id;
     _isMobileOpen = false;
@@ -2375,11 +2397,14 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       _libraryLinkedHashes.add(hash);
 
       // An explicit code already chosen for this PDF wins over the library one.
-      if (_pdfSessionCodes[hash] != null) {
-        debugPrint(
-          '📚 [LIBRARY] $hash is already on session ${_pdfSessionCodes[hash]}, '
-          'keeping that instead of $ensured.',
-        );
+      final existing = _pdfSessionCodes[hash];
+      if (existing != null) {
+        if (existing != ensured) {
+          debugPrint(
+            '📚 [LIBRARY] $hash is on session $existing, so the library code '
+            '$ensured was not applied.',
+          );
+        }
         return;
       }
 

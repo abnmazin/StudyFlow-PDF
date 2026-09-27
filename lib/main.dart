@@ -7,6 +7,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:pdfrx/pdfrx.dart';
 import 'package:provider/provider.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:cross_file/cross_file.dart';
@@ -179,6 +180,17 @@ Future<void> _bootstrapApp(List<String> args) async {
     }
 
     await _initializeSupabase();
+
+    // pdfrx is used for reading page counts, which happens before the first
+    // file is rendered. Without this its cache directory stays null and every
+    // openFile call throws, so documents imported with a page count of zero.
+    // Dismiss the PDFium notice as well: it only fires in debug and this build
+    // renders through Syncfusion, not pdfrx.
+    try {
+      await pdfrxFlutterInitialize(dismissPdfiumWasmWarnings: true);
+    } catch (e) {
+      debugPrint('⚠️ [Boot] pdfrx init skipped: $e');
+    }
 
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
