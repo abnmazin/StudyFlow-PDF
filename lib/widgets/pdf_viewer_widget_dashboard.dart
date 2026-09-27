@@ -614,59 +614,30 @@ Widget _buildHeroSection(BuildContext context, AppProvider app) {
         ],
       ),
       const SizedBox(height: 24),
-      const JoinSessionBar(),
+      const AcademicInfoBar(),
     ],
   );
 }
 
-class JoinSessionBar extends StatefulWidget {
-  const JoinSessionBar({super.key});
+class AcademicInfoBar extends StatelessWidget {
+  const AcademicInfoBar({super.key});
 
-  @override
-  State<JoinSessionBar> createState() => _JoinSessionBarState();
-}
-
-class _JoinSessionBarState extends State<JoinSessionBar> {
-  final TextEditingController _codeController = TextEditingController();
-
-  @override
-  void dispose() {
-    _codeController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _handleJoin() async {
-    final provider = context.read<AppProvider>();
-    final code = _codeController.text.trim();
-
-    if (code.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('يرجى إدخال كود الدرس.')));
-      return;
-    }
-
-    final error = await provider.joinSession(code);
-    if (!mounted) return;
-
-    if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error), backgroundColor: Colors.redAccent),
-      );
-    } else {
-      _codeController.clear();
-      // Success is handled by AppProvider (switching to the PDF)
-    }
-  }
+  /// Shown when the Firestore document has no enrolment data yet. The app is
+  /// built for a single college, so these are the real values rather than
+  /// placeholders; once `college`/`department`/`stage` are written to the user
+  /// document the per-user values take over.
+  static const _fallbackCollege = 'الكلية التقنية الهندسية';
+  static const _fallbackDepartment = 'تقنيات الهندسة الكهربائية';
+  static const _fallbackStage = 'المرحلة الرابعة';
 
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppProvider>();
     final isDarkMode = app.isDarkMode;
-    final isJoining = app.isJoiningSession;
+    final user = app.currentUser;
 
     return Container(
-      height: 64,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         color: isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
         borderRadius: BorderRadius.circular(16),
@@ -674,62 +645,101 @@ class _JoinSessionBarState extends State<JoinSessionBar> {
           color: isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
         ),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          const Icon(
-            LucideIcons.radio,
-            color: Color(0xFF2563EB), // Default blue-600
+          Icon(
+            LucideIcons.graduationCap,
+            size: 20,
+            color: isDarkMode ? const Color(0xFF60A5FA) : const Color(0xFF2563EB),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 14),
           Expanded(
-            child: TextField(
-              controller: _codeController,
-              enabled: !isJoining,
-              decoration: InputDecoration(
-                hintText: 'أدخل كود الدرس للبدء...',
-                hintStyle: TextStyle(
-                  color: isDarkMode
-                      ? const Color(0xFF64748B)
-                      : const Color(0xFF94A3B8),
-                ),
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.zero,
-              ),
-              style: TextStyle(color: isDarkMode ? Colors.white : Colors.black),
-              onSubmitted: (_) => _handleJoin(),
+            child: _InfoCell(
+              isDarkMode: isDarkMode,
+              label: 'الكلية',
+              value: user?.college?.trim().isNotEmpty == true
+                  ? user!.college!.trim()
+                  : _fallbackCollege,
             ),
           ),
-          const SizedBox(width: 8),
-          ElevatedButton(
-            onPressed: isJoining ? null : _handleJoin,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF3B82F6),
-              foregroundColor: Colors.white,
-              elevation: 0,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
+          _Divider(isDarkMode: isDarkMode),
+          Expanded(
+            child: _InfoCell(
+              isDarkMode: isDarkMode,
+              label: 'القسم',
+              value: user?.department?.trim().isNotEmpty == true
+                  ? user!.department!.trim()
+                  : _fallbackDepartment,
             ),
-            child: isJoining
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: const RepaintBoundary(
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    ),
-                  )
-                : const Text(
-                    'انضمام الآن',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
+          ),
+          _Divider(isDarkMode: isDarkMode),
+          Expanded(
+            child: _InfoCell(
+              isDarkMode: isDarkMode,
+              label: 'المرحلة',
+              value: user?.stage?.trim().isNotEmpty == true
+                  ? user!.stage!.trim()
+                  : _fallbackStage,
+            ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _Divider extends StatelessWidget {
+  const _Divider({required this.isDarkMode});
+
+  final bool isDarkMode;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 1,
+      height: 34,
+      margin: const EdgeInsets.symmetric(horizontal: 12),
+      color: isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+    );
+  }
+}
+
+class _InfoCell extends StatelessWidget {
+  const _InfoCell({
+    required this.isDarkMode,
+    required this.label,
+    required this.value,
+  });
+
+  final bool isDarkMode;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: isDarkMode ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: isDarkMode ? Colors.white : const Color(0xFF0F172A),
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
     );
   }
 }

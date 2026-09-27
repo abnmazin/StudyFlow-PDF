@@ -9,6 +9,11 @@ class AppUser {
   final String? primaryDeviceFingerprint;
   final String? primaryDeviceId;
   final String? universityId; // NEW: Links user to their university
+  /// Academic enrolment. Optional because most accounts predate them, and a
+  /// missing value must not be shown as an empty gap in the interface.
+  final String? college;
+  final String? department;
+  final String? stage;
   final bool isBanned;
   final String? banReason;
   final DateTime? bannedAt;
@@ -22,6 +27,9 @@ class AppUser {
     this.primaryDeviceFingerprint,
     this.primaryDeviceId,
     this.universityId, // NEW
+    this.college,
+    this.department,
+    this.stage,
     this.isBanned = false,
     this.banReason,
     this.bannedAt,
@@ -37,6 +45,9 @@ class AppUser {
       primaryDeviceFingerprint: data['primaryDeviceFingerprint']?.toString(),
       primaryDeviceId: data['primaryDeviceId']?.toString(),
       universityId: data['universityId']?.toString(), // NEW
+      college: data['college']?.toString(),
+      department: data['department']?.toString(),
+      stage: data['stage']?.toString(),
       isBanned: data['isBanned'] ?? false,
       banReason: data['banReason']?.toString(),
       bannedAt: data['bannedAt'] is Timestamp
@@ -55,6 +66,9 @@ class AppUser {
       'primaryDeviceFingerprint': primaryDeviceFingerprint,
       'primaryDeviceId': primaryDeviceId,
       'universityId': universityId, // NEW
+      'college': college,
+      'department': department,
+      'stage': stage,
       'isBanned': isBanned,
       'banReason': banReason,
       'bannedAt': bannedAt != null ? Timestamp.fromDate(bannedAt!) : null,
@@ -71,6 +85,9 @@ class AppUser {
       primaryDeviceFingerprint: json['primaryDeviceFingerprint'] as String?,
       primaryDeviceId: json['primaryDeviceId'] as String?,
       universityId: json['universityId'] as String?, // NEW
+      college: json['college'] as String?,
+      department: json['department'] as String?,
+      stage: json['stage'] as String?,
       isBanned: json['isBanned'] as bool? ?? false,
       banReason: json['banReason'] as String?,
       bannedAt: json['bannedAt'] != null
@@ -95,6 +112,9 @@ class AppUser {
     String? primaryDeviceFingerprint,
     String? primaryDeviceId,
     String? universityId,
+    String? college,
+    String? department,
+    String? stage,
     bool? isBanned,
     String? banReason,
     DateTime? bannedAt,
@@ -109,6 +129,9 @@ class AppUser {
           primaryDeviceFingerprint ?? this.primaryDeviceFingerprint,
       primaryDeviceId: primaryDeviceId ?? this.primaryDeviceId,
       universityId: universityId ?? this.universityId,
+      college: college ?? this.college,
+      department: department ?? this.department,
+      stage: stage ?? this.stage,
       isBanned: isBanned ?? this.isBanned,
       banReason: banReason ?? this.banReason,
       bannedAt: bannedAt ?? this.bannedAt,
