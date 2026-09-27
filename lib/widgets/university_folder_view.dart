@@ -139,8 +139,13 @@ class _FolderViewScreenState extends State<FolderViewScreen> {
     setState(() => _downloadingFiles.add(file.fileHash));
 
     try {
-      // Ensure file is cached locally (download if needed)
-      final cached = await _universityService.getCachedPath(file.fileHash);
+      // The download directory is asked before the database record, because a
+      // PDF sitting in university_pdfs is already the right bytes and must
+      // open instantly and offline. Checking only the local record meant a
+      // file downloaded from anywhere else was fetched again on every open.
+      final onDisk = await _universityService.getDownloadedPath(file);
+      final cached =
+          onDisk ?? await _universityService.getCachedPath(file.fileHash);
       if (cached == null) {
         await _universityService.downloadPdf(file);
       }
@@ -166,6 +171,12 @@ class _FolderViewScreenState extends State<FolderViewScreen> {
 
         // Restore reading progress
         _restoreReadingProgress(file);
+      } else if (cached != null) {
+        // The file is on disk but was never registered locally, which is the
+        // normal state for a PDF fetched from the cloud library panel. It has
+        // to be imported before it can be opened, otherwise the tap does
+        // nothing at all and says nothing.
+        await app.loadPdfFromPath(cached);
       }
     } catch (e) {
       if (mounted) {

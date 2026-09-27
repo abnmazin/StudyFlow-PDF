@@ -533,6 +533,19 @@ class UniversityService {
   Future<String> downloadPdfToLocal(UniversityFile file) async {
     _ensureInitialized();
 
+    // A copy already on disk is byte for byte what the network would deliver,
+    // so this is the one place that has to be idempotent. Two callers, or the
+    // same caller twice, must never fetch the same PDF again, and callers that
+    // forgot to check first could not be trusted not to.
+    final existing = await getDownloadedPath(file);
+    if (existing != null) {
+      debugPrint(
+        '📥 [UniversityService] ${file.name} is already on disk, not '
+        'fetching again: $existing',
+      );
+      return existing;
+    }
+
     debugPrint(
       '📥 [UniversityService] downloadPdfToLocal: ${file.name} '
       '(hash: ${file.fileHash.substring(0, 16)}...)',
@@ -719,8 +732,14 @@ class UniversityService {
     try {
       final dir = await _downloadedDir();
       final path = _downloadedPathFor(dir, file);
-      return await File(path).exists() ? path : null;
-    } catch (_) {
+      if (await File(path).exists()) return path;
+      debugPrint(
+        '📥 [UniversityService] no copy of ${file.name} at $path '
+        '(looked for "${file.storagePath.split('/').last}").',
+      );
+      return null;
+    } catch (e) {
+      debugPrint('📥 [UniversityService] disk lookup for ${file.name} failed: $e');
       return null;
     }
   }

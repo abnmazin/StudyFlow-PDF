@@ -642,6 +642,7 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
   final Set<String> _downloadingHashes = {};
   final Set<String> _openingVideoIds = {};
   final Set<String> _cachedHashes = {};
+  final Map<String, String> _localPaths = {};
   bool _isUploading = false;
   String? _uploadError;
   bool _uploadSuccess = false;
@@ -733,25 +734,23 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
       //    be reached without a connection, while a cached one must never be
       //    made to wait on the network. The disk is asked first because a
       //    downloaded file stays openable even if its local record is gone.
-      var localPath = await widget.universityService.getDownloadedPath(file);
+      //
+      //    _localPaths remembers what this page already opened. A file that was
+      //    just fetched is in that map, so tapping it again cannot re-fetch it
+      //    even if the two disk lookups below were to miss.
+      var localPath = _localPaths[hash];
+      localPath ??= await widget.universityService.getDownloadedPath(file);
       localPath ??= await widget.universityService.getCachedPath(hash);
 
-      // 2. Only download when there is genuinely nothing on disk. A miss here
-      //    means a file already on this machine is being fetched again, so it
-      //    is worth saying which of the two lookups came up empty.
+      // 2. Only download when there is genuinely nothing on disk.
       if (localPath == null) {
-        final stored = await widget.universityService.getDownloadedPath(file);
-        debugPrint(
-          stored == null
-              ? '📥 [Library] ${file.name} is not in university_pdfs; fetching.'
-              : '📥 [Library] ${file.name} is in university_pdfs but the '
-                    'document record is gone; importing from disk.',
-        );
         localPath = await widget.universityService.downloadPdfToLocal(file);
-        if (mounted) {
-          setState(() => _cachedHashes.add(file.fileHash));
-        }
       }
+      _localPaths[hash] = localPath;
+
+      // The file is on disk either way, so the listing should say so now
+      // rather than at the mercy of the next stream event.
+      if (mounted) setState(() => _cachedHashes.add(hash));
 
       if (!mounted) return;
 
