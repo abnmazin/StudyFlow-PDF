@@ -2383,24 +2383,23 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         return;
       }
 
-      if (user.isLecturer) {
-        // Lecturers and admins own the session outright; no join handshake.
+      // A library session belongs to whoever uploaded the file, not to whoever
+      // opens it, so a lecturer or admin gets no ownership immunity here. Every
+      // opener has to register as a participant, otherwise the membership
+      // check in the kick listener reads an empty participants list and drops
+      // them the moment the file opens.
+      final error = await _syncService.joinSession(
+        code: ensured,
+        uid: user.uid,
+        username: user.username,
+        studentFileHash: hash,
+        studentPageCount: activePdf?.pageCount ?? file.totalPages ?? 0,
+      );
+      if (error == null) {
         setSessionCode(ensured);
-        debugPrint('📚 [LIBRARY] Lecturer linked to session $ensured.');
+        debugPrint('📚 [LIBRARY] Linked to session $ensured.');
       } else {
-        final error = await _syncService.joinSession(
-          code: ensured,
-          uid: user.uid,
-          username: user.username,
-          studentFileHash: hash,
-          studentPageCount: activePdf?.pageCount ?? file.totalPages ?? 0,
-        );
-        if (error == null) {
-          setSessionCode(ensured);
-          debugPrint('📚 [LIBRARY] Student joined session $ensured.');
-        } else {
-          debugPrint('📚 [LIBRARY] Auto-join failed for $ensured: $error');
-        }
+        debugPrint('📚 [LIBRARY] Auto-join failed for $ensured: $error');
       }
     } catch (e) {
       // Never block opening a PDF on this; manual code entry still works.

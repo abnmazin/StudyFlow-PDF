@@ -736,9 +736,21 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
       var localPath = await widget.universityService.getDownloadedPath(file);
       localPath ??= await widget.universityService.getCachedPath(hash);
 
-      // 2. Only download when there is genuinely nothing on disk.
+      // 2. Only download when there is genuinely nothing on disk. A miss here
+      //    means a file already on this machine is being fetched again, so it
+      //    is worth saying which of the two lookups came up empty.
       if (localPath == null) {
+        final stored = await widget.universityService.getDownloadedPath(file);
+        debugPrint(
+          stored == null
+              ? '📥 [Library] ${file.name} is not in university_pdfs; fetching.'
+              : '📥 [Library] ${file.name} is in university_pdfs but the '
+                    'document record is gone; importing from disk.',
+        );
         localPath = await widget.universityService.downloadPdfToLocal(file);
+        if (mounted) {
+          setState(() => _cachedHashes.add(file.fileHash));
+        }
       }
 
       if (!mounted) return;
@@ -1242,10 +1254,21 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
                           // Files already on disk read brighter than the ones
                           // that still need fetching, so the ones that open
                           // instantly and work offline are recognisable at a
-                          // glance.
+                          // glance. Colors.white alone was invisible here
+                          // because textPrimary is already white in dark mode,
+                          // so the two states needed to differ in weight and
+                          // colour, not colour alone.
                           color: _cachedHashes.contains(file.fileHash)
                               ? Colors.white
-                              : textPrimary,
+                              : textMuted,
+                          shadows: _cachedHashes.contains(file.fileHash)
+                              ? const [
+                                  Shadow(
+                                    color: Color(0x66FFFFFF),
+                                    blurRadius: 8,
+                                  ),
+                                ]
+                              : null,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
