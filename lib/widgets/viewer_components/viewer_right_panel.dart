@@ -67,8 +67,13 @@ class StudyFlowRightPanel extends StatelessWidget {
   final Function(PdfItem) onPrint;
   final VoidCallback onToggleDarkMode;
 
+  /// Drives the slide. The panel stays mounted while closed so the AI chat
+  /// keeps its history between openings; only the width animates.
+  final bool isOpen;
+
   const StudyFlowRightPanel({
     super.key,
+    required this.isOpen,
     required this.isSettingsMode,
     required this.activeTool,
     required this.activeColor,
@@ -108,6 +113,43 @@ class StudyFlowRightPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final fullWidth = ResponsiveBreakpoints.rightPanelWidth(
+      MediaQuery.sizeOf(context).width,
+    );
+    final edgeBorder = isDarkMode
+        ? const Color(0xFF334155)
+        : scheme.outlineVariant;
+
+    return ClipRect(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        // Animating the width is what makes the sibling rail drift instead of
+        // blinking, and the panel is revealed from the right edge rather than
+        // jumping into place.
+        width: isOpen ? fullWidth : 0,
+        decoration: BoxDecoration(
+          // On the animating edge, so the border is drawn for the whole
+          // animation and not only once the panel has reached full width.
+          border: Border(left: BorderSide(color: edgeBorder, width: 1.5)),
+        ),
+        child: IgnorePointer(
+          // Keeps the collapsed panel from swallowing taps meant for the
+          // viewer underneath it.
+          ignoring: !isOpen,
+          child: OverflowBox(
+            alignment: Alignment.centerRight,
+            minWidth: fullWidth,
+            maxWidth: fullWidth,
+            child: _buildContent(context),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
     final appProvider = context.watch<AppProvider>();
     final isGlobalEditing = appProvider.activeEditingCommentId != null;
     final isTextEditing = isGlobalEditing && activeTool == ToolType.text;
@@ -173,14 +215,10 @@ class StudyFlowRightPanel extends StatelessWidget {
     final textMuted = isDarkMode
         ? const Color(0xFF94A3B8)
         : scheme.onSurfaceVariant;
-    final panelWidth = ResponsiveBreakpoints.rightPanelWidth(
-      MediaQuery.sizeOf(context).width,
-    );
 
     if (!isSettingsMode && activeTool == ToolType.cursor) {
       return TextFieldTapRegion(
         child: Container(
-          width: panelWidth,
           decoration: BoxDecoration(
             color: panelBg,
             border: Border(left: BorderSide(color: panelBorder, width: 1.5)),
@@ -209,7 +247,6 @@ class StudyFlowRightPanel extends StatelessWidget {
 
     return TextFieldTapRegion(
       child: Container(
-        width: panelWidth,
         decoration: BoxDecoration(
           color: panelBg,
           border: Border(left: BorderSide(color: panelBorder, width: 1.5)),

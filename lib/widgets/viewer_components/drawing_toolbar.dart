@@ -13,8 +13,6 @@ class DrawingToolbar extends StatelessWidget {
   final bool isDarkMode;
   final int colorPaletteIndex;
   final VoidCallback? onTogglePalette;
-  final VoidCallback? onUndo;
-  final VoidCallback? onRedo;
   final VoidCallback? onDeleteSelected;
   final ValueChanged<double> onStrokeWidthChanged;
   final ValueChanged<Color> onColorChanged;
@@ -32,8 +30,6 @@ class DrawingToolbar extends StatelessWidget {
     required this.isDarkMode,
     this.colorPaletteIndex = 0,
     this.onTogglePalette,
-    this.onUndo,
-    this.onRedo,
     this.onDeleteSelected,
     required this.onStrokeWidthChanged,
     required this.onColorChanged,
@@ -72,20 +68,6 @@ class DrawingToolbar extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 _buildToolChip(
-                  icon: LucideIcons.penTool,
-                  label: 'قلم',
-                  tool: ToolType.pen,
-                  iconColor: iconColor,
-                ),
-                const SizedBox(width: 6),
-                _buildToolChip(
-                  icon: LucideIcons.highlighter,
-                  label: 'تظليل',
-                  tool: ToolType.highlight,
-                  iconColor: iconColor,
-                ),
-                const SizedBox(width: 6),
-                _buildToolChip(
                   icon: LucideIcons.arrowUpRight,
                   label: 'سهم',
                   tool: ToolType.arrow,
@@ -106,57 +88,48 @@ class DrawingToolbar extends StatelessWidget {
                   iconColor: iconColor,
                 ),
                 const SizedBox(width: 6),
-                _buildToolChip(
-                  icon: LucideIcons.eraser,
-                  label: 'ممحاة',
-                  tool: ToolType.eraser,
-                  iconColor: iconColor,
+                const SizedBox(width: 10),
+                Container(width: 1, height: 28, color: borderColor),
+                const SizedBox(width: 10),
+                Icon(LucideIcons.minus, size: 16, color: iconColor),
+                SizedBox(
+                  width: 120,
+                  child: SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: 3,
+                      thumbShape: const RoundSliderThumbShape(
+                        enabledThumbRadius: 7,
+                      ),
+                      overlayShape: const RoundSliderOverlayShape(
+                        overlayRadius: 12,
+                      ),
+                      activeTrackColor: activeBlue,
+                      inactiveTrackColor: iconColor.withOpacity(0.2),
+                      thumbColor: activeBlue,
+                    ),
+                    child: Slider(
+                      // Only shapes reach this toolbar, so the pen/highlighter
+                      // width range no longer applies here.
+                      value: strokeWidth.clamp(1.0, 12.0),
+                      min: 1.0,
+                      max: 12.0,
+                      divisions: 11,
+                      onChanged: onStrokeWidthChanged,
+                    ),
+                  ),
                 ),
-                if (activeTool != ToolType.eraser) ...[
-                  const SizedBox(width: 10),
-                  Container(width: 1, height: 28, color: borderColor),
-                  const SizedBox(width: 10),
-                  Icon(LucideIcons.minus, size: 16, color: iconColor),
-                  SizedBox(
-                    width: 120,
-                    child: SliderTheme(
-                      data: SliderTheme.of(context).copyWith(
-                        trackHeight: 3,
-                        thumbShape: const RoundSliderThumbShape(
-                          enabledThumbRadius: 7,
-                        ),
-                        overlayShape: const RoundSliderOverlayShape(
-                          overlayRadius: 12,
-                        ),
-                        activeTrackColor: activeBlue,
-                        inactiveTrackColor: iconColor.withOpacity(0.2),
-                        thumbColor: activeBlue,
-                      ),
-                      child: Slider(
-                        value: strokeWidth.clamp(
-                          activeTool == ToolType.highlight ? 1.0 : 1.0,
-                          activeTool == ToolType.highlight ? 30.0 : 12.0,
-                        ),
-                        min: activeTool == ToolType.highlight ? 1.0 : 1.0,
-                        max: activeTool == ToolType.highlight ? 30.0 : 12.0,
-                        divisions: activeTool == ToolType.highlight ? 29 : 11,
-                        onChanged: onStrokeWidthChanged,
-                      ),
-                    ),
+                Icon(LucideIcons.plus, size: 16, color: iconColor),
+                const SizedBox(width: 6),
+                Text(
+                  strokeWidth.toStringAsFixed(1),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: iconColor,
                   ),
-                  Icon(LucideIcons.plus, size: 16, color: iconColor),
-                  const SizedBox(width: 6),
-                  Text(
-                    strokeWidth.toStringAsFixed(1),
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: iconColor,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Container(width: 1, height: 28, color: borderColor),
-                ],
+                ),
+                const SizedBox(width: 10),
+                Container(width: 1, height: 28, color: borderColor),
                 const SizedBox(width: 10),
                 _buildColorPills(),
                 if (showFill && onFillColorChanged != null) ...[
@@ -164,24 +137,6 @@ class DrawingToolbar extends StatelessWidget {
                   Container(width: 1, height: 28, color: borderColor),
                   const SizedBox(width: 10),
                   _buildFillControl(iconColor),
-                ],
-                if (activeTool == ToolType.eraser) ...[
-                  const SizedBox(width: 10),
-                  Container(width: 1, height: 28, color: borderColor),
-                  const SizedBox(width: 10),
-                  _buildActionButton(
-                    icon: LucideIcons.undo2,
-                    label: 'تراجع',
-                    color: const Color(0xFF3B82F6),
-                    onTap: onUndo,
-                  ),
-                  const SizedBox(width: 6),
-                  _buildActionButton(
-                    icon: LucideIcons.redo2,
-                    label: 'تقدم',
-                    color: const Color(0xFF3B82F6),
-                    onTap: onRedo,
-                  ),
                 ],
                 if (activeTool == ToolType.select && onDeleteSelected != null) ...[
                   const SizedBox(width: 10),
@@ -262,28 +217,10 @@ class DrawingToolbar extends StatelessWidget {
       Color(0xFF6366F1),
     ];
 
-    final basicHighlight = const [
-      Color(0xFFFFFFFF),
-      Color(0xFFFBEA7A),
-      Color(0xFFA4D376),
-      Color(0xFF84C0F2),
-      Color(0xFFF59EB9),
-      Color(0xFFC9A6D8),
-    ];
-    final extendedHighlight = const [
-      Color(0xFFFFFFFF),
-      Color(0xFFFBD38D),
-      Color(0xFFA7F3D0),
-      Color(0xFFBAE6FD),
-      Color(0xFFFECDD3),
-      Color(0xFFDDD6FE),
-    ];
-
-    final colors = switch (activeTool) {
-      ToolType.highlight => colorPaletteIndex == 0 ? basicHighlight : extendedHighlight,
-      ToolType.eraser => const <Color>[],
-      _ => colorPaletteIndex == 0 ? basicColors : extendedColors,
-    };
+    // Only the three shapes live here, so the highlighter's pastel palettes
+    // and the eraser's empty palette moved to ViewerSideRail.
+    final colors =
+        colorPaletteIndex == 0 ? basicColors : extendedColors;
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -312,7 +249,7 @@ class DrawingToolbar extends StatelessWidget {
             ),
           );
         }),
-        if (colors.isNotEmpty && onTogglePalette != null) ...[
+        if (onTogglePalette != null) ...[
           const SizedBox(width: 4),
           GestureDetector(
             onTap: onTogglePalette,
@@ -320,11 +257,9 @@ class DrawingToolbar extends StatelessWidget {
               width: 22,
               height: 22,
               decoration: BoxDecoration(
-                color: activeTool == ToolType.highlight
+                color: colorPaletteIndex == 0
                     ? const Color(0xFFA78BFA)
-                    : (colorPaletteIndex == 0
-                        ? const Color(0xFFA78BFA)
-                        : const Color(0xFF34D399)),
+                    : const Color(0xFF34D399),
                 shape: BoxShape.circle,
               ),
               child: Icon(

@@ -1,4 +1,4 @@
-import 'package:pdfrx/pdfrx.dart' hide PdfDocument;
+﻿import 'package:pdfrx/pdfrx.dart' hide PdfDocument;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/gestures.dart';
@@ -20,6 +20,7 @@ import '../models/print_settings.dart'; // NEW
 import '../services/print_service.dart'; // NEW
 import 'viewer_components/viewer_toolbar.dart';
 import 'viewer_components/viewer_right_panel.dart';
+import 'viewer_components/viewer_side_rail.dart';
 import 'viewer_components/drawing_toolbar.dart';
 import 'viewer_components/print_dialog.dart';
 import '../painters/highlight_painter.dart';
@@ -539,8 +540,12 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
         _floatingToolbarSelectedTool = null;
         _isFloatingToolbarOpen = false;
       }
-      // Update floating toolbar icon for drawing tools (shortcuts, toolbar selection)
-      if (nextTool.isDrawing) {
+      // Only the three geometric shapes live in the floating toolbar, so only
+      // they may claim it. Without this, picking the pen/eraser from the side
+      // rail would re-render the toolbar around a tool it has no chip for.
+      if (nextTool == ToolType.arrow ||
+          nextTool == ToolType.rectangle ||
+          nextTool == ToolType.circle) {
         _floatingToolbarSelectedTool = nextTool;
       }
     });
@@ -717,7 +722,6 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
       isSecondary: true,
     );
 
-    final selectedAnnotationTool = _selectedAnnotationTool(pdf);
     final selectedShapeAuthor = _selectedShapeAuthor(pdf, app);
     final selectedCommentAuthor = _selectedCommentAuthor(pdf, app);
     final panelTool = _panelTool(pdf);
@@ -841,20 +845,14 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
               children: [
                 // 1. Toolbar (Top)
                 StudyFlowToolbar(
-                  activeTool: _tool,
-                  selectedAnnotationTool: selectedAnnotationTool,
                   selectedShapeAuthor: selectedShapeAuthor,
                   selectedCommentAuthor: selectedCommentAuthor,
                   isRightPanelOpen: _isRightPanelOpen,
                   isSplitMode: isSplitMode,
                   isDarkMode: isDarkMode,
-                  isSearchVisible: _isSearchVisible,
                   isSyncing: app.isSyncing,
                   activePdf: pdf,
                   pdfController: primaryController,
-                  onToolChanged: (t) {
-                    _activateTool(t);
-                  },
                   onToggleRightPanel: () {
                     setState(() {
                       _isRightPanelOpen = !_isRightPanelOpen;
@@ -868,44 +866,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                     app.toggleSplitMode();
                     _forcePdfRelayout();
                   },
-                  onToggleSettings: () {
-                    setState(() {
-                      _isSettingsMode = !_isSettingsMode;
-                      if (_isSettingsMode) {
-                        _isRightPanelOpen = true;
-                      }
-                    });
-                    _forcePdfRelayout();
-                  },
-                  onToggleSearch: () {
-                    setState(() {
-                      _isSearchVisible = !_isSearchVisible;
-                      if (_isSearchVisible) {
-                        Future.delayed(const Duration(milliseconds: 100), () {
-                          _searchFocusNode.requestFocus();
-                        });
-                      }
-                    });
-                  },
                   onSyncPressed: _syncNow,
-                  onAddBookmark: (pdf) => _showAddBookmarkDialog(pdf),
-                  floatingToolbarSelectedTool: _floatingToolbarSelectedTool,
-                  isFloatingToolbarOpen: _isFloatingToolbarOpen,
-                  onFloatingToolbarToggle: (tool) {
-                    setState(() {
-                      if (tool != null) {
-                        _floatingToolbarSelectedTool = tool;
-                        _isFloatingToolbarOpen = true;
-                      } else {
-                        _isFloatingToolbarOpen = false;
-                      }
-                    });
-                    if (tool != null) {
-                      _activateTool(tool);
-                    } else {
-                      _activateTool(ToolType.cursor);
-                    }
-                  },
                 ),
                 // 2. Main Content Area (Viewer + Right Panel)
                 Expanded(
@@ -1052,13 +1013,10 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                               });
                                               _activateTool(tool);
                                             },
-                                            activeColor: panelTool == ToolType.highlight
-                                                ? _highlightColor
-                                                : panelTool == ToolType.text
-                                                    ? _textColor
-                                                    : (panelTool == ToolType.pen
-                                                        ? _penColor
-                                                        : _shapeStrokeColor),
+                                            // Only the three shapes reach this
+                                            // toolbar, so the per-tool colour
+                                            // lookup is enough.
+                                            activeColor: _colorForTool(panelTool),
                                             strokeWidth:
                                                 _toolStrokeWidths[panelTool] ??
                                                 2.0,
@@ -1102,14 +1060,6 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                                         });
                                                       }
                                                     : null,
-                                            onUndo: () {
-                                              final app = context.read<AppProvider>();
-                                              _handleUndo(app, _editingCommentId);
-                                            },
-                                            onRedo: () {
-                                              final app = context.read<AppProvider>();
-                                              _handleRedo(app, _editingCommentId);
-                                            },
                                             onDeleteSelected:
                                                 (_selectedHighlightId != null &&
                                                         panelTool ==
@@ -1594,88 +1544,157 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                               ),
                       ),
 
-                      // 3. Right Panel (Side-by-Side)
-                      if (_isRightPanelOpen)
-                        StudyFlowRightPanel(
-                          isSettingsMode: _isSettingsMode,
-                          activeTool: panelTool,
-                          activeColor: _colorForTool(panelTool),
-                          strokeWidth: _toolStrokeWidths[panelTool] ?? 2.0,
-                          fontSize: _fontSize,
-                          fontFamily: _textFontFamily,
-                          fontOptions: const [
-                            'Segoe UI',
-                            'Times New Roman',
-                            'Tahoma',
-                            'Arial',
-                            'Noto Naskh Arabic',
-                            'Noto Sans Arabic',
-                            'Amiri',
-                          ],
-                          isBold: _isBold,
-                          activeTabIndex: _rightPanelTabIndex,
+                      // 3. Slim Tool Rail — always visible, so it drifts left
+                      //    when the right panel opens instead of vanishing.
+                      if (ViewerSideRail.shouldShow(
+                        MediaQuery.sizeOf(context).width,
+                      ))
+                        ViewerSideRail(
                           isDarkMode: isDarkMode,
+                          activeTool: panelTool,
+                          isSearchVisible: _isSearchVisible,
+                          isFloatingToolbarOpen: _isFloatingToolbarOpen,
+                          floatingToolbarSelectedTool:
+                              _floatingToolbarSelectedTool,
                           activePdf: pdf,
                           pdfController: primaryController,
-                          selectedHighlightId: _selectedHighlightId,
-                          onToolChanged: (t) => _activateTool(t),
-                          onColorChanged: _onColorChanged,
-                          onStrokeWidthChanged: _onStrokeWidthChanged,
-                          onFontSizeChanged: (v) {
-                            setState(() => _fontSize = v);
-                            if (_tool == ToolType.text)
-                              _updateCurrentEditingText();
-                          },
-                          onFontFamilyChanged: (family) {
-                            setState(() => _textFontFamily = family);
-                            if (_tool == ToolType.text)
-                              _updateCurrentEditingText();
-                          },
-                          onBoldChanged: (v) {
-                            setState(() => _isBold = v);
-                            if (_tool == ToolType.text)
-                              _updateCurrentEditingText();
-                          },
-                          isLatex: _isLatex,
-                          onLatexChanged: (v) {
-                            setState(() => _isLatex = v);
-                            if (_tool == ToolType.text)
-                              _updateCurrentEditingText();
-                          },
-                          showBorder: _showBorder,
-                          borderColor: _borderColor,
-                          bgColor: panelTool == ToolType.text
-                              ? _textBgColor
-                              : _shapeFillColor,
-                          onShowBorderChanged: (v) {
-                            setState(() => _showBorder = v);
-                            if (_tool == ToolType.text)
-                              _updateCurrentEditingText();
-                          },
-                          onBorderColorChanged: (c) {
-                            setState(() => _borderColor = c);
-                            if (_tool == ToolType.text)
-                              _updateCurrentEditingText();
-                          },
-                          onBgColorChanged: (c) {
+                          onToggleSearch: () {
                             setState(() {
-                              if (_tool == ToolType.text) {
-                                _textBgColor = c;
-                                _updateCurrentEditingText();
-                              } else if (_tool == ToolType.rectangle ||
-                                  _tool == ToolType.circle) {
-                                _shapeFillColor = c;
+                              _isSearchVisible = !_isSearchVisible;
+                              if (_isSearchVisible) {
+                                Future.delayed(
+                                  const Duration(milliseconds: 100),
+                                  () {
+                                    _searchFocusNode.requestFocus();
+                                  },
+                                );
                               }
                             });
                           },
-                          onTabChanged: (i) =>
-                              setState(() => _rightPanelTabIndex = i),
-                          onAiChatHoverChanged: _setAiChatPointerHover,
-                          onAddPage: (pdf) => _addPage(pdf),
-                          onDeletePage: (pdf) => _deleteCurrentPage(pdf),
-                          onPrint: (pdf) => _showPrintDialog(pdf),
-                          onToggleDarkMode: () => app.toggleDarkMode(),
+                          onToolChanged: (t) {
+                            _activateTool(t);
+                          },
+                          onFloatingToolbarToggle: (tool) {
+                            setState(() {
+                              if (tool != null) {
+                                _floatingToolbarSelectedTool = tool;
+                                _isFloatingToolbarOpen = true;
+                              } else {
+                                // The selected tool is deliberately kept so the
+                                // rail keeps showing the last drawing tool.
+                                _isFloatingToolbarOpen = false;
+                              }
+                            });
+                            if (tool != null) {
+                              _activateTool(tool);
+                            } else {
+                              _activateTool(ToolType.cursor);
+                            }
+                          },
+                          onAddBookmark: (p) => _showAddBookmarkDialog(p),
+                          strokeWidth: _toolStrokeWidths[panelTool] ?? 2.0,
+                          onStrokeWidthChanged: _onStrokeWidthChanged,
+                          penColor: _penColor,
+                          highlightColor: _highlightColor,
+                          onColorChanged: _onColorChanged,
+                          colorPaletteIndex: _colorPaletteIndex,
+                          onTogglePalette: () {
+                            setState(() {
+                              _colorPaletteIndex = (_colorPaletteIndex + 1) % 2;
+                            });
+                          },
+                          onUndo: () {
+                            final app = context.read<AppProvider>();
+                            _handleUndo(app, _editingCommentId);
+                          },
+                          onRedo: () {
+                            final app = context.read<AppProvider>();
+                            _handleRedo(app, _editingCommentId);
+                          },
                         ),
+
+                      // 4. Right Panel (Side-by-Side) — animates its own width
+                      StudyFlowRightPanel(
+                        isOpen: _isRightPanelOpen,
+                        isSettingsMode: _isSettingsMode,
+                        activeTool: panelTool,
+                        activeColor: _colorForTool(panelTool),
+                        strokeWidth: _toolStrokeWidths[panelTool] ?? 2.0,
+                        fontSize: _fontSize,
+                        fontFamily: _textFontFamily,
+                        fontOptions: const [
+                          'Segoe UI',
+                          'Times New Roman',
+                          'Tahoma',
+                          'Arial',
+                          'Noto Naskh Arabic',
+                          'Noto Sans Arabic',
+                          'Amiri',
+                        ],
+                        isBold: _isBold,
+                        activeTabIndex: _rightPanelTabIndex,
+                        isDarkMode: isDarkMode,
+                        activePdf: pdf,
+                        pdfController: primaryController,
+                        selectedHighlightId: _selectedHighlightId,
+                        onToolChanged: (t) => _activateTool(t),
+                        onColorChanged: _onColorChanged,
+                        onStrokeWidthChanged: _onStrokeWidthChanged,
+                        onFontSizeChanged: (v) {
+                          setState(() => _fontSize = v);
+                          if (_tool == ToolType.text)
+                            _updateCurrentEditingText();
+                        },
+                        onFontFamilyChanged: (family) {
+                          setState(() => _textFontFamily = family);
+                          if (_tool == ToolType.text)
+                            _updateCurrentEditingText();
+                        },
+                        onBoldChanged: (v) {
+                          setState(() => _isBold = v);
+                          if (_tool == ToolType.text)
+                            _updateCurrentEditingText();
+                        },
+                        isLatex: _isLatex,
+                        onLatexChanged: (v) {
+                          setState(() => _isLatex = v);
+                          if (_tool == ToolType.text)
+                            _updateCurrentEditingText();
+                        },
+                        showBorder: _showBorder,
+                        borderColor: _borderColor,
+                        bgColor: panelTool == ToolType.text
+                            ? _textBgColor
+                            : _shapeFillColor,
+                        onShowBorderChanged: (v) {
+                          setState(() => _showBorder = v);
+                          if (_tool == ToolType.text)
+                            _updateCurrentEditingText();
+                        },
+                        onBorderColorChanged: (c) {
+                          setState(() => _borderColor = c);
+                          if (_tool == ToolType.text)
+                            _updateCurrentEditingText();
+                        },
+                        onBgColorChanged: (c) {
+                          setState(() {
+                            if (_tool == ToolType.text) {
+                              _textBgColor = c;
+                              _updateCurrentEditingText();
+                            } else if (_tool == ToolType.rectangle ||
+                                _tool == ToolType.circle) {
+                              _shapeFillColor = c;
+                            }
+                          });
+                        },
+                        onTabChanged: (i) =>
+                            setState(() => _rightPanelTabIndex = i),
+                        onAiChatHoverChanged: _setAiChatPointerHover,
+                        onAddPage: (pdf) => _addPage(pdf),
+                        onDeletePage: (pdf) => _deleteCurrentPage(pdf),
+                        onPrint: (pdf) => _showPrintDialog(pdf),
+                        onToggleDarkMode: () => app.toggleDarkMode(),
+                      ),
                     ],
                   ),
                 ),

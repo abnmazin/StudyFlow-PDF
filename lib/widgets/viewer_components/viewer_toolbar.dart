@@ -8,28 +8,20 @@ import '../../models/models.dart';
 import '../../providers/app_state.dart';
 
 class StudyFlowToolbar extends StatefulWidget {
-  final ToolType activeTool;
-  final ToolType? selectedAnnotationTool;
+  // NOTE: the search, drawing-tool and bookmark controls used to be props of
+  // this bar. They now live on ViewerSideRail, so the props were removed
+  // instead of being left in place as dead wiring.
   final String? selectedShapeAuthor;
   final String? selectedCommentAuthor;
   final bool isRightPanelOpen;
   final bool isSplitMode;
   final bool isDarkMode;
-  final bool isSearchVisible;
   final PdfItem? activePdf;
   final PdfViewerController pdfController;
-  final ValueChanged<ToolType> onToolChanged;
   final VoidCallback onToggleRightPanel;
   final VoidCallback onToggleSplitMode;
-  final VoidCallback onToggleSettings;
-  final VoidCallback onToggleSearch;
   final VoidCallback onSyncPressed;
   final bool isSyncing;
-  final Function(PdfItem) onAddBookmark;
-  // 🆕 Floating toolbar toggle state
-  final ToolType? floatingToolbarSelectedTool;
-  final bool isFloatingToolbarOpen;
-  final ValueChanged<ToolType?>? onFloatingToolbarToggle;
 
   /// Helper: returns the icon for a given tool type.
   static IconData iconForTool(ToolType tool) {
@@ -46,31 +38,58 @@ class StudyFlowToolbar extends StatefulWidget {
 
   const StudyFlowToolbar({
     super.key,
-    required this.activeTool,
-    this.selectedAnnotationTool,
     this.selectedShapeAuthor,
     this.selectedCommentAuthor,
     required this.isRightPanelOpen,
     required this.isSplitMode,
     required this.isDarkMode,
-    required this.isSearchVisible,
     required this.activePdf,
     required this.pdfController,
-    required this.onToolChanged,
     required this.onToggleRightPanel,
     required this.onToggleSplitMode,
-    required this.onToggleSettings,
-    required this.onToggleSearch,
     required this.onSyncPressed,
     required this.isSyncing,
-    required this.onAddBookmark,
-    this.floatingToolbarSelectedTool,
-    this.isFloatingToolbarOpen = false,
-    this.onFloatingToolbarToggle,
   });
 
   @override
   State<StudyFlowToolbar> createState() => _StudyFlowToolbarState();
+}
+
+class _AuthorBadge extends StatelessWidget {
+  const _AuthorBadge({required this.name});
+
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF3B82F6).withOpacity(0.15),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF3B82F6).withOpacity(0.4)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            LucideIcons.user,
+            size: 14,
+            color: Color(0xFF3B82F6),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            name,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Color(0xFF3B82F6),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
@@ -271,7 +290,6 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
     final screenWidth = MediaQuery.sizeOf(context).width;
     final bool isMobile = ResponsiveBreakpoints.isMobile(screenWidth);
     final pdf = widget.activePdf;
-
     final scheme = Theme.of(context).colorScheme;
     final barBg = widget.isDarkMode ? const Color(0xFF0F172A) : scheme.surface;
     final separatorColor = widget.isDarkMode
@@ -424,202 +442,36 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
               ),
             ),
 
+            // ─── CENTER: open file name ───
+            // The tools that used to live here are on ViewerSideRail now.
             Expanded(
               child: Center(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Search
-                      _buildToolButton(
-                        icon: LucideIcons.search,
-                        isActive: widget.isSearchVisible,
-                        onTap: widget.onToggleSearch,
-                        tooltip: 'بحث (Ctrl+F)',
-                        iconMuted: iconMuted,
-                      ),
-
-                      if (widget.selectedShapeAuthor != null) ...[
-                        const SizedBox(width: 8),
-                        Container(width: 1, height: 28, color: separatorColor),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF3B82F6).withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: const Color(0xFF3B82F6).withOpacity(0.4),
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(
-                                LucideIcons.user,
-                                size: 14,
-                                color: Color(0xFF3B82F6),
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                widget.selectedShapeAuthor!,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF3B82F6),
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-
-                      if (widget.selectedCommentAuthor != null) ...[
-                        const SizedBox(width: 8),
-                        Container(width: 1, height: 28, color: separatorColor),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF3B82F6).withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: const Color(0xFF3B82F6).withOpacity(0.4),
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(
-                                LucideIcons.user,
-                                size: 14,
-                                color: Color(0xFF3B82F6),
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                widget.selectedCommentAuthor!,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF3B82F6),
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-
-                      // ─── Divider ──
-                      const SizedBox(width: 8),
-                      Container(width: 1, height: 28, color: separatorColor),
-                      const SizedBox(width: 8),
-
-                      // ─── Drawing Tools Group ──
-                      Container(
-                        decoration: BoxDecoration(
-                          color: chipBg,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        padding: const EdgeInsets.all(4),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _buildToolButton(
-                              icon: LucideIcons.hand,
-                              isActive: widget.activeTool == ToolType.cursor,
-                              onTap: () {
-                                widget.onToolChanged(ToolType.cursor);
-                              },
-                              tooltip: 'تحريك/تمرير (Esc)',
-                              iconMuted: iconMuted,
-                            ),
-                            const SizedBox(width: 2),
-                            _buildToolButton(
-                              icon: LucideIcons.mousePointer2,
-                              isActive: widget.activeTool == ToolType.select,
-                              onTap: () {
-                                widget.onToolChanged(ToolType.select);
-                              },
-                              tooltip: 'تحديد / تحريك العناصر',
-                              iconMuted: iconMuted,
-                            ),
-                            const SizedBox(width: 2),
-                            // Text tool — always in top toolbar
-                            _buildToolButton(
-                              icon: LucideIcons.type,
-                              isActive: widget.activeTool == ToolType.text,
-                              onTap: () {
-                                widget.onToolChanged(ToolType.text);
-                              },
-                              tooltip: 'نص',
-                              iconMuted: iconMuted,
-                            ),
-                            const SizedBox(width: 2),
-                            // 🆕 ToolSelectorButton — toggles floating DrawingToolbar
-                            _buildToolButton(
-                              key: const ValueKey('tool_selector_btn'),
-                              icon: widget.floatingToolbarSelectedTool != null
-                                  ? StudyFlowToolbar.iconForTool(widget.floatingToolbarSelectedTool!)
-                                  : LucideIcons.shapes,
-                              isActive: widget.isFloatingToolbarOpen,
-                              onTap: () {
-                                if (widget.isFloatingToolbarOpen) {
-                                  // Toggle OFF: hide floating toolbar, reset to hand
-                                  widget.onFloatingToolbarToggle?.call(null);
-                                  widget.onToolChanged(ToolType.cursor);
-                                } else {
-                                  // Toggle ON: show floating toolbar with default tool (Pen)
-                                  widget.onFloatingToolbarToggle?.call(ToolType.pen);
-                                  widget.onToolChanged(ToolType.pen);
-                                }
-                              },
-                              tooltip: 'أدوات الرسم',
-                              activeColor: const Color(0xFF3B82F6),
-                              iconMuted: iconMuted,
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(width: 8),
-                      Container(width: 1, height: 28, color: separatorColor),
-                      const SizedBox(width: 8),
-
-                      // Bookmark
-                      _buildToolButton(
-                        icon: LucideIcons.bookmark,
-                        isActive: false,
-                        onTap: () {
-                          if (widget.activePdf != null &&
-                              widget.pdfController.isReady) {
-                            widget.onAddBookmark(widget.activePdf!);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'تم حفظ الصفحة كعلامة مرجعية 📑',
-                                  style: TextStyle(fontFamily: 'Cairo'),
-                                ),
-                                duration: Duration(seconds: 2),
-                                backgroundColor: Color(0xFF3B82F6),
-                              ),
-                            );
-                          }
-                        },
-                        tooltip: 'حفظ كعلامة مرجعية',
-                        iconMuted: iconMuted,
-                      ),
-                    ],
+                child: Text(
+                  pdf?.name ?? 'StudyFlow PDF',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: textPrimary,
                   ),
                 ),
               ),
             ),
+
+            // Collaboration badges: not tools, so they stay near the file name
+            // they belong to.
+            if (widget.selectedShapeAuthor != null) ...[
+              Container(width: 1, height: 28, color: separatorColor),
+              const SizedBox(width: 8),
+              _AuthorBadge(name: widget.selectedShapeAuthor!),
+            ],
+
+            if (widget.selectedCommentAuthor != null) ...[
+              const SizedBox(width: 8),
+              _AuthorBadge(name: widget.selectedCommentAuthor!),
+            ],
 
             // ─── RIGHT: Utility Buttons ─────────────────────────────
             Flexible(
