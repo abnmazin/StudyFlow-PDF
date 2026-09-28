@@ -14,6 +14,7 @@ import '../models/app_user.dart';
 import '../models/university_folder.dart';
 import '../models/university_file.dart';
 import '../models/university_video.dart';
+import '../models/university_stats.dart';
 import '../models/isar_models.dart';
 import 'file_hash_service.dart';
 import 'file_manager_service.dart';
@@ -78,7 +79,8 @@ class UniversityService {
 
   /// Returns true if the service is properly initialized and the user has a universityId.
   /// Use this for graceful fallback instead of catching exceptions.
-  bool get isReady => _isInitialized && _currentUser != null && _universityId.isNotEmpty;
+  bool get isReady =>
+      _isInitialized && _currentUser != null && _universityId.isNotEmpty;
 
   void _ensureInitialized() {
     if (!_isInitialized || _currentUser == null) {
@@ -140,9 +142,135 @@ class UniversityService {
         .where('isDeleted', isEqualTo: false)
         .orderBy('sortOrder', descending: false)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => UniversityFolder.fromFirestore(doc.id, doc.data()))
-            .toList());
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => UniversityFolder.fromFirestore(doc.id, doc.data()))
+              .toList(),
+        );
+  }
+
+  // =========================================================================
+  // SECTION 1.5: DENORMALISED UNIVERSITY STATS
+  // =========================================================================
+  // The dashboard summary card needs folder/file/video totals without running
+  // three collection queries every time the home page opens, so the counts are
+  // mirrored onto `universities/{universityId}.stats` and kept in step by the
+  // write methods below. `FieldValue.increment` is used rather than a
+  // read-modify-write so two admins acting at the same time cannot lose an
+  // increment. Every writer of these collections is an admin, and only admins
+  // may update the university document, so the same identity performs both
+  // sides of the counter update.
+  //
+  // Counts are soft-delete aware: a document only counts while `isDeleted` is
+  // false. `recomputeUniversityStats()` repairs the totals if a client drops
+  // a write or a document is edited outside the app.
+
+  static const _statsField = 'stats';
+  static const _folderCountField = 'folderCount';
+  static const _fileCountField = 'fileCount';
+  static const _videoCountField = 'videoCount';
+
+  /// Streams the cached totals. A `null` field means the university document
+  /// predates the stats map, so the caller should show a placeholder instead
+  /// of a misleading zero.
+  Stream<UniversityStats> streamStats() {
+    _ensureInitialized();
+
+    return _firestore
+        .collection('universities')
+        .doc(_universityId)
+        .snapshots()
+        .map((doc) {
+          final stats = doc.data()?[_statsField] as Map<String, dynamic>?;
+          if (stats == null) return const UniversityStats();
+          int read(String key) {
+            final value = stats[key];
+            return value is num ? value.toInt() : 0;
+          }
+
+          return UniversityStats(
+            folderCount: read(_folderCountField),
+            fileCount: read(_fileCountField),
+            videoCount: read(_videoCountField),
+            isPopulated: true,
+          );
+        });
+  }
+
+  /// Applies a relative change to the cached totals. [videoDelta] carries the
+  /// folder-delete cascade, where one folder removal can retire many videos.
+  Future<void> _bumpStats({
+    int folderDelta = 0,
+    int fileDelta = 0,
+    int videoDelta = 0,
+  }) async {
+    if (_universityId.isEmpty) return;
+    if (folderDelta == 0 && fileDelta == 0 && videoDelta == 0) return;
+
+    final updates = <String, dynamic>{};
+    if (folderDelta != 0) {
+      updates['$_statsField.$_folderCountField'] = FieldValue.increment(
+        folderDelta,
+      );
+    }
+    if (fileDelta != 0) {
+      updates['$_statsField.$_fileCountField'] = FieldValue.increment(
+        fileDelta,
+      );
+    }
+    if (videoDelta != 0) {
+      updates['$_statsField.$_videoCountField'] = FieldValue.increment(
+        videoDelta,
+      );
+    }
+
+    try {
+      await _firestore
+          .collection('universities')
+          .doc(_universityId)
+          .set(updates, SetOptions(merge: true));
+    } catch (e) {
+      // The content write already succeeded, so a counter failure must not
+      // surface as a failed upload. `recomputeUniversityStats()` repairs it.
+      debugPrint('⚠️ [UniversityService] stats increment failed (ignored): $e');
+    }
+  }
+
+  /// Recomputes the totals from the real documents and overwrites the cached
+  /// ones. Mirrors `backfillSyncCodes()` for the same reason: counters drift
+  /// when a write is interrupted.
+  Future<UniversityStats> recomputeUniversityStats() async {
+    _ensureInitialized();
+
+    Future<int> countLive(String collection) async {
+      final snapshot = await _firestore
+          .collection(collection)
+          .where('universityId', isEqualTo: _universityId)
+          .where('isDeleted', isEqualTo: false)
+          .count()
+          .get();
+      return snapshot.count ?? 0;
+    }
+
+    final stats = UniversityStats(
+      folderCount: await countLive('university_folders'),
+      fileCount: await countLive('university_files'),
+      videoCount: await countLive('university_videos'),
+    );
+
+    await _firestore.collection('universities').doc(_universityId).set({
+      _statsField: {
+        _folderCountField: stats.folderCount,
+        _fileCountField: stats.fileCount,
+        _videoCountField: stats.videoCount,
+      },
+    }, SetOptions(merge: true));
+
+    debugPrint(
+      '📊 [UniversityService] Recomputed stats: ${stats.folderCount} folders, '
+      '${stats.fileCount} files, ${stats.videoCount} videos',
+    );
+    return stats;
   }
 
   /// Creates a new folder (Admin only).
@@ -166,6 +294,7 @@ class UniversityService {
     );
 
     await folderRef.set(folder.toJson());
+    await _bumpStats(folderDelta: 1);
 
     debugPrint(
       '📂 [UniversityService] Created folder "${folder.name}" (${folder.id})',
@@ -192,9 +321,7 @@ class UniversityService {
           .doc(folderId)
           .update(updates);
 
-      debugPrint(
-        '📂 [UniversityService] Updated folder $folderId: $updates',
-      );
+      debugPrint('📂 [UniversityService] Updated folder $folderId: $updates');
     }
   }
 
@@ -204,10 +331,9 @@ class UniversityService {
     _assertAdmin();
 
     // Soft-delete the folder itself.
-    await _firestore
-        .collection('university_folders')
-        .doc(folderId)
-        .update({'isDeleted': true});
+    await _firestore.collection('university_folders').doc(folderId).update({
+      'isDeleted': true,
+    });
 
     // Also soft-delete any video links inside the folder so they stop
     // showing for every member.
@@ -223,9 +349,11 @@ class UniversityService {
     }
     await batch.commit();
 
-    debugPrint(
-      '📂 [UniversityService] Soft-deleted folder $folderId',
-    );
+    // One folder removal can retire every video link inside it, so the video
+    // counter drops by however many the cascade actually touched.
+    await _bumpStats(folderDelta: -1, videoDelta: -videos.docs.length);
+
+    debugPrint('📂 [UniversityService] Soft-deleted folder $folderId');
   }
 
   // =========================================================================
@@ -268,10 +396,15 @@ class UniversityService {
         .where('folderId', isEqualTo: folderId)
         .where('isDeleted', isEqualTo: false)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => UniversityFile.fromFirestore(doc.id, doc.data()))
-            .toList()
-          ..sort(_compareFiles));
+        .map(
+          (snapshot) =>
+              snapshot.docs
+                  .map(
+                    (doc) => UniversityFile.fromFirestore(doc.id, doc.data()),
+                  )
+                  .toList()
+                ..sort(_compareFiles),
+        );
   }
 
   /// Looks up a university library file by its content hash. Used by the
@@ -348,14 +481,18 @@ class UniversityService {
     }
 
     // ── Step 1: Compute SHA-256 hash ───────────────────────────────────
-    debugPrint('📤 [UniversityService] Step 1/4: Computing hash for $filePath...');
+    debugPrint(
+      '📤 [UniversityService] Step 1/4: Computing hash for $filePath...',
+    );
     final fileHash = await FileHashService.calculateFileHash(filePath);
 
     final fileName = p.basename(filePath);
     final fileSize = await file.length();
 
     // ── Step 2: Deduplication Check ────────────────────────────────────
-    debugPrint('📤 [UniversityService] Step 2/4: Checking for duplicate hash...');
+    debugPrint(
+      '📤 [UniversityService] Step 2/4: Checking for duplicate hash...',
+    );
     final existing = await _firestore
         .collection('university_files')
         .where('universityId', isEqualTo: _universityId)
@@ -395,7 +532,9 @@ class UniversityService {
 
     final bytes = await file.readAsBytes();
 
-    await _supabase.storage.from(_bucketName).uploadBinary(
+    await _supabase.storage
+        .from(_bucketName)
+        .uploadBinary(
           storagePath,
           bytes,
           fileOptions: FileOptions(
@@ -450,6 +589,7 @@ class UniversityService {
     );
 
     await fileRef.set(universityFile.toJson());
+    await _bumpStats(fileDelta: 1);
 
     debugPrint(
       '✅ [UniversityService] Upload complete: "$fileName" '
@@ -498,23 +638,22 @@ class UniversityService {
       if (syncCode.isNotEmpty) continue;
       try {
         final code = await _generateUniqueSyncCode();
-        await _firestore
-            .collection('university_files')
-            .doc(doc.id)
-            .update({'syncCode': code});
+        await _firestore.collection('university_files').doc(doc.id).update({
+          'syncCode': code,
+        });
         count++;
         debugPrint(
           '📡 [UniversityService] Backfilled syncCode "$code" for file ${doc.id}',
         );
       } catch (e) {
-        debugPrint(
-          '⚠️ [UniversityService] Backfill failed for ${doc.id}: $e',
-        );
+        debugPrint('⚠️ [UniversityService] Backfill failed for ${doc.id}: $e');
       }
     }
 
     if (count > 0) {
-      debugPrint('✅ [UniversityService] Backfilled $count file(s) with sync codes.');
+      debugPrint(
+        '✅ [UniversityService] Backfilled $count file(s) with sync codes.',
+      );
     }
     return count;
   }
@@ -739,7 +878,9 @@ class UniversityService {
       );
       return null;
     } catch (e) {
-      debugPrint('📥 [UniversityService] disk lookup for ${file.name} failed: $e');
+      debugPrint(
+        '📥 [UniversityService] disk lookup for ${file.name} failed: $e',
+      );
       return null;
     }
   }
@@ -849,9 +990,7 @@ class UniversityService {
   }
 
   /// Deletes reading progress (e.g., when user removes a file from their device).
-  Future<void> deleteReadingProgress({
-    required String fileHash,
-  }) async {
+  Future<void> deleteReadingProgress({required String fileHash}) async {
     _ensureInitialized();
 
     final progressId = '${fileHash}_$_userId';
@@ -897,7 +1036,9 @@ class UniversityService {
       );
     }
     await batch.commit();
-    debugPrint('📂 [UniversityService] Reordered folders (dragged=$draggedFolderId).');
+    debugPrint(
+      '📂 [UniversityService] Reordered folders (dragged=$draggedFolderId).',
+    );
   }
 
   /// Reorders two files within a folder via drag & drop (Admin only). Dense
@@ -921,10 +1062,9 @@ class UniversityService {
     final batch = _firestore.batch();
     for (var i = 0; i < files.length; i++) {
       if (files[i].sortOrder == i) continue;
-      batch.update(
-        _firestore.collection('university_files').doc(files[i].id),
-        {'sortOrder': i},
-      );
+      batch.update(_firestore.collection('university_files').doc(files[i].id), {
+        'sortOrder': i,
+      });
     }
     await batch.commit();
     debugPrint(
@@ -941,9 +1081,7 @@ class UniversityService {
 
     if (file.storagePath.isNotEmpty) {
       try {
-        await _supabase.storage
-            .from(_bucketName)
-            .remove([file.storagePath]);
+        await _supabase.storage.from(_bucketName).remove([file.storagePath]);
         debugPrint(
           '🗄️ [UniversityService] Removed storage object: ${file.storagePath}',
         );
@@ -954,10 +1092,10 @@ class UniversityService {
       }
     }
 
-    await _firestore
-        .collection('university_files')
-        .doc(file.id)
-        .update({'isDeleted': true});
+    await _firestore.collection('university_files').doc(file.id).update({
+      'isDeleted': true,
+    });
+    await _bumpStats(fileDelta: -1);
 
     debugPrint(
       '🗑️ [UniversityService] Deleted file ${file.id} ("${file.name}")',
@@ -980,7 +1118,8 @@ class UniversityService {
     if (uri == null) return null;
 
     final host = uri.host.toLowerCase();
-    final isYouTube = host == 'youtube.com' ||
+    final isYouTube =
+        host == 'youtube.com' ||
         host == 'www.youtube.com' ||
         host == 'm.youtube.com' ||
         host == 'youtu.be' ||
@@ -1045,7 +1184,9 @@ class UniversityService {
     try {
       sortOrder = (await getVideosInFolder(folderId)).length;
     } catch (e) {
-      debugPrint('⚠️ [UniversityService] Could not compute video sortOrder: $e');
+      debugPrint(
+        '⚠️ [UniversityService] Could not compute video sortOrder: $e',
+      );
     }
 
     final video = UniversityVideo(
@@ -1062,6 +1203,7 @@ class UniversityService {
     );
 
     await ref.set(video.toJson());
+    await _bumpStats(videoDelta: 1);
 
     debugPrint(
       '🎬 [UniversityService] Added video ${ref.id} (videoId=$id) to $folderId',
@@ -1104,10 +1246,15 @@ class UniversityService {
         .where('folderId', isEqualTo: folderId)
         .where('isDeleted', isEqualTo: false)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => UniversityVideo.fromFirestore(doc.id, doc.data()))
-            .toList()
-          ..sort(_compareVideos));
+        .map(
+          (snapshot) =>
+              snapshot.docs
+                  .map(
+                    (doc) => UniversityVideo.fromFirestore(doc.id, doc.data()),
+                  )
+                  .toList()
+                ..sort(_compareVideos),
+        );
   }
 
   /// Deletes a university video link (Admin only). Videos have no storage
@@ -1116,10 +1263,10 @@ class UniversityService {
     _ensureInitialized();
     _assertAdmin();
 
-    await _firestore
-        .collection('university_videos')
-        .doc(video.id)
-        .update({'isDeleted': true});
+    await _firestore.collection('university_videos').doc(video.id).update({
+      'isDeleted': true,
+    });
+    await _bumpStats(videoDelta: -1);
 
     debugPrint(
       '🗑️ [UniversityService] Deleted video ${video.id} ("${video.title}")',

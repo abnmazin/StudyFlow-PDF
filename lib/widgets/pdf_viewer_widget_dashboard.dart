@@ -31,10 +31,7 @@ class _DashboardWrapper extends StatefulWidget {
   final bool isDarkMode;
   final AppProvider app;
 
-  const _DashboardWrapper({
-    required this.isDarkMode,
-    required this.app,
-  });
+  const _DashboardWrapper({required this.isDarkMode, required this.app});
 
   @override
   State<_DashboardWrapper> createState() => _DashboardWrapperState();
@@ -63,13 +60,22 @@ class _DashboardWrapperState extends State<_DashboardWrapper> {
         child: LayoutBuilder(
           builder: (context, constraints) {
             final width = constraints.maxWidth;
-            final padding = width < 600
-                ? 12.0
-                : (width < 900 ? 16.0 : 20.0);
+            final padding = width < 600 ? 12.0 : (width < 900 ? 16.0 : 20.0);
             final isWide = ResponsiveBreakpoints.isDesktop(width);
 
             return Container(
               margin: EdgeInsets.all(padding),
+              // Without explicit dimensions the canvas hugs its child on both
+              // axes: a `Column` that stacks with `CrossAxisAlignment.start`
+              // shrinks to the narrowest child horizontally, and
+              // `SingleChildScrollView` sizes itself to its content
+              // (single_child_scroll_view.dart: `constraints.constrain(child.size)`),
+              // which leaves the dashboard shorter than the window. The parent
+              // `Row` in main.dart then centres it vertically on its default
+              // `CrossAxisAlignment.center`, producing an empty band above and
+              // below. Filling both axes removes the band entirely.
+              width: double.infinity,
+              height: double.infinity,
               decoration: BoxDecoration(
                 color: canvasBg,
                 borderRadius: BorderRadius.circular(24),
@@ -86,18 +92,11 @@ class _DashboardWrapperState extends State<_DashboardWrapper> {
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(32),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _buildHeroSection(context, app),
-                    const SizedBox(height: 24),
-                    _buildQuickActionsSection(context, isDarkMode),
                     const SizedBox(height: 32),
-                    _buildAnnouncementsTodosSection(
-                      context,
-                      app,
-                      isDarkMode,
-                      isWide,
-                    ),
+                    _buildWorkspaceSection(context, app, isDarkMode, isWide),
                     const SizedBox(height: 32),
                     _buildLibrarySection(context, app, isDarkMode),
                     const SizedBox(height: 8),
@@ -118,21 +117,29 @@ Future<void> _migrateAdminAccount(BuildContext context) async {
   final user = app.currentUser;
   if (user == null) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('❌ No user logged in'), backgroundColor: Colors.red),
+      const SnackBar(
+        content: Text('❌ No user logged in'),
+        backgroundColor: Colors.red,
+      ),
     );
     return;
   }
 
   final firestore = FirebaseFirestore.instance;
   try {
-    // 1. Create university document
-    await firestore.collection('universities').doc('southern_technical_university').set({
-      'name': 'Southern Technical University',
-      'code': 'STU',
-      'adminUids': [user.uid],
-      'createdAt': FieldValue.serverTimestamp(),
-      'isActive': true,
-    });
+    // 1. Create university document. `merge: true` matters: the cached
+    // `stats` counters live on this same document, and a plain `set()` would
+    // wipe them every time this button is pressed.
+    await firestore
+        .collection('universities')
+        .doc('southern_technical_university')
+        .set({
+          'name': 'Southern Technical University',
+          'code': 'STU',
+          'adminUids': [user.uid],
+          'createdAt': FieldValue.serverTimestamp(),
+          'isActive': true,
+        }, SetOptions(merge: true));
 
     // 2. Update current user to be admin of this university
     await firestore.collection('users').doc(user.uid).update({
@@ -154,7 +161,9 @@ Future<void> _migrateAdminAccount(BuildContext context) async {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('✅ University created! Welcome to the Cloud Library Hub.'),
+          content: Text(
+            '✅ University created! Welcome to the Cloud Library Hub.',
+          ),
           backgroundColor: Colors.green,
           duration: Duration(seconds: 4),
         ),
@@ -163,7 +172,10 @@ Future<void> _migrateAdminAccount(BuildContext context) async {
   } catch (e) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('❌ Migration failed: $e'), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text('❌ Migration failed: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
@@ -171,18 +183,359 @@ Future<void> _migrateAdminAccount(BuildContext context) async {
 
 // ─── QUICK ACTIONS ───────────────────────────────────────────────────────────
 
-Widget _buildQuickActionsSection(BuildContext context, bool isDarkMode) {
-  return Column(
+/// The left-hand column. When [isWide] it carries a faint rule on its right
+/// edge to separate it from the tasks/notifications column; once the blocks
+/// stack the rule would read as a stray border, so it is dropped.
+/// Drawing the divider as a border (rather than a `VerticalDivider`) keeps it
+/// the full height of the grid without needing an intrinsic height, which the
+/// `shrinkWrap` notifications list cannot provide.
+Widget _buildQuickActionsSection(
+  BuildContext context,
+  bool isDarkMode,
+  bool isWide,
+) {
+  return Container(
+    padding: isWide ? const EdgeInsets.only(right: 32) : EdgeInsets.zero,
+    decoration: BoxDecoration(
+      border: Border(
+        right: isWide
+            ? BorderSide(
+                color: isDarkMode
+                    ? Colors.white.withValues(alpha: 0.08)
+                    : Colors.black.withValues(alpha: 0.06),
+              )
+            : BorderSide.none,
+      ),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader('إجراءات سريعة', isDarkMode),
+        const SizedBox(height: 12),
+        _buildQuickActionChips(context, isDarkMode),
+      ],
+    ),
+  );
+}
+
+/// Today's tasks sit above notifications on the right, the 2×2 action grid on
+/// the left, separated by a hairline border on the grid column. Under RTL the
+/// first child of a `Row` paints on the right, so the order below is what puts
+/// the grid on the left. The hairline is a border rather than a real divider
+/// widget: the announcements list is a `shrinkWrap` `ListView`, which cannot
+/// report an intrinsic height for `IntrinsicHeight` to measure.
+Widget _buildWorkspaceSection(
+  BuildContext context,
+  AppProvider app,
+  bool isDarkMode,
+  bool isWide,
+) {
+  final right = Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      _buildSectionHeader('إجراءات سريعة', isDarkMode),
-      const SizedBox(height: 12),
-      _buildQuickActionChips(context, isDarkMode),
+      _buildToDoSection(context, isDarkMode),
+      const SizedBox(height: 28),
+      _SoftDivider(isDarkMode: isDarkMode),
+      const SizedBox(height: 28),
+      _AnnouncementsSection(
+        isDarkMode: isDarkMode,
+        canPublish:
+            (app.currentUser?.isLecturer ?? false) ||
+            (app.currentUser?.isAdmin ?? false),
+        authorName: app.currentUser?.displayName ?? 'User',
+        userRole: app.currentUser?.role ?? 'student',
+      ),
+    ],
+  );
+
+  final left = _buildQuickActionsSection(context, isDarkMode, isWide);
+
+  if (!isWide) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [right, const SizedBox(height: 32), left],
+    );
+  }
+
+  return Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Expanded(flex: 5, child: right),
+      const SizedBox(width: 32),
+      Expanded(flex: 2, child: left),
     ],
   );
 }
 
+/// A faint full-width rule, used to separate stacked blocks without a box.
+class _SoftDivider extends StatelessWidget {
+  const _SoftDivider({required this.isDarkMode});
+
+  final bool isDarkMode;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 1,
+      color: isDarkMode
+          ? Colors.white.withValues(alpha: 0.08)
+          : Colors.black.withValues(alpha: 0.06),
+    );
+  }
+}
+
 // ─── LIBRARY (CLOUD / PERSONAL FOLDERS) ──────────────────────────────────────
+
+/// Compact one-row stand-in for the full university library: small icons plus
+/// the cached totals. Tapping pushes the real manager as a full-screen route,
+/// because this card is the only entry point to it.
+///
+/// `UniversityService` is a singleton that the rest of the app initialises
+/// lazily from whichever library widget mounts first, so this card cannot read
+/// it during `build`: on a fresh launch it is still uninitialised and
+/// `streamStats()` would throw. It therefore initialises the service itself
+/// before subscribing, mirroring `CollegeCollectionWidget`.
+class UniversityLibrarySummaryCard extends StatefulWidget {
+  const UniversityLibrarySummaryCard({
+    super.key,
+    required this.isDarkMode,
+    required this.user,
+  });
+
+  final bool isDarkMode;
+  final AppUser user;
+
+  @override
+  State<UniversityLibrarySummaryCard> createState() =>
+      _UniversityLibrarySummaryCardState();
+}
+
+class _UniversityLibrarySummaryCardState
+    extends State<UniversityLibrarySummaryCard> {
+  final UniversityService _service = UniversityService();
+  StreamSubscription<UniversityStats>? _statsSub;
+  UniversityStats? _stats;
+  bool _failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  @override
+  void didUpdateWidget(covariant UniversityLibrarySummaryCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.user.uid != widget.user.uid) {
+      unawaited(_load());
+    }
+  }
+
+  @override
+  void dispose() {
+    unawaited(_statsSub?.cancel());
+    _statsSub = null;
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    try {
+      await _service.init(widget.user);
+      if (!_service.isReady) {
+        if (mounted) setState(() => _failed = true);
+        return;
+      }
+      final sub = _service.streamStats().listen(
+        (stats) {
+          if (mounted) setState(() => _stats = stats);
+        },
+        onError: (_) {
+          if (mounted) setState(() => _failed = true);
+        },
+      );
+      _statsSub = sub;
+    } catch (_) {
+      if (mounted) setState(() => _failed = true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDarkMode = widget.isDarkMode;
+    // A missing `stats` map means the counters were never written for this
+    // university; a dash is honest there, a zero would not be.
+    final stats = _stats;
+    final pending = _failed || stats == null || !stats.isPopulated;
+    final files = pending ? '—' : '${stats.fileCount}';
+    final videos = pending ? '—' : '${stats.videoCount}';
+    final folders = pending ? '—' : '${stats.folderCount}';
+
+    void openLibrary() {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => Scaffold(
+            backgroundColor: isDarkMode
+                ? const Color(0xFF0F172A)
+                : Colors.white,
+            appBar: AppBar(
+              title: const Text('المكتبة الجامعية'),
+              backgroundColor: isDarkMode
+                  ? const Color(0xFF0F172A)
+                  : Colors.white,
+            ),
+            body: UniversityCloudLibraryWidget(
+              isDarkMode: isDarkMode,
+              user: widget.user,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader('المكتبة الجامعية', isDarkMode),
+        const SizedBox(height: 12),
+        InkWell(
+          onTap: openLibrary,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: isDarkMode
+                  ? const Color(0xFF1E293B)
+                  : const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isDarkMode
+                    ? const Color(0xFF334155)
+                    : const Color(0xFFE2E8F0),
+              ),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  LucideIcons.graduationCap,
+                  size: 18,
+                  color: Color(0xFF3B82F6),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'تصفّح الملازم ومقاطع الفيديو',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: isDarkMode
+                          ? Colors.white
+                          : const Color(0xFF0F172A),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                _StatPill(
+                  isDarkMode: isDarkMode,
+                  icon: LucideIcons.fileText,
+                  value: files,
+                  label: 'ملزمة',
+                ),
+                const SizedBox(width: 8),
+                _StatPill(
+                  isDarkMode: isDarkMode,
+                  icon: LucideIcons.youtube,
+                  value: videos,
+                  label: 'فيديو',
+                ),
+                const SizedBox(width: 8),
+                _StatPill(
+                  isDarkMode: isDarkMode,
+                  icon: LucideIcons.folder,
+                  value: folders,
+                  label: 'مجلد',
+                ),
+                const SizedBox(width: 4),
+                Icon(
+                  LucideIcons.chevronLeft,
+                  size: 18,
+                  color: isDarkMode
+                      ? const Color(0xFF64748B)
+                      : const Color(0xFF94A3B8),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (pending)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              _failed
+                  ? 'تعذّر حساب الأعداد — اضغط للفتح'
+                  : 'لم تُحسب الأعداد بعد — اضغط للفتح',
+              style: TextStyle(
+                fontSize: 11,
+                color: isDarkMode
+                    ? const Color(0xFF64748B)
+                    : const Color(0xFF94A3B8),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Icon + count + caption, sized for the compact library row.
+class _StatPill extends StatelessWidget {
+  const _StatPill({
+    required this.isDarkMode,
+    required this.icon,
+    required this.value,
+    required this.label,
+  });
+
+  final bool isDarkMode;
+  final IconData icon;
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final textColor = isDarkMode ? Colors.white : const Color(0xFF0F172A);
+    final muted = isDarkMode
+        ? const Color(0xFF64748B)
+        : const Color(0xFF94A3B8);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: isDarkMode
+            ? Colors.white.withValues(alpha: 0.04)
+            : Colors.black.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: muted),
+          const SizedBox(width: 5),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: textColor,
+            ),
+          ),
+          const SizedBox(width: 3),
+          Text(label, style: TextStyle(fontSize: 11, color: muted)),
+        ],
+      ),
+    );
+  }
+}
 
 Widget _buildLibrarySection(
   BuildContext context,
@@ -196,7 +549,7 @@ Widget _buildLibrarySection(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       if (hasUniversity)
-        UniversityCloudLibraryWidget(isDarkMode: isDarkMode, user: user)
+        UniversityLibrarySummaryCard(isDarkMode: isDarkMode, user: user)
       else ...[
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -206,9 +559,7 @@ Widget _buildLibrarySection(
               onPressed: () => _showCreateFolderDialog(context),
               icon: const Icon(LucideIcons.plus, size: 16),
               label: const Text('مجلد جديد'),
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.blue[600],
-              ),
+              style: TextButton.styleFrom(foregroundColor: Colors.blue[600]),
             ),
           ],
         ),
@@ -237,44 +588,6 @@ Widget _buildLibrarySection(
   );
 }
 
-// ─── ANNOUNCEMENTS + TO-DO (BOTTOM BLOCK) ────────────────────────────────────
-
-Widget _buildAnnouncementsTodosSection(
-  BuildContext context,
-  AppProvider app,
-  bool isDarkMode,
-  bool isWide,
-) {
-  final announcements = _AnnouncementsSection(
-    isDarkMode: isDarkMode,
-    canPublish:
-        (app.currentUser?.isLecturer ?? false) ||
-        (app.currentUser?.isAdmin ?? false),
-    authorName: app.currentUser?.displayName ?? 'User',
-    userRole: app.currentUser?.role ?? 'student',
-  );
-  final todos = _buildToDoSection(context, isDarkMode);
-
-  if (isWide) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(flex: 5, child: announcements),
-        const SizedBox(width: 48),
-        Expanded(flex: 2, child: todos),
-      ],
-    );
-  }
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      announcements,
-      const SizedBox(height: 32),
-      todos,
-    ],
-  );
-}
-
 Widget _buildToDoSection(BuildContext context, bool isDarkMode) {
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
@@ -287,6 +600,7 @@ Widget _buildToDoSection(BuildContext context, bool isDarkMode) {
             onPressed: () => _showAddTaskDialog(context),
             icon: const Icon(LucideIcons.plusCircle, size: 18),
             color: Colors.indigo,
+            tooltip: 'إضافة مهمة',
           ),
         ],
       ),
@@ -320,7 +634,8 @@ class _AdminAnnouncementSenderState extends State<_AdminAnnouncementSender> {
   String _selectedAudience = 'all';
   bool _isSending = false;
 
-  bool get _isDeveloper => widget.userRole == 'developer' || widget.userRole == 'admin';
+  bool get _isDeveloper =>
+      widget.userRole == 'developer' || widget.userRole == 'admin';
   bool get _isLecturer => widget.userRole == 'lecturer' || _isDeveloper;
 
   @override
@@ -588,7 +903,7 @@ Widget _buildHeroSection(BuildContext context, AppProvider app) {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'مرحبًا بك مجددًا 👋',
+                  _greetingFor(app.currentUser),
                   style: TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.w800,
@@ -597,8 +912,9 @@ Widget _buildHeroSection(BuildContext context, AppProvider app) {
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
+                const SizedBox(height: 4),
                 Text(
-                  'ماذا تريد أن تتعلم اليوم؟',
+                  _academicLineOf(app.currentUser),
                   style: TextStyle(
                     fontSize: 15,
                     color: isDarkMode
@@ -613,135 +929,40 @@ Widget _buildHeroSection(BuildContext context, AppProvider app) {
           _buildQuickStatChip(app),
         ],
       ),
-      const SizedBox(height: 24),
-      const AcademicInfoBar(),
     ],
   );
 }
 
-class AcademicInfoBar extends StatelessWidget {
-  const AcademicInfoBar({super.key});
+/// Shown when the Firestore document has no enrolment data yet. The app is
+/// built for a single college, so these are the real values rather than
+/// placeholders; once `college`/`department`/`stage` are written to the user
+/// document the per-user values take over.
+const _fallbackCollege = 'الكلية التقنية الهندسية';
+const _fallbackDepartment = 'تقنيات الهندسة الكهربائية';
+const _fallbackStage = 'المرحلة الرابعة';
 
-  /// Shown when the Firestore document has no enrolment data yet. The app is
-  /// built for a single college, so these are the real values rather than
-  /// placeholders; once `college`/`department`/`stage` are written to the user
-  /// document the per-user values take over.
-  static const _fallbackCollege = 'الكلية التقنية الهندسية';
-  static const _fallbackDepartment = 'تقنيات الهندسة الكهربائية';
-  static const _fallbackStage = 'المرحلة الرابعة';
-
-  @override
-  Widget build(BuildContext context) {
-    final app = context.watch<AppProvider>();
-    final isDarkMode = app.isDarkMode;
-    final user = app.currentUser;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            LucideIcons.graduationCap,
-            size: 20,
-            color: isDarkMode ? const Color(0xFF60A5FA) : const Color(0xFF2563EB),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: _InfoCell(
-              isDarkMode: isDarkMode,
-              label: 'الكلية',
-              value: user?.college?.trim().isNotEmpty == true
-                  ? user!.college!.trim()
-                  : _fallbackCollege,
-            ),
-          ),
-          _Divider(isDarkMode: isDarkMode),
-          Expanded(
-            child: _InfoCell(
-              isDarkMode: isDarkMode,
-              label: 'القسم',
-              value: user?.department?.trim().isNotEmpty == true
-                  ? user!.department!.trim()
-                  : _fallbackDepartment,
-            ),
-          ),
-          _Divider(isDarkMode: isDarkMode),
-          Expanded(
-            child: _InfoCell(
-              isDarkMode: isDarkMode,
-              label: 'المرحلة',
-              value: user?.stage?.trim().isNotEmpty == true
-                  ? user!.stage!.trim()
-                  : _fallbackStage,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+String _displayNameOf(AppUser? user) {
+  final display = user?.displayName.trim() ?? '';
+  if (display.isNotEmpty) return display;
+  final username = user?.username.trim() ?? '';
+  if (username.isNotEmpty) return username;
+  return 'زائر';
 }
 
-class _Divider extends StatelessWidget {
-  const _Divider({required this.isDarkMode});
+String _greetingFor(AppUser? user) => 'مرحبًا بك، ${_displayNameOf(user)} 👋';
 
-  final bool isDarkMode;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 1,
-      height: 34,
-      margin: const EdgeInsets.symmetric(horizontal: 12),
-      color: isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
-    );
+/// College · department · stage as one line, used as the hero subtitle.
+String _academicLineOf(AppUser? user) {
+  String pick(String? value, String fallback) {
+    final trimmed = value?.trim() ?? '';
+    return trimmed.isEmpty ? fallback : trimmed;
   }
-}
 
-class _InfoCell extends StatelessWidget {
-  const _InfoCell({
-    required this.isDarkMode,
-    required this.label,
-    required this.value,
-  });
-
-  final bool isDarkMode;
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 11,
-            color: isDarkMode ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: isDarkMode ? Colors.white : const Color(0xFF0F172A),
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-      ],
-    );
-  }
+  return [
+    pick(user?.college, _fallbackCollege),
+    pick(user?.department, _fallbackDepartment),
+    pick(user?.stage, _fallbackStage),
+  ].join('  ·  ');
 }
 
 // ─── ANNOUNCEMENTS SECTION ──────────────────────────────────────────────────
@@ -784,7 +1005,7 @@ class _AnnouncementsSectionState extends State<_AnnouncementsSection> {
                   color: Color(0xFFD97706),
                 ),
                 const SizedBox(width: 8),
-                _buildSectionHeader('إعلانات هامة', isDarkMode),
+                _buildSectionHeader('الإشعارات', isDarkMode),
               ],
             ),
             if (widget.canPublish)
@@ -853,7 +1074,7 @@ Widget _buildAnnouncementsList(bool isDarkMode) {
                 ),
               ),
               child: Text(
-                'لا توجد إعلانات حالياً',
+                'لا توجد إشعارات حالياً',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: isDarkMode
@@ -1204,6 +1425,7 @@ Widget _buildToDoListMock(bool isDarkMode) {
                       color: Colors.red.withValues(alpha: 0.6),
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(),
+                      tooltip: 'حذف المهمة',
                     ),
                   ],
                 ),
@@ -1258,93 +1480,142 @@ void _showAddTaskDialog(BuildContext context) {
 // ─── UTILITIES & COMPONENTS ─────────────────────────────────────────────────
 
 Widget _buildQuickActionChips(BuildContext context, bool isDarkMode) {
-  final actions = [
-    {'icon': LucideIcons.upload, 'label': 'رفع PDF', 'color': Colors.blue},
-    {'icon': LucideIcons.combine, 'label': 'دمج ملفات', 'color': Colors.purple},
-    {'icon': LucideIcons.image, 'label': 'صور إلى PDF', 'color': Colors.teal},
+  // One accent, one primary action. The rest fall back to a neutral outline so
+  // the eye lands on "upload" first instead of parsing four competing colours.
+  const accent = Color(0xFF3B82F6);
+  final neutral = isDarkMode
+      ? const Color(0xFFCBD5E1)
+      : const Color(0xFF334155);
+  const actions = <Map<String, Object?>>[
+    {
+      'icon': LucideIcons.upload,
+      'label': 'رفع PDF',
+      'primary': true,
+      'enabled': true,
+    },
+    {'icon': LucideIcons.combine, 'label': 'دمج ملفات', 'enabled': true},
+    {'icon': LucideIcons.image, 'label': 'صور إلى PDF', 'enabled': true},
     {
       'icon': LucideIcons.languages,
       'label': 'ترجمة الملفات (قريباً)',
-      'color': Colors.indigo,
+      // Nothing opens behind this one, so it must not look clickable.
+      'enabled': false,
     },
   ];
 
-  return Wrap(
-    spacing: 12,
-    runSpacing: 12,
-    children: actions.map((a) {
-      final color = a['color'] as MaterialColor;
-      final label = a['label'] as String;
-      return InkWell(
-        onTap: () {
-          final app = context.read<AppProvider>();
-          if (label == 'رفع PDF') {
-            final classId =
-                app.activeClassId ??
-                (app.classes.isNotEmpty ? app.classes.first.id : null);
-            if (classId != null) {
-              app.uploadPdf(classId);
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('يرجى إنشاء مجلد أولاً لرفع الملف إليه.'),
+  return SizedBox(
+    width: double.infinity,
+    // A `shrinkWrap` grid sizes itself to its widest child, so it needs an
+    // explicit full width or the tiles stay narrow inside a wide column.
+    child: GridView.count(
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      // The dashboard already scrolls; the grid must not claim a scroll
+      // gesture of its own or it swallows vertical drags.
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 12,
+      crossAxisSpacing: 12,
+      childAspectRatio: 1.45,
+      children: actions.map((a) {
+        final label = a['label'] as String;
+        final isPrimary = a['primary'] == true;
+        final isEnabled = a['enabled'] as bool;
+
+        return InkWell(
+          onTap: !isEnabled
+              ? null
+              : () {
+                  final app = context.read<AppProvider>();
+                  if (label == 'رفع PDF') {
+                    final classId =
+                        app.activeClassId ??
+                        (app.classes.isNotEmpty ? app.classes.first.id : null);
+                    if (classId != null) {
+                      app.uploadPdf(classId);
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'يرجى إنشاء مجلد أولاً لرفع الملف إليه.',
+                          ),
+                        ),
+                      );
+                    }
+                  } else if (label == 'دمج ملفات') {
+                    showDialog(
+                      context: context,
+                      builder: (_) => const MergePdfDialog(),
+                    );
+                  } else if (label == 'صور إلى PDF') {
+                    showDialog(
+                      context: context,
+                      builder: (_) => const ImagesToPdfDialog(),
+                    );
+                  }
+                },
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              // The primary action is the only filled surface; the disabled chip
+              // fades out entirely so it reads as unavailable, not as a third
+              // action with a different hue.
+              color: !isEnabled
+                  ? (isDarkMode
+                        ? Colors.white.withValues(alpha: 0.02)
+                        : Colors.black.withValues(alpha: 0.02))
+                  : isPrimary
+                  ? accent
+                  : (isDarkMode
+                        ? Colors.white.withValues(alpha: 0.04)
+                        : Colors.black.withValues(alpha: 0.02)),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: !isEnabled
+                    ? (isDarkMode
+                          ? Colors.white.withValues(alpha: 0.05)
+                          : Colors.black.withValues(alpha: 0.05))
+                    : isPrimary
+                    ? accent
+                    : (isDarkMode
+                          ? Colors.white.withValues(alpha: 0.12)
+                          : Colors.black.withValues(alpha: 0.12)),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  a['icon'] as IconData,
+                  size: 18,
+                  color: !isEnabled
+                      ? neutral.withValues(alpha: 0.3)
+                      : isPrimary
+                      ? Colors.white
+                      : neutral,
                 ),
-              );
-            }
-          } else if (label == 'دمج ملفات') {
-            showDialog(
-              context: context,
-              builder: (_) => const MergePdfDialog(),
-            );
-          } else if (label == 'صور إلى PDF') {
-            showDialog(
-              context: context,
-              builder: (_) => const ImagesToPdfDialog(),
-            );
-          } else if (label == 'ترجمة الملفات (قريباً)') {
-            // TODO: Feature under development
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('ميزة ترجمة الملفات قيد التطوير حالياً...'),
-              ),
-            );
-          }
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: isDarkMode
-                ? color.withValues(alpha: 0.1)
-                : color.withValues(alpha: 0.05),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: color.withValues(alpha: 0.2)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                a['icon'] as IconData,
-                size: 18,
-                color: color[isDarkMode ? 400 : 600],
-              ),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  a['label'] as String,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                    color: isDarkMode ? Colors.white : color[900],
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      color: !isEnabled
+                          ? neutral.withValues(alpha: 0.35)
+                          : isPrimary
+                          ? Colors.white
+                          : neutral,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-      );
-    }).toList(),
+        );
+      }).toList(),
+    ),
   );
 }
 

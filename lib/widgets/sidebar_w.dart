@@ -16,6 +16,7 @@ class Sidebar extends StatefulWidget {
 class _SidebarState extends State<Sidebar> {
   bool _isAdding = false;
   bool _showUniversityFolders = true;
+  bool _showLocalFiles = true;
   final TextEditingController _classController = TextEditingController();
 
   void _handleAddClass(BuildContext context) {
@@ -95,6 +96,7 @@ class _SidebarState extends State<Sidebar> {
         String? activeClassId,
         String? activePdfId,
         bool isCollapsed,
+        bool isCollapseLocked,
       })
     >(
       selector: (_, app) => (
@@ -102,13 +104,15 @@ class _SidebarState extends State<Sidebar> {
         classes: app.classes,
         activeClassId: app.activeClassId,
         activePdfId: app.activePdfId,
-        isCollapsed: app.isSidebarCollapsed,
+        isCollapsed: app.isSidebarCollapsedEffective,
+        isCollapseLocked: app.isSidebarForcedOpen,
       ),
       builder: (context, data, _) {
         final app = context.read<AppProvider>();
         final isDarkMode = data.isDarkMode;
         final classes = data.classes;
         final isCollapsed = data.isCollapsed;
+        final isCollapseLocked = data.isCollapseLocked;
 
         final screenWidth = MediaQuery.sizeOf(context).width;
         final isMobile = ResponsiveBreakpoints.isMobile(screenWidth);
@@ -172,7 +176,10 @@ class _SidebarState extends State<Sidebar> {
                     ),
                     Row(
                       children: [
-                        if (!isMobile)
+                        // On the home page the explorer is pinned open, so the
+                        // collapse control is hidden rather than left there
+                        // inviting a click that would be undone immediately.
+                        if (!isMobile && !isCollapseLocked)
                           IconButton(
                             onPressed: () => app.toggleSidebar(),
                             icon: Icon(
@@ -187,6 +194,7 @@ class _SidebarState extends State<Sidebar> {
                           IconButton(
                             onPressed: () => app.toggleMobile(),
                             icon: Icon(LucideIcons.x, color: textMuted),
+                            tooltip: 'إغلاق',
                           ),
                       ],
                     ),
@@ -325,113 +333,144 @@ class _SidebarState extends State<Sidebar> {
 
                     // "Local Files" Header
                     const SizedBox(height: 24),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'الملفات المحلية',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF94A3B8), // slate-400
-                            letterSpacing: 1.0,
-                          ),
-                        ),
-                        IconButton(
-                          onPressed: () => setState(() => _isAdding = true),
-                          icon: const Icon(
-                            LucideIcons.plus,
-                            size: 16,
-                            color: Color(0xFF94A3B8),
-                          ),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Add Class Input
-                    if (_isAdding)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 16.0),
+                    // "Local Files" Header — mirrors the collapsible university
+                    // section above so both halves of the explorer can be
+                    // folded away independently.
+                    InkWell(
+                      onTap: () =>
+                          setState(() => _showLocalFiles = !_showLocalFiles),
+                      borderRadius: BorderRadius.circular(4),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
                         child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Expanded(
-                              child: Builder(
-                                builder: (ctx) {
-                                  final scheme = Theme.of(ctx).colorScheme;
-                                  final inputBg = isDarkMode
-                                      ? const Color(0xFF1E293B)
-                                      : scheme.surfaceContainerHigh;
-                                  final inputText = isDarkMode
-                                      ? Colors.white
-                                      : scheme.onSurface;
-                                  return TextField(
-                                    controller: _classController,
-                                    autofocus: true,
-                                    style: TextStyle(
-                                      color: inputText,
-                                      fontSize: 14,
-                                    ),
-                                    decoration: InputDecoration(
-                                      hintText: 'اسم القسم...',
-                                      hintStyle: TextStyle(
-                                        color: isDarkMode
-                                            ? Colors.white.withOpacity(0.5)
-                                            : scheme.onSurfaceVariant
-                                                  .withOpacity(0.6),
-                                      ),
-                                      filled: true,
-                                      fillColor: inputBg,
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(4),
-                                        borderSide: BorderSide.none,
-                                      ),
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 8,
-                                          ),
-                                      isDense: true,
-                                    ),
-                                    onSubmitted: (_) =>
-                                        _handleAddClass(context),
-                                  );
-                                },
+                            const Text(
+                              'الملفات المحلية',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF94A3B8), // slate-400
+                                letterSpacing: 1.0,
                               ),
                             ),
-                            IconButton(
-                              icon: const Icon(
-                                LucideIcons.check,
-                                color: Color(0xFF4ADE80),
-                                size: 18,
-                              ), // green-400
-                              onPressed: () => _handleAddClass(context),
-                              constraints: const BoxConstraints(),
-                              padding: const EdgeInsets.all(4),
-                            ),
-                            IconButton(
-                              icon: const Icon(
-                                LucideIcons.x,
-                                color: Color(0xFFF87171),
-                                size: 18,
-                              ), // red-400
-                              onPressed: () =>
-                                  setState(() => _isAdding = false),
-                              constraints: const BoxConstraints(),
-                              padding: const EdgeInsets.all(4),
+                            Row(
+                              children: [
+                                IconButton(
+                                  onPressed: () =>
+                                      setState(() => _isAdding = true),
+                                  icon: const Icon(
+                                    LucideIcons.plus,
+                                    size: 16,
+                                    color: Color(0xFF94A3B8),
+                                  ),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  tooltip: 'إضافة ملف محلي',
+                                ),
+                                const SizedBox(width: 8),
+                                Icon(
+                                  _showLocalFiles
+                                      ? LucideIcons.chevronUp
+                                      : LucideIcons.chevronDown,
+                                  size: 14,
+                                  color: const Color(0xFF94A3B8),
+                                ),
+                              ],
                             ),
                           ],
                         ),
                       ),
+                    ),
+                    Visibility(
+                      visible: _showLocalFiles,
+                      maintainState: true,
+                      child: Column(
+                        children: [
+                        const SizedBox(height: 16),
+    
+                        // Add Class Input
+                        if (_isAdding)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 16.0),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Builder(
+                                    builder: (ctx) {
+                                      final scheme = Theme.of(ctx).colorScheme;
+                                      final inputBg = isDarkMode
+                                          ? const Color(0xFF1E293B)
+                                          : scheme.surfaceContainerHigh;
+                                      final inputText = isDarkMode
+                                          ? Colors.white
+                                          : scheme.onSurface;
+                                      return TextField(
+                                        controller: _classController,
+                                        autofocus: true,
+                                        style: TextStyle(
+                                          color: inputText,
+                                          fontSize: 14,
+                                        ),
+                                        decoration: InputDecoration(
+                                          hintText: 'اسم القسم...',
+                                          hintStyle: TextStyle(
+                                            color: isDarkMode
+                                                ? Colors.white.withOpacity(0.5)
+                                                : scheme.onSurfaceVariant
+                                                      .withOpacity(0.6),
+                                          ),
+                                          filled: true,
+                                          fillColor: inputBg,
+                                          border: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(4),
+                                            borderSide: BorderSide.none,
+                                          ),
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(
+                                                horizontal: 8,
+                                                vertical: 8,
+                                              ),
+                                          isDense: true,
+                                        ),
+                                        onSubmitted: (_) =>
+                                            _handleAddClass(context),
+                                      );
+                                    },
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(
+                                    LucideIcons.check,
+                                    color: Color(0xFF4ADE80),
+                                    size: 18,
+                                  ), // green-400
+                                  onPressed: () => _handleAddClass(context),
+                                  constraints: const BoxConstraints(),
+                                  padding: const EdgeInsets.all(4),
+                                  tooltip: 'حفظ المجلد',
+                                ),
+                                IconButton(
+                                  icon: const Icon(
+                                    LucideIcons.x,
+                                    color: Color(0xFFF87171),
+                                    size: 18,
+                                  ), // red-400
+                                  onPressed: () =>
+                                      setState(() => _isAdding = false),
+                                  constraints: const BoxConstraints(),
+                                  padding: const EdgeInsets.all(4),
+                                  tooltip: 'إلغاء',
+                                ),
+                              ],
+                            ),
+                          ),
 
-                    // Local class list (custom drag/drop for folders)
-                    Column(
-                      children: [
-                        for (final entry in classes.asMap().entries)
-                          _buildClassItem(context, entry.value, app, entry.key),
-                      ],
+                            // Local class list (custom drag/drop for folders)
+                            for (final entry in classes.asMap().entries)
+                              _buildClassItem(context, entry.value, app, entry.key),
+                        ],
+                      ),
                     ),
                   ],
                 ),

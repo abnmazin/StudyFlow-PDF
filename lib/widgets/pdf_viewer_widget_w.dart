@@ -1,4 +1,4 @@
-﻿import 'package:pdfrx/pdfrx.dart' hide PdfDocument;
+import 'package:pdfrx/pdfrx.dart' hide PdfDocument;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/gestures.dart';
@@ -733,6 +733,13 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
       animation: Listenable.merge([FocusManager.instance, app]),
       builder: (context, _) {
         final selectedFloatingTool = _floatingToolbarSelectedTool;
+        // Viewer chrome is meaningless on the home page, where no document is
+        // open, so it steps aside and the dashboard gets the whole area.
+        // Phones deliberately keep it: their menu button is the only route to
+        // the file drawer, so hiding the toolbar there would strand the user
+        // on a dashboard that cannot open a file by itself.
+        final showViewerChrome = pdf != null ||
+            ResponsiveBreakpoints.isMobile(MediaQuery.sizeOf(context).width);
         // Only disable shortcuts if no PDF or editing comment, or if keyboard is locked (TextField has focus)
         final shortcutsDisabled = _editingCommentId != null || pdf == null || app.isKeyboardLocked;
 
@@ -843,30 +850,35 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
             },
             child: Column(
               children: [
-                // 1. Toolbar (Top)
-                StudyFlowToolbar(
-                  selectedShapeAuthor: selectedShapeAuthor,
-                  selectedCommentAuthor: selectedCommentAuthor,
-                  isRightPanelOpen: _isRightPanelOpen,
-                  isSplitMode: isSplitMode,
-                  isDarkMode: isDarkMode,
-                  isSyncing: app.isSyncing,
-                  activePdf: pdf,
-                  pdfController: primaryController,
-                  onToggleRightPanel: () {
-                    setState(() {
-                      _isRightPanelOpen = !_isRightPanelOpen;
-                      if (!_isRightPanelOpen) {
-                        _isPointerOverAiChat = false;
-                      }
-                    });
-                    _forcePdfRelayout();
-                  },
-                  onToggleSplitMode: () {
-                    app.toggleSplitMode();
-                    _forcePdfRelayout();
-                  },
-                  onSyncPressed: _syncNow,
+                // 1. Toolbar (Top) — hidden on the home page, but kept alive so
+                // zoom, split mode and the page counter survive.
+                Visibility(
+                  visible: showViewerChrome,
+                  maintainState: true,
+                  child: StudyFlowToolbar(
+                    selectedShapeAuthor: selectedShapeAuthor,
+                    selectedCommentAuthor: selectedCommentAuthor,
+                    isRightPanelOpen: _isRightPanelOpen,
+                    isSplitMode: isSplitMode,
+                    isDarkMode: isDarkMode,
+                    isSyncing: app.isSyncing,
+                    activePdf: pdf,
+                    pdfController: primaryController,
+                    onToggleRightPanel: () {
+                      setState(() {
+                        _isRightPanelOpen = !_isRightPanelOpen;
+                        if (!_isRightPanelOpen) {
+                          _isPointerOverAiChat = false;
+                        }
+                      });
+                      _forcePdfRelayout();
+                    },
+                    onToggleSplitMode: () {
+                      app.toggleSplitMode();
+                      _forcePdfRelayout();
+                    },
+                    onSyncPressed: _syncNow,
+                  ),
                 ),
                 // 2. Main Content Area (Viewer + Right Panel)
                 Expanded(
@@ -1544,11 +1556,12 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                               ),
                       ),
 
-                      // 3. Slim Tool Rail — always visible, so it drifts left
-                      //    when the right panel opens instead of vanishing.
-                      if (ViewerSideRail.shouldShow(
-                        MediaQuery.sizeOf(context).width,
-                      ))
+                      // 3. Slim Tool Rail — slides with the panel, and hides
+                      //    with the rest of the chrome when no file is open.
+                      if (showViewerChrome &&
+                          ViewerSideRail.shouldShow(
+                            MediaQuery.sizeOf(context).width,
+                          ))
                         ViewerSideRail(
                           isDarkMode: isDarkMode,
                           activeTool: panelTool,

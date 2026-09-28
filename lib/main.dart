@@ -533,8 +533,10 @@ class _MainLayoutState extends State<MainLayout> {
 
   @override
   Widget build(BuildContext context) {
+    // The effective value, not the raw one: the home page pins the explorer
+    // open because it is the only way to reach a file from there.
     final isSidebarCollapsed = context.select<AppProvider, bool>(
-      (p) => p.isSidebarCollapsed,
+      (p) => p.isSidebarCollapsedEffective,
     );
     final isMobileOpen = context.select<AppProvider, bool>(
       (p) => p.isMobileOpen,

@@ -89,11 +89,17 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   void _initConnectivity() {
     // connectivity_plus 6.x activates a Windows Network List Manager listener
-    // that fails with PlatformException(0, NetworkManager::StartListen) where
-    // that service is unavailable, and the EventChannel surfaced it to the
-    // zone as an unhandled exception on every cold start, with a stack trace
-    // that looks alarming but blocks nothing. Nothing in the app reads
-    // isOffline, so the failure is contained here rather than reported.
+    // that fails with PlatformException(298, NetworkManager::StartListen) on
+    // machines where that service is unavailable. The throw happens inside
+    // EventChannel.receiveBroadcastStream while the platform stream is being
+    // activated, so the `onError` below never sees it: it reaches the zone as
+    // an unhandled "Exception caught by services library" with a stack that
+    // contains no app frames at all. Nothing in the app reads `isOffline`, so
+    // the subscription is simply not opened on Windows rather than opening a
+    // stream that is guaranteed to fail and print a stack trace on every cold
+    // start. Other platforms keep the listener.
+    if (Platform.isWindows) return;
+
     _connectivitySub = Connectivity().onConnectivityChanged.listen(
       (results) {
         final isNowOffline = results.contains(ConnectivityResult.none);
@@ -106,7 +112,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         }
       },
       onError: (Object error) {
-        debugPrint('⚠️ [Network] Connectivity stream unavailable, staying online: $error');
+        debugPrint(
+          '⚠️ [Network] Connectivity stream unavailable, staying online: $error',
+        );
       },
     );
   }
@@ -607,7 +615,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   // --- LIFECYCLE MANAGEMENT (Patch 2) ---
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    debugPrint('📱 AppLifecycleState changed to: $state');
+   //-- debugPrint('📱 AppLifecycleState changed to: $state');
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.inactive) {
@@ -618,7 +626,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void _pauseAllListeners() {
-    debugPrint('⏸️ Pausing background listeners & timers.');
+   // --- debugPrint('⏸️ Pausing background listeners & timers.');
     _kickSub?.pause();
     _userMonitorTimer?.cancel();
     _userMonitorTimer = null;
@@ -793,6 +801,19 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   bool get isMobileOpen => _isMobileOpen;
   bool get showDevInfo => _showDevInfo;
   bool get isSidebarCollapsed => _isSidebarCollapsed;
+
+  /// On the home page the explorer is the only route to a file: the dashboard
+  /// folder grid merely picks a class (`setActiveClass`), it never opens a
+  /// document. So the sidebar is pinned open there, which is also what makes it
+  /// safe to hide the viewer toolbar while no file is open.
+  bool get isSidebarForcedOpen => _activePdfId == null;
+
+  /// What the layout should actually render. Reading the raw
+  /// [isSidebarCollapsed] would let a collapse made on the home page survive
+  /// into it, where the sidebar has no way back open again.
+  bool get isSidebarCollapsedEffective =>
+      _isSidebarCollapsed && !isSidebarForcedOpen;
+
   bool get isDarkMode => _isDarkMode;
   Set<String> get intentionallyDeletedIds =>
       Set.unmodifiable(_intentionallyDeletedIds);
