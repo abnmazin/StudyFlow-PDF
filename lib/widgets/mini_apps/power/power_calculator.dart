@@ -13,11 +13,11 @@ class PowerCalculatorWidget extends StatefulWidget {
 
 class _PowerCalculatorWidgetState extends State<PowerCalculatorWidget> {
   // ===== BOOLEAN STATE (TOGGLES) =====
-  bool _isStar = true;       // true = Star (Y),    false = Delta (Δ)
+  bool _isStar = true; // true = Star (Y),    false = Delta (Δ)
   bool _isVoltageLine = true; // true = V_line,      false = V_phase
   bool _isCurrentLine = true; // true = I_line,      false = I_phase
-  bool _isLagging = true;    // true = Lagging,     false = Leading
-  bool _calcXFromL = false;  // NEW: true = compute X from L & f
+  bool _isLagging = true; // true = Lagging,     false = Leading
+  bool _calcXFromL = false; // NEW: true = compute X from L & f
 
   // ===== INPUT CONTROLLERS =====
   late final TextEditingController _vCtrl;
@@ -25,8 +25,8 @@ class _PowerCalculatorWidgetState extends State<PowerCalculatorWidget> {
   late final TextEditingController _pfCtrl;
   late final TextEditingController _rCtrl;
   late final TextEditingController _xCtrl;
-  late final TextEditingController _fCtrl;  // NEW: frequency (Hz)
-  late final TextEditingController _lCtrl;  // NEW: inductance (mH)
+  late final TextEditingController _fCtrl; // NEW: frequency (Hz)
+  late final TextEditingController _lCtrl; // NEW: inductance (mH)
 
   // ===== OUTPUT STATE =====
   double resVL = 0;
@@ -39,25 +39,25 @@ class _PowerCalculatorWidgetState extends State<PowerCalculatorWidget> {
   double resZph = 0;
   double resPLoss = 0;
   double resQLoss = 0;
-  double resVDrop = 0;   // NEW: line voltage drop
+  double resVDrop = 0; // NEW: line voltage drop
   double resVsL = 0;
-  double resPs = 0;      // NEW: source active power
-  double resSs = 0;      // NEW: source apparent power
-  double resPFs = 0;     // NEW: source power factor
+  double resPs = 0; // NEW: source active power
+  double resSs = 0; // NEW: source apparent power
+  double resPFs = 0; // NEW: source power factor
   double resEff = 0;
   double resReg = 0;
-  double resCalcX = 0;   // NEW: computed XL (for display)
+  double resCalcX = 0; // NEW: computed XL (for display)
 
   @override
   void initState() {
     super.initState();
-    _vCtrl  = TextEditingController();
-    _iCtrl  = TextEditingController();
+    _vCtrl = TextEditingController();
+    _iCtrl = TextEditingController();
     _pfCtrl = TextEditingController(text: '0.85');
-    _rCtrl  = TextEditingController();
-    _xCtrl  = TextEditingController();
-    _fCtrl  = TextEditingController(text: '50');
-    _lCtrl  = TextEditingController();
+    _rCtrl = TextEditingController();
+    _xCtrl = TextEditingController();
+    _fCtrl = TextEditingController(text: '50');
+    _lCtrl = TextEditingController();
 
     for (final c in [_vCtrl, _iCtrl, _pfCtrl, _rCtrl, _xCtrl, _fCtrl, _lCtrl]) {
       c.addListener(_calculateAll);
@@ -96,16 +96,16 @@ class _PowerCalculatorWidgetState extends State<PowerCalculatorWidget> {
   void _calculateAll() {
     setState(() {
       // ── Read inputs ──────────────────────────────────────────────────────
-      final double v  = _readInput(_vCtrl);
-      final double i  = _readInput(_iCtrl);
-      double pf       = _readInput(_pfCtrl).clamp(0.01, 1.0);
-      final double r  = _readInput(_rCtrl);
+      final double v = _readInput(_vCtrl);
+      final double i = _readInput(_iCtrl);
+      double pf = _readInput(_pfCtrl).clamp(0.01, 1.0);
+      final double r = _readInput(_rCtrl);
 
       // FIX: compute X from L & f if toggle is on (matches React web version)
       double x;
       if (_calcXFromL) {
-        final double f    = _readInput(_fCtrl);
-        final double lMH  = _readInput(_lCtrl);
+        final double f = _readInput(_fCtrl);
+        final double lMH = _readInput(_lCtrl);
         x = 2 * math.pi * f * (lMH / 1000);
         resCalcX = x;
       } else {
@@ -121,12 +121,12 @@ class _PowerCalculatorWidgetState extends State<PowerCalculatorWidget> {
       // FIX: respect _isVoltageLine toggle (was always treating input as V_line)
       if (v > 0) {
         if (_isVoltageLine) {
-          resVL  = v;
+          resVL = v;
           resVph = _isStar ? v / math.sqrt(3) : v;
         } else {
           // input is V_phase
           resVph = v;
-          resVL  = _isStar ? v * math.sqrt(3) : v;
+          resVL = _isStar ? v * math.sqrt(3) : v;
         }
       } else {
         resVL = resVph = 0;
@@ -136,12 +136,12 @@ class _PowerCalculatorWidgetState extends State<PowerCalculatorWidget> {
       // FIX: respect _isCurrentLine toggle
       if (i > 0) {
         if (_isCurrentLine) {
-          resIL  = i;
+          resIL = i;
           resIph = _isStar ? i : i / math.sqrt(3);
         } else {
           // input is I_phase
           resIph = i;
-          resIL  = _isStar ? i : i * math.sqrt(3);
+          resIL = _isStar ? i : i * math.sqrt(3);
         }
       } else {
         resIL = resIph = 0;
@@ -157,7 +157,7 @@ class _PowerCalculatorWidgetState extends State<PowerCalculatorWidget> {
       }
 
       // ===== 4. TRANSMISSION LINE IMPEDANCE & LOSSES =====
-      resZph   = math.sqrt(r * r + x * x);
+      resZph = math.sqrt(r * r + x * x);
       resPLoss = resIph > 0 ? 3 * resIph * resIph * r : 0;
       resQLoss = resIph > 0 ? 3 * resIph * resIph * x : 0;
 
@@ -170,20 +170,18 @@ class _PowerCalculatorWidgetState extends State<PowerCalculatorWidget> {
         final double vSendingPh = resVph + vDropPh;
         // Line voltage drop (for display — matches React vDrop field)
         resVDrop = vDropPh * (_isStar ? math.sqrt(3) : 1);
-        resVsL   = _isStar ? vSendingPh * math.sqrt(3) : vSendingPh;
+        resVsL = _isStar ? vSendingPh * math.sqrt(3) : vSendingPh;
       } else {
         resVDrop = 0;
-        resVsL   = resVL;
+        resVsL = resVL;
       }
 
       // ===== 6. SOURCE SIDE POWER (NEW — matches React resPs/resSs/resPFs) =====
       if (resP > 0) {
-        resPs  = resP + resPLoss;
+        resPs = resP + resPLoss;
         // FIX: Q at source depends on leading/lagging (matches React)
-        final double resQs = _isLagging
-            ? (resQ + resQLoss)
-            : (resQLoss - resQ);
-        resSs  = math.sqrt(resPs * resPs + resQs * resQs);
+        final double resQs = _isLagging ? (resQ + resQLoss) : (resQLoss - resQ);
+        resSs = math.sqrt(resPs * resPs + resQs * resQs);
         resPFs = resSs > 0 ? resPs / resSs : 0;
       } else {
         resPs = resSs = resPFs = 0;
@@ -695,13 +693,24 @@ class _PowerCalculatorWidgetState extends State<PowerCalculatorWidget> {
                         children: [
                           Expanded(
                             child: GestureDetector(
-                              onTap: () { setState(() => _calcXFromL = false); _calculateAll(); },
+                              onTap: () {
+                                setState(() => _calcXFromL = false);
+                                _calculateAll();
+                              },
                               child: AnimatedContainer(
                                 duration: const Duration(milliseconds: 180),
-                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 8,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: !_calcXFromL ? Colors.blue : (isDark ? Colors.grey.shade800 : Colors.grey.shade200),
-                                  borderRadius: const BorderRadius.horizontal(left: Radius.circular(8)),
+                                  color: !_calcXFromL
+                                      ? Colors.blue
+                                      : (isDark
+                                            ? Colors.grey.shade800
+                                            : Colors.grey.shade200),
+                                  borderRadius: const BorderRadius.horizontal(
+                                    left: Radius.circular(8),
+                                  ),
                                 ),
                                 alignment: Alignment.center,
                                 child: Text(
@@ -709,7 +718,9 @@ class _PowerCalculatorWidgetState extends State<PowerCalculatorWidget> {
                                   style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.bold,
-                                    color: !_calcXFromL ? Colors.white : Colors.grey,
+                                    color: !_calcXFromL
+                                        ? Colors.white
+                                        : Colors.grey,
                                   ),
                                 ),
                               ),
@@ -717,13 +728,24 @@ class _PowerCalculatorWidgetState extends State<PowerCalculatorWidget> {
                           ),
                           Expanded(
                             child: GestureDetector(
-                              onTap: () { setState(() => _calcXFromL = true); _calculateAll(); },
+                              onTap: () {
+                                setState(() => _calcXFromL = true);
+                                _calculateAll();
+                              },
                               child: AnimatedContainer(
                                 duration: const Duration(milliseconds: 180),
-                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 8,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: _calcXFromL ? Colors.blue : (isDark ? Colors.grey.shade800 : Colors.grey.shade200),
-                                  borderRadius: const BorderRadius.horizontal(right: Radius.circular(8)),
+                                  color: _calcXFromL
+                                      ? Colors.blue
+                                      : (isDark
+                                            ? Colors.grey.shade800
+                                            : Colors.grey.shade200),
+                                  borderRadius: const BorderRadius.horizontal(
+                                    right: Radius.circular(8),
+                                  ),
                                 ),
                                 alignment: Alignment.center,
                                 child: Text(
@@ -731,7 +753,9 @@ class _PowerCalculatorWidgetState extends State<PowerCalculatorWidget> {
                                   style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.bold,
-                                    color: _calcXFromL ? Colors.white : Colors.grey,
+                                    color: _calcXFromL
+                                        ? Colors.white
+                                        : Colors.grey,
                                   ),
                                 ),
                               ),
@@ -771,7 +795,9 @@ class _PowerCalculatorWidgetState extends State<PowerCalculatorWidget> {
                           width: double.infinity,
                           padding: const EdgeInsets.symmetric(vertical: 6),
                           decoration: BoxDecoration(
-                            color: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
+                            color: isDark
+                                ? Colors.grey.shade900
+                                : Colors.grey.shade100,
                             borderRadius: BorderRadius.circular(6),
                           ),
                           alignment: Alignment.center,
@@ -780,7 +806,9 @@ class _PowerCalculatorWidgetState extends State<PowerCalculatorWidget> {
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.bold,
-                              color: isDark ? Colors.grey.shade300 : Colors.grey.shade700,
+                              color: isDark
+                                  ? Colors.grey.shade300
+                                  : Colors.grey.shade700,
                             ),
                           ),
                         ),

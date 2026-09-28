@@ -26,13 +26,20 @@ class StudyFlowToolbar extends StatefulWidget {
   /// Helper: returns the icon for a given tool type.
   static IconData iconForTool(ToolType tool) {
     switch (tool) {
-      case ToolType.pen: return LucideIcons.penTool;
-      case ToolType.highlight: return LucideIcons.highlighter;
-      case ToolType.eraser: return LucideIcons.eraser;
-      case ToolType.arrow: return LucideIcons.arrowUpRight;
-      case ToolType.rectangle: return LucideIcons.square;
-      case ToolType.circle: return LucideIcons.circle;
-      default: return LucideIcons.shapes;
+      case ToolType.pen:
+        return LucideIcons.penTool;
+      case ToolType.highlight:
+        return LucideIcons.highlighter;
+      case ToolType.eraser:
+        return LucideIcons.eraser;
+      case ToolType.arrow:
+        return LucideIcons.arrowUpRight;
+      case ToolType.rectangle:
+        return LucideIcons.square;
+      case ToolType.circle:
+        return LucideIcons.circle;
+      default:
+        return LucideIcons.shapes;
     }
   }
 
@@ -72,11 +79,7 @@ class _AuthorBadge extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
-            LucideIcons.user,
-            size: 14,
-            color: Color(0xFF3B82F6),
-          ),
+          const Icon(LucideIcons.user, size: 14, color: Color(0xFF3B82F6)),
           const SizedBox(width: 4),
           Text(
             name,
@@ -421,7 +424,8 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                               onSubmitted: (val) {
                                 if (!widget.pdfController.isReady) return;
                                 final int? page = int.tryParse(val);
-                                final pageCount = widget.pdfController.pages.length;
+                                final pageCount =
+                                    widget.pdfController.pages.length;
                                 if (page != null &&
                                     page >= 1 &&
                                     page <= pageCount) {

@@ -38,7 +38,8 @@ class DraggableTextWidget extends StatefulWidget {
     String? mediaUrl,
     double mediaHeight,
     PointerDownEvent? event,
-  ) onEditComplete;
+  )
+  onEditComplete;
   final VoidCallback? onIncreaseSize;
   final VoidCallback? onDecreaseSize;
   final VoidCallback? onToggleBorder;
@@ -202,7 +203,7 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
     super.initState();
     _textController = TextEditingController(text: widget.content);
     _focusNode = FocusNode();
-    
+
     // FIX: Initialize media height from the widget property
     _mediaHeight = widget.mediaHeight ?? 150.0;
 
@@ -212,7 +213,7 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
         context.read<AppProvider>().setKeyboardLock(_focusNode.hasFocus);
       }
     });
-    
+
     _attachedMediaUrl = widget.attachedMediaUrl;
     // When a brand-new widget is built already in editing mode (e.g. _addTextAt),
     // didUpdateWidget never fires, so we must request focus here.
@@ -284,10 +285,7 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
     setState(() => _isUploadingMedia = true);
     try {
       final storage = SupabaseStorageService();
-      final url = await storage.uploadFile(
-        File(filePath),
-        isAudio: false,
-      );
+      final url = await storage.uploadFile(File(filePath), isAudio: false);
       if (url == null) return;
 
       _persistAttachmentUrl(url);
@@ -368,17 +366,29 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
     cleanEq = cleanEq.replaceAll(RegExp(r'\\right\)'), ')');
 
     // 2. معالجة الأسس للتخلص من الأقواس المعكوفة {} قبل الوصول للكسور
-    cleanEq = cleanEq.replaceAllMapped(RegExp(r'\^\{([^}]+)\}'), (m) => '^(${m[1]})');
-    cleanEq = cleanEq.replaceAllMapped(RegExp(r'_\{([^}]+)\}'), (m) => '_(${m[1]})');
+    cleanEq = cleanEq.replaceAllMapped(
+      RegExp(r'\^\{([^}]+)\}'),
+      (m) => '^(${m[1]})',
+    );
+    cleanEq = cleanEq.replaceAllMapped(
+      RegExp(r'_\{([^}]+)\}'),
+      (m) => '_(${m[1]})',
+    );
 
     // 3. معالجة الجذور والكسور
-    cleanEq = cleanEq.replaceAllMapped(RegExp(r'\\sqrt{([^}]+)}'), (m) => 'sqrt(${m[1]})');
-    cleanEq = cleanEq.replaceAllMapped(RegExp(r'\\frac{([^}]+)}{([^}]+)}'), (m) => '(${m[1]})/(${m[2]})');
+    cleanEq = cleanEq.replaceAllMapped(
+      RegExp(r'\\sqrt{([^}]+)}'),
+      (m) => 'sqrt(${m[1]})',
+    );
+    cleanEq = cleanEq.replaceAllMapped(
+      RegExp(r'\\frac{([^}]+)}{([^}]+)}'),
+      (m) => '(${m[1]})/(${m[2]})',
+    );
 
     // 4. العمليات الأساسية
     cleanEq = cleanEq.replaceAll(RegExp(r'\\times'), '*');
     cleanEq = cleanEq.replaceAll(RegExp(r'\\div'), '/');
-    
+
     cleanEq = cleanEq.replaceAll(' ', ''); // remove spaces
 
     try {
@@ -388,13 +398,16 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
       double eval = exp.evaluate(me.EvaluationType.REAL, cm);
 
       String resultStr;
-      
+
       // تقريب الأرقام الكبيرة جداً أو الصغيرة جداً إلى صيغة علمية احترافية
       if (eval.abs() >= 100000 || (eval.abs() < 0.001 && eval != 0)) {
         String expStr = eval.toStringAsExponential(4); // e.g., "3.1250e9"
-        expStr = expStr.replaceAll(RegExp(r'0+e'), 'e'); // remove trailing zeros in base
+        expStr = expStr.replaceAll(
+          RegExp(r'0+e'),
+          'e',
+        ); // remove trailing zeros in base
         expStr = expStr.replaceAll(RegExp(r'\.e'), 'e'); // clean dangling dot
-        
+
         List<String> parts = expStr.split('e');
         if (parts.length == 2) {
           String base = parts[0];
@@ -407,7 +420,9 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
       } else {
         // الأرقام العادية: نحدد 4 مراتب عشرية كحد أقصى ثم نزيل الأصفار الزائدة
         resultStr = eval.toStringAsFixed(4);
-        resultStr = resultStr.replaceAll(RegExp(r'0*$'), '').replaceAll(RegExp(r'\.$'), '');
+        resultStr = resultStr
+            .replaceAll(RegExp(r'0*$'), '')
+            .replaceAll(RegExp(r'\.$'), '');
       }
 
       // Auto-append the result to the controller
@@ -437,8 +452,8 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
 
     final newText = ctrl.text.replaceRange(base, extent, code);
 
-    final finalOffset = cursorOffset != null 
-        ? base + cursorOffset 
+    final finalOffset = cursorOffset != null
+        ? base + cursorOffset
         : base + code.length;
 
     ctrl.value = TextEditingValue(
@@ -648,8 +663,9 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
       if (url == null || url.isEmpty) return const SizedBox.shrink();
 
       // 1. Fix Caching: Strip dynamic tokens for a stable cache key
-      final String stableCacheKey =
-          url.contains('?') ? url.split('?').first : url;
+      final String stableCacheKey = url.contains('?')
+          ? url.split('?').first
+          : url;
 
       // 2. Fix Scaling: Multiply dimensions by widget.scale
       final double scaledHeight = _mediaHeight * widget.scale;
@@ -706,8 +722,10 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
                             TextButton.icon(
                               onPressed: () =>
                                   setState(() => _imageRetryCount++),
-                              icon:
-                                  Icon(Icons.refresh, size: 16 * widget.scale),
+                              icon: Icon(
+                                Icons.refresh,
+                                size: 16 * widget.scale,
+                              ),
                               label: Text(
                                 'إعادة المحاولة',
                                 style: TextStyle(fontSize: 12 * widget.scale),
@@ -770,30 +788,45 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
                         context.read<AppProvider>().setKeyboardLock(true);
                       }
                     },
-                    contentInsertionConfiguration: ContentInsertionConfiguration(
-                      allowedMimeTypes: const <String>['image/png', 'image/jpeg', 'image/gif', 'image/webp'],
-                      onContentInserted: (KeyboardInsertedContent content) async {
-                        if (content.hasData) {
-                          final bytes = content.data!;
-                          setState(() => _isUploadingMedia = true);
-                          try {
-                            final storage = SupabaseStorageService();
-                            String ext = '.png'; // Default
-                            if (content.mimeType == 'image/jpeg') ext = '.jpg';
-                            if (content.mimeType == 'image/gif') ext = '.gif';
-                            if (content.mimeType == 'image/webp') ext = '.webp';
-                            
-                            final url = await storage.uploadBytes(bytes, ext);
-                            if (url != null) {
-                              _persistAttachmentUrl(url);
-                              if (mounted) setState(() => _attachedMediaUrl = url);
-                            }
-                          } finally {
-                            if (mounted) setState(() => _isUploadingMedia = false);
-                          }
-                        }
-                      },
-                    ),
+                    contentInsertionConfiguration:
+                        ContentInsertionConfiguration(
+                          allowedMimeTypes: const <String>[
+                            'image/png',
+                            'image/jpeg',
+                            'image/gif',
+                            'image/webp',
+                          ],
+                          onContentInserted:
+                              (KeyboardInsertedContent content) async {
+                                if (content.hasData) {
+                                  final bytes = content.data!;
+                                  setState(() => _isUploadingMedia = true);
+                                  try {
+                                    final storage = SupabaseStorageService();
+                                    String ext = '.png'; // Default
+                                    if (content.mimeType == 'image/jpeg')
+                                      ext = '.jpg';
+                                    if (content.mimeType == 'image/gif')
+                                      ext = '.gif';
+                                    if (content.mimeType == 'image/webp')
+                                      ext = '.webp';
+
+                                    final url = await storage.uploadBytes(
+                                      bytes,
+                                      ext,
+                                    );
+                                    if (url != null) {
+                                      _persistAttachmentUrl(url);
+                                      if (mounted)
+                                        setState(() => _attachedMediaUrl = url);
+                                    }
+                                  } finally {
+                                    if (mounted)
+                                      setState(() => _isUploadingMedia = false);
+                                  }
+                                }
+                              },
+                        ),
                     onChanged: (val) {
                       _tryAutoSolveLatex(val);
                       // Re-evaluate direction while typing so mixed-language text feels natural.
@@ -839,13 +872,12 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
                 IconButton(
                   tooltip: 'حفظ الملاحظة',
                   icon: const Icon(Icons.check_circle_outline, size: 20),
-                  onPressed:
-                      () => widget.onEditComplete(
-                        _textController.text,
-                        _attachedMediaUrl,
-                        _mediaHeight,
-                        null,
-                      ),
+                  onPressed: () => widget.onEditComplete(
+                    _textController.text,
+                    _attachedMediaUrl,
+                    _mediaHeight,
+                    null,
+                  ),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(
                     minWidth: 32,
@@ -900,8 +932,12 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
             decoration: BoxDecoration(
               color: widget.isEditing
                   ? (isDarkContext
-                        ? const Color.fromARGB(255, 255, 255, 255)
-                              .withOpacity(0.9)
+                        ? const Color.fromARGB(
+                            255,
+                            255,
+                            255,
+                            255,
+                          ).withOpacity(0.9)
                         : Colors.white.withOpacity(0.9))
                   : (effectiveBgColor == Colors.transparent
                         ? null
@@ -918,7 +954,9 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
               boxShadow: widget.isEditing
                   ? [
                       BoxShadow(
-                        color: Colors.black.withOpacity(isDarkContext ? 0.3 : 0.1),
+                        color: Colors.black.withOpacity(
+                          isDarkContext ? 0.3 : 0.1,
+                        ),
                         blurRadius: 8,
                         offset: const Offset(0, 4),
                       ),
@@ -1002,7 +1040,12 @@ class _MathOverlayWidget extends StatelessWidget {
     required this.isLatex,
   });
 
-  Widget _buildMathButton(BuildContext context, String tooltip, String label, VoidCallback onTap) {
+  Widget _buildMathButton(
+    BuildContext context,
+    String tooltip,
+    String label,
+    VoidCallback onTap,
+  ) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.only(right: 6),
@@ -1016,9 +1059,13 @@ class _MathOverlayWidget extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
-                color: isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.04),
+                color: isDark
+                    ? Colors.white.withOpacity(0.08)
+                    : Colors.black.withOpacity(0.04),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: isDark ? Colors.white12 : Colors.black12),
+                border: Border.all(
+                  color: isDark ? Colors.white12 : Colors.black12,
+                ),
               ),
               child: Center(
                 child: Text(
@@ -1056,13 +1103,18 @@ class _MathOverlayWidget extends StatelessWidget {
                 child: Container(
                   constraints: BoxConstraints(
                     maxWidth: MediaQuery.of(context).size.width * 0.85,
-                    maxHeight: 220, // HARD CAP — prevents vertical explosion no matter what Math.tex does
+                    maxHeight:
+                        220, // HARD CAP — prevents vertical explosion no matter what Math.tex does
                   ),
                   decoration: BoxDecoration(
-                    color: isDark ? Colors.black.withOpacity(0.65) : Colors.white.withOpacity(0.85),
+                    color: isDark
+                        ? Colors.black.withOpacity(0.65)
+                        : Colors.white.withOpacity(0.85),
                     borderRadius: BorderRadius.circular(24),
                     border: Border.all(
-                      color: isDark ? Colors.white.withOpacity(0.15) : Colors.black.withOpacity(0.08),
+                      color: isDark
+                          ? Colors.white.withOpacity(0.15)
+                          : Colors.black.withOpacity(0.08),
                       width: 1,
                     ),
                     boxShadow: [
@@ -1078,53 +1130,70 @@ class _MathOverlayWidget extends StatelessWidget {
                     children: [
                       // ─── 1. LIVE PREVIEW AREA (Top Section) — LaTeX only ───
                       if (isLatex)
-                      ValueListenableBuilder<TextEditingValue>(
-                        valueListenable: textController,
-                        builder: (context, value, child) {
-                          if (value.text.trim().isEmpty) return const SizedBox.shrink();
-                          return Container(
-                            constraints: const BoxConstraints(
-                              minWidth: 150,
-                              maxHeight: 80, // 🛡️ Absolute vertical cap. No explosions allowed.
-                            ),
-                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                            decoration: BoxDecoration(
-                              color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03),
-                              border: Border(
-                                bottom: BorderSide(
-                                  color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05),
+                        ValueListenableBuilder<TextEditingValue>(
+                          valueListenable: textController,
+                          builder: (context, value, child) {
+                            if (value.text.trim().isEmpty)
+                              return const SizedBox.shrink();
+                            return Container(
+                              constraints: const BoxConstraints(
+                                minWidth: 150,
+                                maxHeight:
+                                    80, // 🛡️ Absolute vertical cap. No explosions allowed.
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isDark
+                                    ? Colors.white.withOpacity(0.05)
+                                    : Colors.black.withOpacity(0.03),
+                                border: Border(
+                                  bottom: BorderSide(
+                                    color: isDark
+                                        ? Colors.white.withOpacity(0.1)
+                                        : Colors.black.withOpacity(0.05),
+                                  ),
                                 ),
                               ),
-                            ),
-                            alignment: Alignment.center,
-                            child: FittedBox( // 🪄 Prevents infinite constraint crashes & scales down long equations
-                              fit: BoxFit.scaleDown,
                               alignment: Alignment.center,
-                              child: Directionality(
-                                textDirection: TextDirection.ltr,
-                                child: Math.tex(
-                                  value.text,
-                                  textStyle: TextStyle(
-                                    fontSize: 28,
-                                    color: isDark ? Colors.white : Colors.black87,
-                                  ),
-                                  onErrorFallback: (err) => Text(
+                              child: FittedBox(
+                                // 🪄 Prevents infinite constraint crashes & scales down long equations
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.center,
+                                child: Directionality(
+                                  textDirection: TextDirection.ltr,
+                                  child: Math.tex(
                                     value.text,
-                                    style: TextStyle(
-                                      color: Colors.redAccent.withOpacity(0.8),
-                                      fontSize: 20,
+                                    textStyle: TextStyle(
+                                      fontSize: 28,
+                                      color: isDark
+                                          ? Colors.white
+                                          : Colors.black87,
+                                    ),
+                                    onErrorFallback: (err) => Text(
+                                      value.text,
+                                      style: TextStyle(
+                                        color: Colors.redAccent.withOpacity(
+                                          0.8,
+                                        ),
+                                        fontSize: 20,
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
-                            ),
-                          );
-                        },
-                      ),
+                            );
+                          },
+                        ),
 
                       // ─── 2. BOTTOM AREA (Formatting + Math Tools) ───
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min, // SHRINK-WRAP THE ROW
                           crossAxisAlignment: CrossAxisAlignment.center,
@@ -1136,49 +1205,145 @@ class _MathOverlayWidget extends StatelessWidget {
                                 Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    IconButton(icon: const Icon(LucideIcons.zoomIn, size: 18), onPressed: onIncreaseSize, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32), color: Colors.blueAccent),
-                                    IconButton(icon: const Icon(LucideIcons.zoomOut, size: 18), onPressed: onDecreaseSize, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32), color: Colors.blueAccent),
+                                    IconButton(
+                                      icon: const Icon(
+                                        LucideIcons.zoomIn,
+                                        size: 18,
+                                      ),
+                                      onPressed: onIncreaseSize,
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(
+                                        minWidth: 32,
+                                        minHeight: 32,
+                                      ),
+                                      color: Colors.blueAccent,
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(
+                                        LucideIcons.zoomOut,
+                                        size: 18,
+                                      ),
+                                      onPressed: onDecreaseSize,
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(
+                                        minWidth: 32,
+                                        minHeight: 32,
+                                      ),
+                                      color: Colors.blueAccent,
+                                    ),
                                   ],
                                 ),
                                 Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    IconButton(icon: Icon(showBorder ? LucideIcons.checkSquare : LucideIcons.square, size: 18), onPressed: onToggleBorder, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32), color: showBorder ? const Color(0xFF10B981) : Colors.blueAccent),
-                                    IconButton(icon: const Icon(LucideIcons.messageSquare, size: 18), onPressed: onToggleLatex, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32), color: const Color(0xFFEF4444)),
+                                    IconButton(
+                                      icon: Icon(
+                                        showBorder
+                                            ? LucideIcons.checkSquare
+                                            : LucideIcons.square,
+                                        size: 18,
+                                      ),
+                                      onPressed: onToggleBorder,
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(
+                                        minWidth: 32,
+                                        minHeight: 32,
+                                      ),
+                                      color: showBorder
+                                          ? const Color(0xFF10B981)
+                                          : Colors.blueAccent,
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(
+                                        LucideIcons.messageSquare,
+                                        size: 18,
+                                      ),
+                                      onPressed: onToggleLatex,
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(
+                                        minWidth: 32,
+                                        minHeight: 32,
+                                      ),
+                                      color: const Color(0xFFEF4444),
+                                    ),
                                   ],
                                 ),
                               ],
                             ),
-                            
+
                             // SEPARATOR
                             Container(
                               width: 1,
                               height: 40,
                               color: isDark ? Colors.white24 : Colors.black12,
-                              margin: const EdgeInsets.symmetric(horizontal: 12),
+                              margin: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                              ),
                             ),
 
                             // MATH BUTTONS (LaTeX only)
                             if (isLatex)
-                            Flexible( // Allows scrolling only if it overflows
-                              child: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                physics: const BouncingScrollPhysics(),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min, // SHRINK-WRAP THE MATH BUTTONS
-                                  children: [
-                                    _buildMathButton(context, 'مالانهاية', '∞', () => onInsert('\\infty ', 7)),
-                                    _buildMathButton(context, 'قوسين', '( )', () => onInsert('\\left(  \\right)', 7)),
-                                    _buildMathButton(context, 'مجموع', '∑', () => onInsert('\\sum_{}^{} ', 6)),
-                                    _buildMathButton(context, 'تكامل', '∫', () => onInsert('\\int_{}^{} ', 6)),
-                                    _buildMathButton(context, 'أساس', 'x₂', () => onInsert('_{ }', 2)),
-                                    _buildMathButton(context, 'أس', 'x²', () => onInsert('^{ }', 2)),
-                                    _buildMathButton(context, 'جذر', '√', () => onInsert('\\sqrt{ }', 6)),
-                                    _buildMathButton(context, 'كسر', 'x/y', () => onInsert('\\frac{ }{ }', 6)),
-                                  ],
+                              Flexible(
+                                // Allows scrolling only if it overflows
+                                child: SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  physics: const BouncingScrollPhysics(),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize
+                                        .min, // SHRINK-WRAP THE MATH BUTTONS
+                                    children: [
+                                      _buildMathButton(
+                                        context,
+                                        'مالانهاية',
+                                        '∞',
+                                        () => onInsert('\\infty ', 7),
+                                      ),
+                                      _buildMathButton(
+                                        context,
+                                        'قوسين',
+                                        '( )',
+                                        () => onInsert('\\left(  \\right)', 7),
+                                      ),
+                                      _buildMathButton(
+                                        context,
+                                        'مجموع',
+                                        '∑',
+                                        () => onInsert('\\sum_{}^{} ', 6),
+                                      ),
+                                      _buildMathButton(
+                                        context,
+                                        'تكامل',
+                                        '∫',
+                                        () => onInsert('\\int_{}^{} ', 6),
+                                      ),
+                                      _buildMathButton(
+                                        context,
+                                        'أساس',
+                                        'x₂',
+                                        () => onInsert('_{ }', 2),
+                                      ),
+                                      _buildMathButton(
+                                        context,
+                                        'أس',
+                                        'x²',
+                                        () => onInsert('^{ }', 2),
+                                      ),
+                                      _buildMathButton(
+                                        context,
+                                        'جذر',
+                                        '√',
+                                        () => onInsert('\\sqrt{ }', 6),
+                                      ),
+                                      _buildMathButton(
+                                        context,
+                                        'كسر',
+                                        'x/y',
+                                        () => onInsert('\\frac{ }{ }', 6),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
-                            ),
                           ],
                         ),
                       ),

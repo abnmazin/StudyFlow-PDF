@@ -15,7 +15,9 @@ extension _PDFViewerWidgetStatePrint on _PDFViewerWidgetState {
         final pages = _pdfController.pages;
         if (page < 1 || page > pages.length) return 0;
         return pages[page - 1].width;
-      } catch (_) { return 0; }
+      } catch (_) {
+        return 0;
+      }
     }
 
     double _pageH(int page) {
@@ -23,7 +25,9 @@ extension _PDFViewerWidgetStatePrint on _PDFViewerWidgetState {
         final pages = _pdfController.pages;
         if (page < 1 || page > pages.length) return 0;
         return pages[page - 1].height;
-      } catch (_) { return 0; }
+      } catch (_) {
+        return 0;
+      }
     }
 
     final highlights = pdf.highlights.map((h) {

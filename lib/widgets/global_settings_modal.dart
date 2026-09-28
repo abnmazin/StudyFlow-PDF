@@ -682,7 +682,8 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                         ),
                       ],
 
-                      if (app.currentUser?.role == 'lecturer' && !app.currentUser!.isAdmin) ...[
+                      if (app.currentUser?.role == 'lecturer' &&
+                          !app.currentUser!.isAdmin) ...[
                         const SizedBox(height: 24),
                         _buildSectionHeader(
                           'الانضمام إلى حزمة',
@@ -797,10 +798,7 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                   padding: const EdgeInsets.all(16),
                   child: Text(
                     'تعذّر تحميل الحزم: ${snapshot.error}',
-                    style: TextStyle(
-                      color: Colors.red.shade300,
-                      fontSize: 13,
-                    ),
+                    style: TextStyle(color: Colors.red.shade300, fontSize: 13),
                   ),
                 );
               }
@@ -1425,13 +1423,13 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
     final selectedModel = isMcp
         ? app.mcpModel
         : app.aiProvider == 'groq'
-            ? app.groqModel
-            : app.geminiModel;
+        ? app.groqModel
+        : app.geminiModel;
     final modelOptions = isMcp
         ? mcpModels
         : app.aiProvider == 'groq'
-            ? groqModels
-            : geminiModels;
+        ? groqModels
+        : geminiModels;
 
     return Card(
       elevation: 0,
@@ -1481,10 +1479,10 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
               onChanged: (v) => v == null
                   ? null
                   : isMcp
-                        ? app.setMcpModel(v)
-                        : app.aiProvider == 'groq'
-                            ? app.setGroqModel(v)
-                            : app.setGeminiModel(v),
+                  ? app.setMcpModel(v)
+                  : app.aiProvider == 'groq'
+                  ? app.setGroqModel(v)
+                  : app.setGeminiModel(v),
             ),
             if (isMcp) ...[
               const SizedBox(height: 12),
@@ -1553,8 +1551,8 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
             !_mcpNodeInstalled
                 ? '—'
                 : _mcpAuthenticated
-                    ? 'الحساب: متصل'
-                    : 'الحساب: غير متصل',
+                ? 'الحساب: متصل'
+                : 'الحساب: غير متصل',
             style: TextStyle(
               color: _mcpAuthenticated
                   ? const Color(0xFF22C55E)
@@ -1642,5 +1640,4 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
       ),
     );
   }
-
 }

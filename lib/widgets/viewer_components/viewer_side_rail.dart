@@ -4,6 +4,7 @@ import 'package:pdfrx/pdfrx.dart';
 
 import '../../models/models.dart';
 import '../../utils/responsive_utils.dart';
+import 'tool_width_limits.dart';
 import 'viewer_toolbar.dart';
 
 /// Slim vertical tool rail pinned to the right edge of the viewer.
@@ -78,14 +79,6 @@ class ViewerSideRail extends StatelessWidget {
       ResponsiveBreakpoints.isTablet(width) ||
       ResponsiveBreakpoints.isDesktop(width);
 
-  /// Width range of the tools that live in the rail. The highlighter takes a
-  /// much wider stroke than the pen, and these match the bounds the drawing
-  /// toolbar used to enforce.
-  static const double _penMinWidth = 1.0;
-  static const double _penMaxWidth = 12.0;
-  static const double _highlightMinWidth = 1.0;
-  static const double _highlightMaxWidth = 30.0;
-
   static const List<Color> _penColors = [
     Color(0xFFFFFFFF),
     Color(0xFF000000),
@@ -132,10 +125,12 @@ class ViewerSideRail extends StatelessWidget {
     final separatorColor = isDarkMode
         ? Colors.white.withOpacity(0.1)
         : Colors.black.withOpacity(0.05);
-    final iconMuted =
-        isDarkMode ? const Color(0xFF94A3B8) : scheme.onSurfaceVariant;
+    final iconMuted = isDarkMode
+        ? const Color(0xFF94A3B8)
+        : scheme.onSurfaceVariant;
 
-    final showToolSettings = activeTool == ToolType.pen ||
+    final showToolSettings =
+        activeTool == ToolType.pen ||
         activeTool == ToolType.highlight ||
         activeTool == ToolType.eraser;
 
@@ -299,11 +294,10 @@ class ViewerSideRail extends StatelessWidget {
     }
 
     final isHighlight = activeTool == ToolType.highlight;
-    final minWidth =
-        isHighlight ? _highlightMinWidth : _penMinWidth;
-    final maxWidth =
-        isHighlight ? _highlightMaxWidth : _penMaxWidth;
     final activeColor = isHighlight ? highlightColor : penColor;
+    // The label and the thumb read the same number, so the rail cannot print a
+    // width its own track refuses to reach.
+    final width = ToolWidthLimits.clampFor(activeTool, strokeWidth);
     final colors = colorPaletteIndex == 0
         ? (isHighlight ? _highlightColors : _penColors)
         : (isHighlight ? _highlightColorsExtended : _penColorsExtended);
@@ -320,8 +314,9 @@ class ViewerSideRail extends StatelessWidget {
               child: SliderTheme(
                 data: SliderTheme.of(context).copyWith(
                   trackHeight: 3,
-                  thumbShape:
-                      const RoundSliderThumbShape(enabledThumbRadius: 7),
+                  thumbShape: const RoundSliderThumbShape(
+                    enabledThumbRadius: 7,
+                  ),
                   overlayShape: const RoundSliderOverlayShape(
                     overlayRadius: 12,
                   ),
@@ -330,10 +325,10 @@ class ViewerSideRail extends StatelessWidget {
                   thumbColor: _activeColor,
                 ),
                 child: Slider(
-                  value: strokeWidth.clamp(minWidth, maxWidth),
-                  min: minWidth,
-                  max: maxWidth,
-                  divisions: (maxWidth - minWidth).round(),
+                  value: width,
+                  min: ToolWidthLimits.min,
+                  max: ToolWidthLimits.maxFor(activeTool),
+                  divisions: ToolWidthLimits.divisionsFor(activeTool),
                   onChanged: onStrokeWidthChanged,
                 ),
               ),
@@ -342,7 +337,7 @@ class ViewerSideRail extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Text(
-          strokeWidth.toStringAsFixed(1),
+          width.toStringAsFixed(1),
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w700,

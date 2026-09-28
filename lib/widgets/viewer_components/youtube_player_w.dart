@@ -8,7 +8,6 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-
 import 'package:webview_flutter/webview_flutter.dart' as yt_mobile;
 import 'package:webview_windows/webview_windows.dart' as yt_windows;
 
@@ -366,7 +365,6 @@ class _YouTubeEmbedViewState extends State<YouTubeEmbedView> {
       'https://$_ytWrapperHost/$_ytWrapperFileName'
       '?v=${Uri.encodeQueryComponent(widget.videoId)}';
 
-
   @override
   void initState() {
     super.initState();
@@ -599,7 +597,6 @@ class _YouTubeEmbedViewState extends State<YouTubeEmbedView> {
     );
   }
 
-
   @override
   void dispose() {
     _loadingSub?.cancel();
@@ -618,8 +615,11 @@ class _YouTubeEmbedViewState extends State<YouTubeEmbedView> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(LucideIcons.alertTriangle,
-                  color: Colors.amber, size: 36),
+              const Icon(
+                LucideIcons.alertTriangle,
+                color: Colors.amber,
+                size: 36,
+              ),
               const SizedBox(height: 12),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -656,8 +656,7 @@ class _YouTubeEmbedViewState extends State<YouTubeEmbedView> {
     return const ColoredBox(
       color: Color(0xFF0B1120),
       child: Center(
-        child:
-            CircularProgressIndicator(strokeWidth: 2, color: Colors.white54),
+        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54),
       ),
     );
   }

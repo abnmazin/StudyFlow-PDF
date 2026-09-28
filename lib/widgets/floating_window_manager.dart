@@ -116,9 +116,7 @@ class _FloatingWindowCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: surfaceColor,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: isDark ? Colors.white24 : Colors.black12,
-          ),
+          border: Border.all(color: isDark ? Colors.white24 : Colors.black12),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.22),
@@ -183,11 +181,7 @@ class _FloatingWindowCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                Expanded(
-                  child: ClipRect(
-                    child: window.child,
-                  ),
-                ),
+                Expanded(child: ClipRect(child: window.child)),
               ],
             ),
           ),

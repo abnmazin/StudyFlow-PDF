@@ -5,12 +5,12 @@ class Highlight {
   final String id;
   final String? createdBy;
   final List<Offset> path;
-  final Color color;  // Stroke/border color
+  final Color color; // Stroke/border color
   final int page;
   final double strokeWidth;
   final HighlightType type;
   final List<Rect>? rects;
-  final int? backgroundColor;  // Fill color for shapes (nullable, stored as int)
+  final int? backgroundColor; // Fill color for shapes (nullable, stored as int)
   final bool isSynced;
   final int updatedAt; // Timestamp for conflict resolution
 
@@ -23,7 +23,7 @@ class Highlight {
     this.strokeWidth = 5.0,
     this.type = HighlightType.highlight,
     this.rects,
-    this.backgroundColor,  // Optional background color
+    this.backgroundColor, // Optional background color
     this.isSynced = false,
     int? updatedAt,
   }) : updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
@@ -76,7 +76,8 @@ class Highlight {
               orElse: () => HighlightType.highlight,
             )
           : HighlightType.highlight,
-      backgroundColor: json['backgroundColor'],  // Load background color if present
+      backgroundColor:
+          json['backgroundColor'], // Load background color if present
       isSynced: json['isSynced'] ?? false,
       updatedAt: json['updatedAt'] ?? DateTime.now().millisecondsSinceEpoch,
       rects: (json['rects'] as List?)?.map((r) {

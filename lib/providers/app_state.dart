@@ -18,6 +18,8 @@ import 'package:path/path.dart' as p;
 
 import '../models/models.dart';
 import '../models/app_user.dart';
+import '../models/lecture_slot.dart';
+import '../models/timetable_entry.dart';
 import '../models/isar_models.dart' hide PdfDocument;
 import 'package:isar/isar.dart';
 import '../models/structure.dart';
@@ -25,6 +27,8 @@ import '../services/file_manager_service.dart';
 import '../services/file_hash_service.dart';
 import '../services/sync_service.dart';
 import '../services/pdf_mutation_service.dart';
+import '../services/reading_stats_service.dart';
+import '../services/timetable_service.dart';
 import '../services/university_service.dart';
 import '../services/library_sync_service.dart';
 import '../services/hardware_service.dart';
@@ -126,6 +130,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     _stopKickListener();
     _stopUserMonitor();
     _syncDebounce?.cancel();
+    _disposeTimetable();
     unawaited(_syncService.dispose());
     for (var timer in _syncTimers.values) {
       timer?.cancel();
@@ -148,6 +153,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         );
       }
     }
+
+    _suspendReadingSession();
 
     McpClientService.instance.stop();
     super.dispose();
@@ -259,6 +266,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   bool _needsSave = false;
   bool _isSyncing = false;
   bool get isSyncing => _isSyncing;
+
   /// Bumped whenever the open file or its session code changes. A sync that
   /// resumes after an await and finds a different generation was started for a
   /// file the user has already left, and its code and hash no longer describe
@@ -537,19 +545,23 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       return;
     }
 
-    unawaited(_syncService.startRealtimeAnnotations(
-      code,
-      fileHash,
-      onData: (items, lastDeletedAt) {
-        if (_isSyncing || currentSessionCode != code || activePdf?.fileHash != fileHash) {
-          return;
-        }
-        unawaited(performBidirectionalSync(silent: true));
-      },
-      onError: (error, stackTrace) {
-        debugPrint('Realtime annotation listener error: $error');
-      },
-    ));
+    unawaited(
+      _syncService.startRealtimeAnnotations(
+        code,
+        fileHash,
+        onData: (items, lastDeletedAt) {
+          if (_isSyncing ||
+              currentSessionCode != code ||
+              activePdf?.fileHash != fileHash) {
+            return;
+          }
+          unawaited(performBidirectionalSync(silent: true));
+        },
+        onError: (error, stackTrace) {
+          debugPrint('Realtime annotation listener error: $error');
+        },
+      ),
+    );
   }
 
   /// Schedules a debounced [performBidirectionalSync] after
@@ -615,18 +627,19 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   // --- LIFECYCLE MANAGEMENT (Patch 2) ---
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-   //-- debugPrint('📱 AppLifecycleState changed to: $state');
+    //-- debugPrint('📱 AppLifecycleState changed to: $state');
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.inactive) {
       _pauseAllListeners();
+      _suspendReadingSession();
     } else if (state == AppLifecycleState.resumed) {
       _resumeAllListeners();
     }
   }
 
   void _pauseAllListeners() {
-   // --- debugPrint('⏸️ Pausing background listeners & timers.');
+    // --- debugPrint('⏸️ Pausing background listeners & timers.');
     _kickSub?.pause();
     _userMonitorTimer?.cancel();
     _userMonitorTimer = null;
@@ -641,6 +654,90 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         _userMonitorTimer == null) {
       _startUserMonitor(_currentUser!.uid);
     }
+  }
+
+  // --- READING SESSION (feeds the dashboard reading statistics) -------------
+  //
+  // The app keeps no reading history anywhere else, so the dashboard's "read
+  // today / average / pages / streak" figures are produced here and nowhere.
+  // Two gates keep the numbers honest:
+  //
+  //   * a document must be open (`_activePdfId`), and
+  //   * the last interaction must be recent. Without the second gate, a PDF
+  //     left open on a second monitor would bill the hours it sits untouched.
+  //
+  // Time is credited in fixed ticks rather than measured from a stopwatch, so
+  // the total never claims more than the window the app was actually foreground
+  // and in use.
+
+  static const Duration _readingTickInterval = Duration(seconds: 30);
+
+  /// How long after the last interaction a document still counts as being read.
+  static const Duration _readingInteractionWindow = Duration(minutes: 2);
+
+  /// Pending seconds are written once this much has accumulated, so a long
+  /// reading session does not produce a transaction every tick.
+  static const int _readingFlushThresholdSeconds = 120;
+
+  Timer? _readingTicker;
+  DateTime? _lastReadingInteraction;
+
+  /// Page the reading session last credited, and the document it belongs to,
+  /// so switching files does not bill the jump from one document's last page to
+  /// the next document's first page.
+  int? _lastCreditedPage;
+  String? _creditedPdfId;
+
+  /// Marks the user as active in a document and starts the ticker on first use.
+  void _noteReadingInteraction(String pdfId) {
+    _lastReadingInteraction = DateTime.now();
+    if (_creditedPdfId != pdfId) {
+      _creditedPdfId = pdfId;
+      _lastCreditedPage = null;
+    }
+    _readingTicker ??= Timer.periodic(_readingTickInterval, _onReadingTick);
+  }
+
+  void _onReadingTick(Timer timer) {
+    if (_activePdfId == null) {
+      // Document closed: stop billing and persist whatever is buffered.
+      _suspendReadingSession();
+      return;
+    }
+
+    final last = _lastReadingInteraction;
+    if (last == null ||
+        DateTime.now().difference(last) > _readingInteractionWindow) {
+      // Idle. The ticker keeps running so an idle document does not have to be
+      // re-armed on the next interaction, but it earns nothing.
+      return;
+    }
+
+    ReadingStatsService().addFocusSeconds(_readingTickInterval.inSeconds);
+    if (ReadingStatsService().pendingSeconds >= _readingFlushThresholdSeconds) {
+      unawaited(ReadingStatsService().flush());
+    }
+  }
+
+  /// Credits forward page movement. Backwards jumps and repeats count for
+  /// nothing, which keeps the figure an approximation of pages covered rather
+  /// than pages turned.
+  void _creditPageAdvance(String pdfId, int? pageNumber) {
+    if (pageNumber == null) return;
+    if (pageNumber < 1) return;
+    final previous = _lastCreditedPage;
+    _lastCreditedPage = pageNumber;
+    if (previous == null || pageNumber <= previous) return;
+    ReadingStatsService().addPagesAdvanced(pageNumber - previous);
+  }
+
+  /// Stops the ticker and writes the buffer out. Called when the app leaves the
+  /// foreground and on dispose, so the last seconds of a session are not lost.
+  void _suspendReadingSession() {
+    _readingTicker?.cancel();
+    _readingTicker = null;
+    _lastReadingInteraction = null;
+    unawaited(ReadingStatsService().flush());
   }
 
   void updateHighlight(
@@ -971,6 +1068,11 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       _preloadLecturerSessions(user.username);
     }
 
+    // The timetable is read by everyone, so the subscription starts for every
+    // role — but the service's copy of the user is what decides who may write, so
+    // it has to be handed over here rather than at construction.
+    _beginTimetableSession(user);
+
     _notify();
   }
 
@@ -986,10 +1088,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     try {
       final restored = FirebaseAuth.instance.currentUser;
       if (restored != null) return restored;
-      return await FirebaseAuth.instance
-          .authStateChanges()
-          .first
-          .timeout(const Duration(seconds: 10));
+      return await FirebaseAuth.instance.authStateChanges().first.timeout(
+        const Duration(seconds: 10),
+      );
     } catch (e) {
       debugPrint('⚠️ Auth state restore failed: $e');
       return null;
@@ -1048,7 +1149,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       if (code != null && pdf.fileHash != null) {
         if (_lastMutationListenerHash != pdf.fileHash) {
           _lastMutationListenerHash = pdf.fileHash;
-          debugPrint('🎧 [SESSION] Starting mutation listener after session code set');
+          debugPrint(
+            '🎧 [SESSION] Starting mutation listener after session code set',
+          );
           _syncService.listenToMutations(pdf.fileHash!, pdf.id, this);
         }
       }
@@ -1555,6 +1658,14 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
             await prefs.remove(_prefsKeyUser);
           } else {
             _currentUser = restored;
+            // Reached without [setCurrentUser], which is the only other caller
+            // of the handover: this path adopts a session that was already
+            // persisted, so it has to perform it itself. Without it the stream is
+            // never subscribed — the admin's `+` opened a dialog that spun for
+            // ever — and the service kept no user, so its very first write failed
+            // with "يجب تسجيل الدخول أولاً" while the app was demonstrably signed
+            // in. One method for both paths is what stops them drifting apart.
+            _beginTimetableSession(restored);
             debugPrint('✅ Auto-Login: Loaded user ${_currentUser?.username}');
           }
         } catch (e) {
@@ -1578,8 +1689,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
           prefs.getString(_prefsKeyGeminiModel) ?? 'gemini-2.5-flash';
       _groqModel =
           prefs.getString(_prefsKeyGroqModel) ?? 'llama-3.3-70b-versatile';
-      _mcpModel =
-          prefs.getString(_prefsKeyMcpModel) ?? 'gemini-2.5 (personal)';
+      _mcpModel = prefs.getString(_prefsKeyMcpModel) ?? 'gemini-2.5 (personal)';
       _geminiApiKey = prefs.getString(_prefsKeyGeminiApiKey) ?? '';
       _groqApiKey = prefs.getString(_prefsKeyGroqApiKey) ?? '';
 
@@ -2027,20 +2137,22 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
           '💾 [Isar Flush] Starting flush for ${idsToFlush.length} dirty PDFs...',
         );
 
-          for (final pdfId in idsToFlush) {
-            final pdf = _findPdfById(pdfId);
-            if (pdf == null) continue;
+        for (final pdfId in idsToFlush) {
+          final pdf = _findPdfById(pdfId);
+          if (pdf == null) continue;
 
-            try {
-              await _fileManager.saveHighlights(pdf.id, pdf.highlights);
-              await _fileManager.saveComments(pdf.id, pdf.comments);
-              await _fileManager.saveBookmarks(pdf.id, pdf.bookmarks);
-            } catch (e) {
-              debugPrint('❌ [Isar Flush] Failed for PDF: $pdfId - Error: $e');
-              _dirtyPdfIds.add(pdfId);
-            }
+          try {
+            await _fileManager.saveHighlights(pdf.id, pdf.highlights);
+            await _fileManager.saveComments(pdf.id, pdf.comments);
+            await _fileManager.saveBookmarks(pdf.id, pdf.bookmarks);
+          } catch (e) {
+            debugPrint('❌ [Isar Flush] Failed for PDF: $pdfId - Error: $e');
+            _dirtyPdfIds.add(pdfId);
           }
-          debugPrint('✅ [Isar Flush] Completed flush for ${idsToFlush.length} PDFs.');
+        }
+        debugPrint(
+          '✅ [Isar Flush] Completed flush for ${idsToFlush.length} PDFs.',
+        );
       }
     } catch (e) {
       debugPrint('Error saving state: $e');
@@ -2306,7 +2418,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     if (pdfItem != null && pdfItem.fileHash != null) {
       if (_lastMutationListenerHash != pdfItem.fileHash) {
         _lastMutationListenerHash = pdfItem.fileHash;
-        debugPrint('🎧 [APP_STATE] Starting mutation listener for hash: ${pdfItem.fileHash}');
+        debugPrint(
+          '🎧 [APP_STATE] Starting mutation listener for hash: ${pdfItem.fileHash}',
+        );
         _syncService.listenToMutations(pdfItem.fileHash!, id, this);
       }
     }
@@ -2395,7 +2509,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       final file = await service.findUniversityFileByHash(hash);
       if (file == null) {
         // Not a library file, which is the normal case for a local PDF.
-        debugPrint('📚 [LIBRARY] skip: $hash is not in the university library.');
+        debugPrint(
+          '📚 [LIBRARY] skip: $hash is not in the university library.',
+        );
         return;
       }
 
@@ -2604,7 +2720,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       if (!fileManager.isInitialized) {
         await fileManager.init();
       }
-      final quickAccessFolder = await fileManager.getOrCreateQuickAccessFolder();
+      final quickAccessFolder = await fileManager
+          .getOrCreateQuickAccessFolder();
 
       final doc = await fileManager.importAndOpenPdf(
         filePath,
@@ -2818,6 +2935,11 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
       if (scrollTop != null) cls.pdfs[pdfIndex].scrollTop = scrollTop;
       if (pageNumber != null) cls.pdfs[pdfIndex].lastPage = pageNumber;
+
+      // This is the only place the viewer reports that the reader is present
+      // and where they are, which is exactly what the reading statistics need.
+      _noteReadingInteraction(pdfId);
+      _creditPageAdvance(pdfId, pageNumber);
 
       final libraryHash = cls.pdfs[pdfIndex].fileHash;
 
@@ -3987,17 +4109,22 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       // 4. Persist to Isar so the structural change survives restart
       final fm = FileManagerService();
       // CRITICAL: Must use writeTxn for writes — txn is read-only in Isar 3.x
-      final doc = await fm.isar.txn(() =>
-          fm.isar.pdfDocuments.filter().uuidEqualTo(pdfId).findFirst());
+      final doc = await fm.isar.txn(
+        () => fm.isar.pdfDocuments.filter().uuidEqualTo(pdfId).findFirst(),
+      );
       if (doc != null) {
         doc.workingPath = newFile.path;
         doc.totalPages = newPageCount;
         await fm.isar.writeTxn(() async {
           await fm.isar.pdfDocuments.put(doc);
         });
-        debugPrint('✅ [deletePage] Persisted workingPath to Isar: ${newFile.path}');
+        debugPrint(
+          '✅ [deletePage] Persisted workingPath to Isar: ${newFile.path}',
+        );
       } else {
-        debugPrint('⚠️ [deletePage] PdfDocument not found in Isar for id: $pdfId');
+        debugPrint(
+          '⚠️ [deletePage] PdfDocument not found in Isar for id: $pdfId',
+        );
       }
     } catch (e) {
       debugPrint('❌ [AppProvider] Error during deletePage: $e');
@@ -4040,15 +4167,18 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       // 4. Persist to Isar so the structural change survives restart
       final fm = FileManagerService();
       // CRITICAL: Must use writeTxn for writes — txn is read-only in Isar 3.x
-      final doc = await fm.isar.txn(() =>
-          fm.isar.pdfDocuments.filter().uuidEqualTo(pdfId).findFirst());
+      final doc = await fm.isar.txn(
+        () => fm.isar.pdfDocuments.filter().uuidEqualTo(pdfId).findFirst(),
+      );
       if (doc != null) {
         doc.workingPath = newFile.path;
         doc.totalPages = newPageCount;
         await fm.isar.writeTxn(() async {
           await fm.isar.pdfDocuments.put(doc);
         });
-        debugPrint('✅ [addPage] Persisted workingPath to Isar: ${newFile.path}');
+        debugPrint(
+          '✅ [addPage] Persisted workingPath to Isar: ${newFile.path}',
+        );
       } else {
         debugPrint('⚠️ [addPage] PdfDocument not found in Isar for id: $pdfId');
       }
@@ -4373,6 +4503,207 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     _tasks.removeWhere((t) => t.uuid == uuid);
     _notify();
     await FileManagerService().deleteTaskByUuid(uuid);
+  }
+
+  /// Renames a task in place. The task row's 3-dots menu offers Edit, and the
+  /// list holds the objects themselves, so the write is the same shape as
+  /// [toggleTask]: mutate, notify, persist.
+  Future<void> updateTask(String uuid, String title) async {
+    final trimmed = title.trim();
+    if (trimmed.isEmpty) return;
+    final index = _tasks.indexWhere((t) => t.uuid == uuid);
+    if (index != -1) {
+      _tasks[index].title = trimmed;
+      _notify();
+      await FileManagerService().saveTask(_tasks[index]);
+    }
+  }
+
+  // ─── SCHEDULE ──────────────────────────────────────────────────────────────
+  //
+  // The dashboard's schedule column, backed by the shared `timetable_entries`
+  // table in Firestore (see `TimetableService`). Admins write it; everyone reads
+  // it. The reading figures and this column now share one rule: nothing here is
+  // invented, so an empty table renders the empty state rather than sample rows
+  // under real Arabic course names.
+  //
+  // The list is held in memory and refreshed by a stream rather than queried per
+  // build, for the same reason the tasks are: `watchEntries` is a `snapshots()`
+  // subscription, and calling it inside `build` would re-subscribe the dashboard
+  // on every frame.
+
+  final TimetableService _timetableService = TimetableService();
+  TimetableService get timetableService => _timetableService;
+
+  StreamSubscription<List<TimetableEntry>>? _timetableSubscription;
+  List<TimetableEntry> _timetableEntries = const [];
+  List<TimetableEntry> get timetableEntries => _timetableEntries;
+
+  /// True once a subscription is live. The schedule card uses this to tell "the
+  /// table is empty" apart from "we have not asked yet" — showing "no lectures"
+  /// before the first snapshot arrives would flash a wrong answer on every launch.
+  bool _timetableLoaded = false;
+  bool get isTimetableLoaded => _timetableLoaded;
+
+  /// True when the live subscription has reported an error: a rule that is not
+  /// deployed, a denied read, a dead network.
+  ///
+  /// Exists so the schedule card can tell "the table is empty" apart from "we
+  /// could not read the table" — without it a denied read draws an empty schedule,
+  /// which is a wrong answer wearing the same clothes as a right one.
+  bool _timetableFailed = false;
+  bool get isTimetableFailed => _timetableFailed;
+
+  /// Hands [user] to the service and starts the shared stream.
+  ///
+  /// One method because there are two auth paths that must run it — a fresh
+  /// login through [setCurrentUser] and the auto-login restore that assigns
+  /// `_currentUser` directly — and inlining it in both was exactly what let the
+  /// second one ship without it. It cannot be moved into `setCurrentUser`
+  /// wholesale, since that also saves state and starts the user monitor, neither
+  /// of which a restore that just read that state should repeat.
+  void _beginTimetableSession(AppUser user) {
+    _timetableService.currentUser = user;
+    initTimetable();
+  }
+
+  /// Subscribes to the shared table. Idempotent: calling it again after a login
+  /// replaces the old subscription rather than stacking a second one, which is
+  /// the failure mode that makes a `ChangeNotifier` fire N times per write.
+  void initTimetable() {
+    // Asking again is a fresh attempt, so the failure this subscription
+    // reported last time no longer describes the one being opened. Without this
+    // a retry would re-render its own failure button on the next frame — the
+    // resubscribe would have happened and looked exactly like nothing did.
+    _timetableFailed = false;
+    _timetableSubscription?.cancel();
+    _timetableSubscription = _timetableService.watchEntries().listen(
+      (entries) {
+        _timetableEntries = entries;
+        _timetableLoaded = true;
+        _timetableFailed = false;
+        _notify();
+      },
+      // A failed read leaves the previous rows on screen and logs, rather than
+      // blanking a table the user was in the middle of reading. The subscription
+      // is not restarted: Firestore's own retry already covers the transient
+      // cases, and an endless resubscribe loop against a revoked rule is worse
+      // than one honest failure.
+      //
+      // The flag is what stops that honesty from ending at the log. A denied read
+      // — the rules not deployed, a role not granted — would otherwise render as
+      // "لا توجد محاضرات", which is not a lesser answer but a false one: the table
+      // may be full and the reader is told it is empty. Set here and cleared by the
+      // next successful snapshot, so a recovery clears the warning by itself.
+      onError: (Object e) {
+        debugPrint('⚠️ [AppProvider] Timetable stream error: $e');
+        _timetableFailed = true;
+        _notify();
+      },
+    );
+  }
+
+  /// Starts the stream when nothing has started it yet.
+  ///
+  /// Not a replacement for [_beginTimetableSession]: it cannot invent a user, so
+  /// it answers "the dialog is waiting on a subscription nobody opened" and not
+  /// "this write has no author". Paid at the manager's front door rather than in
+  /// a `build`, because it is idempotent but still a side effect, and a side
+  /// effect in a build is one refactor away from running per frame.
+  void ensureTimetableWatched() {
+    if (_timetableSubscription != null) return;
+    initTimetable();
+  }
+
+  void _disposeTimetable() {
+    _timetableSubscription?.cancel();
+    _timetableSubscription = null;
+  }
+
+  /// Puts this provider's user back into the service immediately before a write.
+  ///
+  /// The service holds a *copy* of the user because reaching back into this
+  /// provider would close an import cycle, which quietly made two things into
+  /// two separate obligations: "is the user signed in" and "did the handover run
+  /// in whichever auth path led here". Re-asserting at the point of use collapses
+  /// them, so a write can now only be refused for a role — never for a handshake
+  /// that a third auth path forgot to perform.
+  void _authorTimetableWrite() {
+    _timetableService.currentUser = _currentUser;
+  }
+
+  /// Saves an entry and mirrors the result locally.
+  ///
+  /// The local write is what makes the card update instantly: the stream will
+  /// echo the same document back a moment later, and without this the admin's
+  /// own edit would appear to do nothing until the round trip completed.
+  Future<void> saveTimetableEntry(TimetableEntry entry) async {
+    _authorTimetableWrite();
+    final before = _timetableEntries;
+    final next = before.any((e) => e.id == entry.id && entry.id.isNotEmpty)
+        ? before.map((e) => e.id == entry.id ? entry : e).toList()
+        : [...before, entry];
+    _timetableEntries = _sorted(next);
+    _notify();
+    try {
+      await _timetableService.saveEntry(entry);
+    } catch (e) {
+      // Put it back, so a rejected write does not leave a row on screen that no
+      // other user will ever see.
+      _timetableEntries = before;
+      _notify();
+      rethrow;
+    }
+  }
+
+  Future<void> deleteTimetableEntry(String id) async {
+    _authorTimetableWrite();
+    final before = _timetableEntries;
+    _timetableEntries = _sorted(before.where((e) => e.id != id).toList());
+    _notify();
+    try {
+      await _timetableService.deleteEntry(id);
+    } catch (e) {
+      _timetableEntries = before;
+      _notify();
+      rethrow;
+    }
+  }
+
+  static List<TimetableEntry> _sorted(List<TimetableEntry> entries) {
+    final copy = [...entries];
+    copy.sort((a, b) {
+      final byDay = a.weekday.compareTo(b.weekday);
+      if (byDay != 0) return byDay;
+      return a.startMinutes.compareTo(b.startMinutes);
+    });
+    return copy;
+  }
+
+  /// Tomorrow's lectures, and only tomorrow's.
+  ///
+  /// The card shows one day because that is the shape it was asked for; the full
+  /// week lives in `ScheduleManagerDialog`. Which day is chosen here rather than
+  /// in the card, so the column cannot disagree with the admin's list about what
+  /// counts as tomorrow.
+  ///
+  /// Recomputed on read rather than stored: a date rolls over at midnight, and a
+  /// cached list computed before that would keep showing the wrong day until
+  /// something else happened to trigger a rebuild.
+  List<LectureSlot> get lectures {
+    final now = DateTime.now();
+    final tomorrow = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).add(const Duration(days: 1));
+    final slots = <LectureSlot>[];
+    for (final entry in _timetableEntries) {
+      final slot = entry.lectureOn(tomorrow);
+      if (slot != null) slots.add(slot);
+    }
+    slots.sort((a, b) => a.startsAt.compareTo(b.startsAt));
+    return slots;
   }
 }
 

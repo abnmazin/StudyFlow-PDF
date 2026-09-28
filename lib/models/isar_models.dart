@@ -24,7 +24,7 @@ class ClassFolder {
   int orderIndex = 0;
 
   List<String> pdfIds = [];
-  
+
   String? lastActivePdfId;
 
   /// Use this factory to create new instances with auto-generated UUIDs.
@@ -347,7 +347,8 @@ class DeletedAnnotation {
   late int pageNumber;
   late String deletedBy; // Username who deleted it
   late DateTime deletedAt;
-  late String contentSnapshot; // The full JSON representation of the deleted item
+  late String
+  contentSnapshot; // The full JSON representation of the deleted item
   bool isSynced = false;
 
   Map<String, dynamic> toJson() {
@@ -401,4 +402,41 @@ class StudyTask {
       ..isDone = isDone
       ..createdAt = createdAt ?? DateTime.now();
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ReadingDay: one aggregated row per local calendar day
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Daily reading totals, the only reading-history the app keeps.
+///
+/// The viewer itself stores a *position* per document (`lastPage`,
+/// `lastOpenedAt`), never a history, so nothing in the existing data can answer
+/// "how much did I read today". This row is the missing aggregate: the viewer
+/// session reports elapsed reading seconds and forward page advances, and the
+/// dashboard derives today's total, the period average, the streak and the
+/// focus points from these rows.
+///
+/// One row per day keyed by the local calendar date, so a midnight rollover
+/// starts a fresh row and the streak can walk backwards day by day.
+@collection
+class ReadingDay {
+  Id id = Isar.autoIncrement;
+
+  /// Local calendar day as `yyyy-MM-dd`. Unique with `replace`, so writing the
+  /// same day twice updates that row instead of throwing.
+  @Index(unique: true, replace: true)
+  String dateKey = '';
+
+  /// Seconds of focused reading accumulated on this day. Only counted while
+  /// the document is open *and* the user interacted recently, so a file left
+  /// open overnight does not bill a whole night.
+  int focusSeconds = 0;
+
+  /// Pages advanced while reading, counted forward only: a jump from page 4
+  /// to 40 adds 36. Backwards and repeated page visits add nothing, which keeps
+  /// the number an approximation of pages covered rather than pages turned.
+  int pagesAdvanced = 0;
+
+  DateTime updatedAt = DateTime.now();
 }

@@ -253,8 +253,7 @@ class _UniversityVideoDialogState extends State<UniversityVideoDialog> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.indigo,
                     foregroundColor: Colors.white,
-                    disabledBackgroundColor:
-                        Colors.grey.withValues(alpha: 0.2),
+                    disabledBackgroundColor: Colors.grey.withValues(alpha: 0.2),
                     disabledForegroundColor: Colors.grey,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),

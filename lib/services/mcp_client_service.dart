@@ -58,20 +58,15 @@ class McpClientService {
   Future<String?> _resolveRunner() async {
     if (Platform.isWindows) {
       try {
-        final result = await Process.run(
-          'where.exe',
-          ['npx'],
-          runInShell: true,
-        );
+        final result = await Process.run('where.exe', [
+          'npx',
+        ], runInShell: true);
         if (result.exitCode != 0) return null;
         final line = result.stdout
             .toString()
             .trim()
             .split(RegExp(r'\r?\n'))
-            .firstWhere(
-              (l) => l.trim().isNotEmpty,
-              orElse: () => '',
-            );
+            .firstWhere((l) => l.trim().isNotEmpty, orElse: () => '');
         return line.isEmpty ? null : line.trim();
       } catch (_) {
         return null;
@@ -110,10 +105,7 @@ class McpClientService {
         runner,
         ['-y', '$_packageName@latest'],
         runInShell: Platform.isWindows,
-        environment: {
-          ...Platform.environment,
-          'HEADLESS': 'true',
-        },
+        environment: {...Platform.environment, 'HEADLESS': 'true'},
       ).timeout(_processSpawnTimeout);
 
       _process = process;
@@ -158,11 +150,13 @@ foreach ($p in $procs) {
   }
 }
 ''';
-      await Process.run(
-        'powershell',
-        ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script],
-        runInShell: false,
-      ).timeout(_requestTimeout);
+      await Process.run('powershell', [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-Command',
+        script,
+      ], runInShell: false).timeout(_requestTimeout);
     } catch (e) {
       debugPrint('[Mcp] failed to kill lingering Chrome: $e');
     }
@@ -178,10 +172,10 @@ foreach ($p in $procs) {
         .transform(utf8.decoder)
         .transform(const LineSplitter())
         .listen((line) {
-      if (line.trim().isNotEmpty && !_stderrLog.isClosed) {
-        _stderrLog.add(line);
-      }
-    });
+          if (line.trim().isNotEmpty && !_stderrLog.isClosed) {
+            _stderrLog.add(line);
+          }
+        });
 
     process.exitCode.then((code) {
       debugPrint('[Mcp] server exited with code $code');
@@ -192,10 +186,12 @@ foreach ($p in $procs) {
       }
       for (final completer in _pendingResponses.values) {
         if (!completer.isCompleted) {
-          completer.completeError(const McpException(
-            'MCP_DIED',
-            'The MCP server process exited unexpectedly.',
-          ));
+          completer.completeError(
+            const McpException(
+              'MCP_DIED',
+              'The MCP server process exited unexpectedly.',
+            ),
+          );
         }
       }
       _pendingResponses.clear();
@@ -216,10 +212,12 @@ foreach ($p in $procs) {
           );
         } else if (message.containsKey('error')) {
           final error = message['error'] as Map<String, dynamic>?;
-          completer.completeError(McpException(
-            'MCP_ERROR_${error?['code'] ?? 'UNKNOWN'}',
-            (error?['message'] ?? 'Unknown MCP error').toString(),
-          ));
+          completer.completeError(
+            McpException(
+              'MCP_ERROR_${error?['code'] ?? 'UNKNOWN'}',
+              (error?['message'] ?? 'Unknown MCP error').toString(),
+            ),
+          );
         }
       }
     } catch (e) {
@@ -228,19 +226,11 @@ foreach ($p in $procs) {
   }
 
   Future<void> _performHandshake(Process process) async {
-    final response = await _sendRequest(
-      process,
-      'initialize',
-      0,
-      {
-        'protocolVersion': '2025-11-25',
-        'capabilities': const {},
-        'clientInfo': const {
-          'name': 'studyflow',
-          'version': '1.1.0',
-        },
-      },
-    );
+    final response = await _sendRequest(process, 'initialize', 0, {
+      'protocolVersion': '2025-11-25',
+      'capabilities': const {},
+      'clientInfo': const {'name': 'studyflow', 'version': '1.1.0'},
+    });
     if (!response.containsKey('serverInfo')) {
       throw const McpException(
         'MCP_HANDSHAKE',
@@ -283,11 +273,13 @@ foreach ($p in $procs) {
     String method,
     Map<String, dynamic> params,
   ) {
-    process.stdin.writeln(jsonEncode({
-      'jsonrpc': '2.0',
-      'method': method,
-      if (params.isNotEmpty) 'params': params,
-    }));
+    process.stdin.writeln(
+      jsonEncode({
+        'jsonrpc': '2.0',
+        'method': method,
+        if (params.isNotEmpty) 'params': params,
+      }),
+    );
   }
 
   Future<Map<String, dynamic>> _callTool(
@@ -303,13 +295,10 @@ foreach ($p in $procs) {
         'MCP server could not be started.',
       );
     }
-    final result = await _sendRequest(
-      process,
-      'tools/call',
-      _nextId(),
-      {'name': name, 'arguments': arguments},
-      timeout: timeout,
-    );
+    final result = await _sendRequest(process, 'tools/call', _nextId(), {
+      'name': name,
+      'arguments': arguments,
+    }, timeout: timeout);
     return _extractInnerText(result);
   }
 
@@ -340,10 +329,12 @@ foreach ($p in $procs) {
     try {
       return await _askQuestionInner(question);
     } catch (e) {
-      final isBrowserCrash = e.toString().contains(RegExp(
-        r'browser (has been )?closed|launchPersistentContext|exitCode=21|gracefully close',
-        caseSensitive: false,
-      ));
+      final isBrowserCrash = e.toString().contains(
+        RegExp(
+          r'browser (has been )?closed|launchPersistentContext|exitCode=21|gracefully close',
+          caseSensitive: false,
+        ),
+      );
       if (isBrowserCrash) {
         // The backing Chrome died or its profile dir is still locked by a
         // previous instance. Kill the server and any lingering Chrome, then
@@ -390,11 +381,13 @@ foreach ($p in $procs) {
     }
 
     final error = result['error'] ?? 'Unknown MCP ask_question failure';
-    if (error.toString().contains(RegExp(r'authenticat|login|sign in', caseSensitive: false))) {
+    if (error.toString().contains(
+      RegExp(r'authenticat|login|sign in', caseSensitive: false),
+    )) {
       throw const McpException(
         'MCP_NOT_AUTHENTICATED',
         'gemini-app-mcp is not authenticated. Open Settings > AI and press '
-        '"Connect Google Account".',
+            '"Connect Google Account".',
       );
     }
     throw McpException('MCP_QUESTION_FAILED', error.toString());
@@ -415,18 +408,14 @@ foreach ($p in $procs) {
   /// user has up to 10 minutes to complete login.
   Future<Map<String, dynamic>> setupAuth() async {
     await start();
-    final result = await _callTool(
-      'setup_auth',
-      const {
-        'show_browser': true,
-        'browser_options': {
-          'show': true,
-          'headless': false,
-          'timeout_ms': 600000,
-        },
+    final result = await _callTool('setup_auth', const {
+      'show_browser': true,
+      'browser_options': {
+        'show': true,
+        'headless': false,
+        'timeout_ms': 600000,
       },
-      timeout: const Duration(minutes: 11),
-    );
+    }, timeout: const Duration(minutes: 11));
     return result;
   }
 
@@ -437,11 +426,9 @@ foreach ($p in $procs) {
     _handshakeComplete = false;
     if (process == null) return;
     try {
-      process.stdin.writeln(jsonEncode({
-        'jsonrpc': '2.0',
-        'method': 'shutdown',
-        'id': _nextId(),
-      }));
+      process.stdin.writeln(
+        jsonEncode({'jsonrpc': '2.0', 'method': 'shutdown', 'id': _nextId()}),
+      );
       await process.stdin.flush();
       await process.exitCode.timeout(const Duration(seconds: 2));
     } catch (_) {

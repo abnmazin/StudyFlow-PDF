@@ -24,15 +24,17 @@ class SyncService {
   final Map<String, Set<String>> _appliedMutationIds = {};
   final Map<String, int> _lastBroadcastTime = {};
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
-      _annotationSubscription;
+  _annotationSubscription;
   String? _activeAnnotationPath;
   final FirebaseFirestore _db;
+
   /// uid -> username, so library session creation does not re-read the same
   /// uploader profile on every file open.
   final Map<String, String> _usernameCache = {};
 
   SyncService({FirebaseFirestore? firestore})
-    : _deviceSessionId = 'device_${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(99999)}',
+    : _deviceSessionId =
+          'device_${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(99999)}',
       _db = firestore ?? FirebaseFirestore.instance;
 
   static Future<void> logMutation(String message) async {
@@ -915,7 +917,8 @@ class SyncService {
               : <dynamic>[];
           final currentById = <String, dynamic>{
             for (final item in currentItems)
-              if (item is Map && item['id'] != null) item['id'].toString(): item,
+              if (item is Map && item['id'] != null)
+                item['id'].toString(): item,
           };
 
           for (final id in deletedIds) {
@@ -935,7 +938,11 @@ class SyncService {
             transactionPayload['lastDeletedAt'] =
                 DateTime.now().millisecondsSinceEpoch;
           }
-          transaction.set(annotationRef, transactionPayload, SetOptions(merge: true));
+          transaction.set(
+            annotationRef,
+            transactionPayload,
+            SetOptions(merge: true),
+          );
         }),
         operationName: 'syncExistingAnnotations (Transactional Push)',
       );
@@ -1132,7 +1139,8 @@ class SyncService {
     void Function(Object error, StackTrace stackTrace)? onError,
   }) async {
     final path = 'sync_sessions/$code/annotations/$fileHash';
-    if (_activeAnnotationPath == path && _annotationSubscription != null) return;
+    if (_activeAnnotationPath == path && _annotationSubscription != null)
+      return;
 
     await stopRealtimeAnnotations();
     _activeAnnotationPath = path;
@@ -1149,7 +1157,9 @@ class SyncService {
           }
           final data = snapshot.data() ?? <String, dynamic>{};
           final rawItems = data['data'];
-          final items = rawItems is List ? List<dynamic>.from(rawItems) : const <dynamic>[];
+          final items = rawItems is List
+              ? List<dynamic>.from(rawItems)
+              : const <dynamic>[];
           final lastDeletedAt = (data['lastDeletedAt'] as num?)?.toInt() ?? 0;
           onData(items, lastDeletedAt);
         }, onError: onError);
@@ -1345,7 +1355,9 @@ class SyncService {
     final now = DateTime.now().millisecondsSinceEpoch;
     final last = _lastBroadcastTime[key] ?? 0;
     if (now - last < 500) {
-      debugPrint('⏭️ [BROADCAST] Debounced duplicate: $action pageIndex=$pageIndex');
+      debugPrint(
+        '⏭️ [BROADCAST] Debounced duplicate: $action pageIndex=$pageIndex',
+      );
       return;
     }
     _lastBroadcastTime[key] = now;
@@ -1390,7 +1402,9 @@ class SyncService {
     // Always reset on new subscription — handles re-open after file deletion
     _lastProcessedSeqNum[fileHash] = startSeqNum;
 
-    debugPrint('🎧 [SYNC RECEIVER] Subscribing to mutations for hash: $fileHash, seqNum > ${_lastProcessedSeqNum[fileHash]}');
+    debugPrint(
+      '🎧 [SYNC RECEIVER] Subscribing to mutations for hash: $fileHash, seqNum > ${_lastProcessedSeqNum[fileHash]}',
+    );
 
     _mutationSubscription = _db
         .collection('pdfs')
@@ -1399,73 +1413,95 @@ class SyncService {
         .where('seqNum', isGreaterThan: _lastProcessedSeqNum[fileHash])
         .orderBy('seqNum')
         .snapshots()
-        .listen((snapshot) async {
-          for (var change in snapshot.docChanges) {
-            debugPrint('📨 [RECEIVER RAW] docChange type=${change.type.name}, id=${change.doc.id}, data=${change.doc.data()}');
-            if (change.type != DocumentChangeType.added) continue;
+        .listen(
+          (snapshot) async {
+            for (var change in snapshot.docChanges) {
+              debugPrint(
+                '📨 [RECEIVER RAW] docChange type=${change.type.name}, id=${change.doc.id}, data=${change.doc.data()}',
+              );
+              if (change.type != DocumentChangeType.added) continue;
 
-            final data = change.doc.data();
-            if (data == null) continue;
+              final data = change.doc.data();
+              if (data == null) continue;
 
-            // ANTI-ECHO: Skip mutations sent by this same device
-            final senderId = (data['senderId'] ?? '').toString();
-            if (senderId == _deviceSessionId) {
-              debugPrint('⏭️ [ANTI-ECHO] Skipping echo mutation from self (senderId=$senderId)');
-              continue;
+              // ANTI-ECHO: Skip mutations sent by this same device
+              final senderId = (data['senderId'] ?? '').toString();
+              if (senderId == _deviceSessionId) {
+                debugPrint(
+                  '⏭️ [ANTI-ECHO] Skipping echo mutation from self (senderId=$senderId)',
+                );
+                continue;
+              }
+
+              // Primary dedup: by Firestore document ID (survives listener reattach)
+              final docId = change.doc.id;
+              _appliedMutationIds.putIfAbsent(fileHash, () => {});
+              if (_appliedMutationIds[fileHash]!.contains(docId)) {
+                debugPrint(
+                  '⏭️ [DEDUP] Already applied mutation $docId — skipping',
+                );
+                continue;
+              }
+
+              final seqNum = (data['seqNum'] as num?)?.toInt();
+              if (seqNum == null) continue;
+
+              final lastSeen = _lastProcessedSeqNum[fileHash] ?? startSeqNum;
+              if (seqNum <= lastSeen) {
+                debugPrint(
+                  '⏭️ [DEDUP] seqNum $seqNum <= lastSeen $lastSeen — skipping',
+                );
+                continue;
+              }
+
+              // Mark BEFORE async work to prevent race condition double-apply
+              _appliedMutationIds[fileHash]!.add(docId);
+              _lastProcessedSeqNum[fileHash] = seqNum;
+
+              final action = (data['action'] ?? '').toString();
+              final pageIndex = (data['pageIndex'] as num?)?.toInt();
+              if (pageIndex == null) continue;
+
+              debugPrint(
+                '🔥 [SYNC RECEIVER] New mutation detected: action=$action pageIndex=$pageIndex seqNum=$seqNum docId=$docId',
+              );
+
+              // Validate page index before applying to prevent corruption
+              final currentPdf = appProvider.getPdf(localPdfId);
+              final currentPageCount = currentPdf?.pageCount ?? 0;
+
+              if (action == 'delete_page') {
+                if (pageIndex < 0 ||
+                    (currentPageCount > 0 && pageIndex >= currentPageCount)) {
+                  debugPrint(
+                    '⚠️ [RECEIVER] delete_page index $pageIndex out of bounds (pages: $currentPageCount) — skipping',
+                  );
+                  continue;
+                }
+                debugPrint(
+                  '🔥 [RECEIVER] Applying delete_page at index $pageIndex (pages: $currentPageCount)',
+                );
+                await appProvider.deletePage(localPdfId, pageIndex);
+              } else if (action == 'insert_page') {
+                if (pageIndex < 0 || pageIndex > currentPageCount) {
+                  debugPrint(
+                    '⚠️ [RECEIVER] insert_page index $pageIndex out of bounds (pages: $currentPageCount) — skipping',
+                  );
+                  continue;
+                }
+                debugPrint(
+                  '🔥 [RECEIVER] Applying insert_page at index $pageIndex (pages: $currentPageCount)',
+                );
+                await appProvider.addPage(localPdfId, insertAtIndex: pageIndex);
+              }
             }
-
-            // Primary dedup: by Firestore document ID (survives listener reattach)
-            final docId = change.doc.id;
-            _appliedMutationIds.putIfAbsent(fileHash, () => {});
-            if (_appliedMutationIds[fileHash]!.contains(docId)) {
-              debugPrint('⏭️ [DEDUP] Already applied mutation $docId — skipping');
-              continue;
-            }
-
-            final seqNum = (data['seqNum'] as num?)?.toInt();
-            if (seqNum == null) continue;
-
-            final lastSeen = _lastProcessedSeqNum[fileHash] ?? startSeqNum;
-            if (seqNum <= lastSeen) {
-              debugPrint('⏭️ [DEDUP] seqNum $seqNum <= lastSeen $lastSeen — skipping');
-              continue;
-            }
-
-            // Mark BEFORE async work to prevent race condition double-apply
-            _appliedMutationIds[fileHash]!.add(docId);
-            _lastProcessedSeqNum[fileHash] = seqNum;
-
-            final action = (data['action'] ?? '').toString();
-            final pageIndex = (data['pageIndex'] as num?)?.toInt();
-            if (pageIndex == null) continue;
-
+          },
+          onError: (e) {
+            debugPrint('❌ [SYNC RECEIVER] Listener FAILED for $fileHash: $e');
             debugPrint(
-              '🔥 [SYNC RECEIVER] New mutation detected: action=$action pageIndex=$pageIndex seqNum=$seqNum docId=$docId',
+              '❌ [SYNC RECEIVER] This is likely a missing Firestore composite index!',
             );
-
-            // Validate page index before applying to prevent corruption
-            final currentPdf = appProvider.getPdf(localPdfId);
-            final currentPageCount = currentPdf?.pageCount ?? 0;
-
-            if (action == 'delete_page') {
-              if (pageIndex < 0 || (currentPageCount > 0 && pageIndex >= currentPageCount)) {
-                debugPrint('⚠️ [RECEIVER] delete_page index $pageIndex out of bounds (pages: $currentPageCount) — skipping');
-                continue;
-              }
-              debugPrint('🔥 [RECEIVER] Applying delete_page at index $pageIndex (pages: $currentPageCount)');
-              await appProvider.deletePage(localPdfId, pageIndex);
-            } else if (action == 'insert_page') {
-              if (pageIndex < 0 || pageIndex > currentPageCount) {
-                debugPrint('⚠️ [RECEIVER] insert_page index $pageIndex out of bounds (pages: $currentPageCount) — skipping');
-                continue;
-              }
-              debugPrint('🔥 [RECEIVER] Applying insert_page at index $pageIndex (pages: $currentPageCount)');
-              await appProvider.addPage(localPdfId, insertAtIndex: pageIndex);
-            }
-          }
-        }, onError: (e) {
-          debugPrint('❌ [SYNC RECEIVER] Listener FAILED for $fileHash: $e');
-          debugPrint('❌ [SYNC RECEIVER] This is likely a missing Firestore composite index!');
-        });
+          },
+        );
   }
 }

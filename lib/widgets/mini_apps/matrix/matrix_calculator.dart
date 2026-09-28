@@ -461,7 +461,10 @@ class _MatrixCalculatorWidgetState extends State<MatrixCalculatorWidget> {
               const SizedBox(height: 12),
               // Matrix Grid with CSS-style brackets (NO STACK)
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(8),
                   border: Border(

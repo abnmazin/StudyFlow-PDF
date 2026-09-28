@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../models/models.dart';
+import 'tool_width_limits.dart';
 
 class DrawingToolbar extends StatelessWidget {
   final ToolType activeTool;
@@ -48,6 +49,9 @@ class DrawingToolbar extends StatelessWidget {
         : const Color(0xFF64748B);
     final activeBlue = const Color(0xFF3B82F6);
     final activeRed = const Color(0xFFEF4444);
+    // The label and the thumb read the same number, so the toolbar cannot print
+    // a width its own track refuses to reach.
+    final width = ToolWidthLimits.clampFor(activeTool, strokeWidth);
 
     return TapRegion(
       groupId: 'drawing_toolbar_region',
@@ -108,12 +112,13 @@ class DrawingToolbar extends StatelessWidget {
                       thumbColor: activeBlue,
                     ),
                     child: Slider(
-                      // Only shapes reach this toolbar, so the pen/highlighter
-                      // width range no longer applies here.
-                      value: strokeWidth.clamp(1.0, 12.0),
-                      min: 1.0,
-                      max: 12.0,
-                      divisions: 11,
+                      // Only the three shapes reach this toolbar, so the
+                      // pen/highlighter split never shows up here: every tool
+                      // that arrives lands on the same bound.
+                      value: width,
+                      min: ToolWidthLimits.min,
+                      max: ToolWidthLimits.maxFor(activeTool),
+                      divisions: ToolWidthLimits.divisionsFor(activeTool),
                       onChanged: onStrokeWidthChanged,
                     ),
                   ),
@@ -121,7 +126,7 @@ class DrawingToolbar extends StatelessWidget {
                 Icon(LucideIcons.plus, size: 16, color: iconColor),
                 const SizedBox(width: 6),
                 Text(
-                  strokeWidth.toStringAsFixed(1),
+                  width.toStringAsFixed(1),
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
@@ -138,7 +143,8 @@ class DrawingToolbar extends StatelessWidget {
                   const SizedBox(width: 10),
                   _buildFillControl(iconColor),
                 ],
-                if (activeTool == ToolType.select && onDeleteSelected != null) ...[
+                if (activeTool == ToolType.select &&
+                    onDeleteSelected != null) ...[
                   const SizedBox(width: 10),
                   Container(width: 1, height: 28, color: borderColor),
                   const SizedBox(width: 10),
@@ -164,7 +170,9 @@ class DrawingToolbar extends StatelessWidget {
     required Color iconColor,
   }) {
     final isActive = activeTool == tool;
-    final bg = isActive ? const Color(0xFF3B82F6).withOpacity(0.14) : Colors.transparent;
+    final bg = isActive
+        ? const Color(0xFF3B82F6).withOpacity(0.14)
+        : Colors.transparent;
     final fg = isActive ? const Color(0xFF3B82F6) : iconColor;
 
     return Tooltip(
@@ -178,7 +186,9 @@ class DrawingToolbar extends StatelessWidget {
             color: bg,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: isActive ? const Color(0xFF3B82F6).withOpacity(0.35) : Colors.transparent,
+              color: isActive
+                  ? const Color(0xFF3B82F6).withOpacity(0.35)
+                  : Colors.transparent,
             ),
           ),
           child: Row(
@@ -188,7 +198,11 @@ class DrawingToolbar extends StatelessWidget {
               const SizedBox(width: 6),
               Text(
                 label,
-                style: TextStyle(fontSize: 12, color: fg, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: fg,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ),
@@ -219,8 +233,7 @@ class DrawingToolbar extends StatelessWidget {
 
     // Only the three shapes live here, so the highlighter's pastel palettes
     // and the eraser's empty palette moved to ViewerSideRail.
-    final colors =
-        colorPaletteIndex == 0 ? basicColors : extendedColors;
+    final colors = colorPaletteIndex == 0 ? basicColors : extendedColors;
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -238,11 +251,18 @@ class DrawingToolbar extends StatelessWidget {
                   color: color,
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: selected ? Colors.white : Colors.white.withOpacity(0.0),
+                    color: selected
+                        ? Colors.white
+                        : Colors.white.withOpacity(0.0),
                     width: 2,
                   ),
                   boxShadow: selected
-                      ? [BoxShadow(color: color.withOpacity(0.4), blurRadius: 5)]
+                      ? [
+                          BoxShadow(
+                            color: color.withOpacity(0.4),
+                            blurRadius: 5,
+                          ),
+                        ]
                       : null,
                 ),
               ),

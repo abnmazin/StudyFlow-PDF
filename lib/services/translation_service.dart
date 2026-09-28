@@ -21,8 +21,8 @@ class TranslationService {
         final result = app.aiProvider == 'gemini'
             ? await _translateGemini(text, app)
             : app.aiProvider == 'mcp'
-                ? await _translateMcp(text, app)
-                : await _translateGroq(text, app);
+            ? await _translateMcp(text, app)
+            : await _translateGroq(text, app);
         return result;
       } catch (e) {
         debugPrint(
@@ -120,7 +120,8 @@ class TranslationService {
       return "فشل: GEMINI_API_KEY غير موجود في الإعدادات أو .env";
     }
 
-    final prompt = "Translate the following text to Arabic (or English if it is already Arabic). Only return the translated text without any conversational filler:\n\n$text";
+    final prompt =
+        "Translate the following text to Arabic (or English if it is already Arabic). Only return the translated text without any conversational filler:\n\n$text";
     final modelName = app.geminiModel;
 
     final model = GenerativeModel(model: modelName, apiKey: apiKey);
@@ -138,24 +139,27 @@ class TranslationService {
       return "فشل: GROQ_API_KEY غير موجود في الإعدادات أو .env";
     }
 
-    final prompt = "Translate the following text to Arabic (or English if it is already Arabic). Only return the translated text without any conversational filler:\n\n$text";
+    final prompt =
+        "Translate the following text to Arabic (or English if it is already Arabic). Only return the translated text without any conversational filler:\n\n$text";
     final modelName = app.groqModel;
 
     final uri = Uri.parse('https://api.groq.com/openai/v1/chat/completions');
-    final response = await http.post(
-      uri,
-      headers: {
-        'Authorization': 'Bearer $apiKey',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
-        'model': modelName,
-        'messages': [
-          {'role': 'user', 'content': prompt}
-        ],
-        'temperature': 0.1,
-      }),
-    ).timeout(const Duration(seconds: 20));
+    final response = await http
+        .post(
+          uri,
+          headers: {
+            'Authorization': 'Bearer $apiKey',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'model': modelName,
+            'messages': [
+              {'role': 'user', 'content': prompt},
+            ],
+            'temperature': 0.1,
+          }),
+        )
+        .timeout(const Duration(seconds: 20));
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('Groq HTTP ${response.statusCode}');
@@ -167,7 +171,9 @@ class TranslationService {
       throw Exception('Groq empty response');
     }
 
-    final message = (choices.first as Map<String, dynamic>)['message'] as Map<String, dynamic>?;
+    final message =
+        (choices.first as Map<String, dynamic>)['message']
+            as Map<String, dynamic>?;
     final content = (message?['content'] ?? '').toString().trim();
     return content.isEmpty ? "لم أتمكن من الترجمة." : content;
   }

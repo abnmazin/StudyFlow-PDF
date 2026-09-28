@@ -39,9 +39,7 @@ class LibrarySyncService {
       return 'FILE${DateTime.now().millisecondsSinceEpoch % 1000000}';
     }
     final upper = clean.toUpperCase();
-    return upper.length >= 6
-        ? upper.substring(0, 6)
-        : upper.padRight(6, 'K');
+    return upper.length >= 6 ? upper.substring(0, 6) : upper.padRight(6, 'K');
   }
 
   static bool isOwner(AppUser? user) =>

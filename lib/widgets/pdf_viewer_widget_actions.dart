@@ -6,14 +6,12 @@ class _WinMemoryTrimmer {
   factory _WinMemoryTrimmer() => _instance;
 
   late final DynamicLibrary _kernel32 = DynamicLibrary.open('kernel32.dll');
-  late final int Function() _getCurrentProcess = _kernel32.lookupFunction<
-    IntPtr Function(),
-    int Function()
-  >('GetCurrentProcess');
-  late final bool Function(int) _emptyWorkingSet = _kernel32.lookupFunction<
-    Bool Function(IntPtr),
-    bool Function(int)
-  >('K32EmptyWorkingSet');
+  late final int Function() _getCurrentProcess = _kernel32
+      .lookupFunction<IntPtr Function(), int Function()>('GetCurrentProcess');
+  late final bool Function(int) _emptyWorkingSet = _kernel32
+      .lookupFunction<Bool Function(IntPtr), bool Function(int)>(
+        'K32EmptyWorkingSet',
+      );
 
   int trimsCount = 0;
   Duration lastDuration = Duration.zero;
@@ -55,7 +53,10 @@ extension _PDFViewerWidgetStateActions on _PDFViewerWidgetState {
       } else {
         targetPage = pdf.lastPage ?? 1;
       }
-      await context.read<AppProvider>().addPage(pdf.id, insertAtIndex: targetPage);
+      await context.read<AppProvider>().addPage(
+        pdf.id,
+        insertAtIndex: targetPage,
+      );
 
       final hash = pdf.fileHash;
       if (mounted && hash != null) {
@@ -105,9 +106,10 @@ extension _PDFViewerWidgetStateActions on _PDFViewerWidgetState {
               setState(() => _isProcessing = true);
               try {
                 // Page numbers in controller are 1-based, our API expects 0-based index
-                await context
-                    .read<AppProvider>()
-                    .deletePage(pdf.id, pageToDelete - 1);
+                await context.read<AppProvider>().deletePage(
+                  pdf.id,
+                  pageToDelete - 1,
+                );
 
                 final hash = pdf.fileHash;
                 if (mounted && hash != null) {
@@ -200,9 +202,7 @@ extension _PDFViewerWidgetStateActions on _PDFViewerWidgetState {
     if (!Platform.isWindows) return;
     try {
       final settings = context.read<AppProvider>().devSettings;
-      _WinMemoryTrimmer().trim(
-        telemetry: settings.telemetryEnabled ?? false,
-      );
+      _WinMemoryTrimmer().trim(telemetry: settings.telemetryEnabled ?? false);
     } catch (e) {
       // Silently ignore  non-critical trim
       debugPrint('Memory trim skipped: $e');

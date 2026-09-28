@@ -85,6 +85,7 @@
 | `university_files/{fileId}/mutations/{mutationId}` | Page add/delete mutations | Authenticated + university check |
 | `university_file_progress/{progressId}` | Per-user reading progress | Self-only read/write |
 | `sync_sessions/{sessionCode}` | Live sync sessions | Authenticated (existing) |
+| `timetable_entries/{entryId}` | Shared weekly timetable: one row per recurring lecture | Any signed-in user reads; admins write (delete allowed, see note) |
 | `pdfs/{fileHash}/mutations` | Live page mutations | Authenticated + university check |
 
 ### Required Firestore Composite Indices
@@ -110,6 +111,7 @@
 - `AppUser`: uid, username, displayName, role (admin|lecturer|student), hardwareId, universityId, isBanned
 - `UniversityFolder`: id, universityId, name, createdBy, createdAt, isDeleted, sortOrder
 - `UniversityFile`: id, universityId, folderId, name, fileHash (SHA-256), storagePath, sizeBytes, uploadedBy, uploadedAt, totalPages, isDeleted
+- `TimetableEntry`: id, title, room, weekday (1..7, numbered as `DateTime` numbers them), startMinutes, endMinutes, updatedBy — one shared weekly table, authored by admins from the dashboard's schedule card and read by every signed-in user
 - `PdfItem`: Local Isar model with fileHash for cross-device matching
 - `ClassFolder`: Local Isar model for personal folder organization
 
@@ -123,4 +125,6 @@
 ## Notes
 - Multi-tenant isolation is enforced at two levels: Firestore RLS (document access) and Supabase Storage RLS (file access), both keyed on `universityId`.
 - Admins create folders/upload files; students have read-only access to their university's content.
+- The shared timetable (`timetable_entries`) is deliberately **not** scoped per university, college, or stage: `AppUser` carries those fields but fills them inconsistently across the login paths, and a schedule that silently shows nothing because one `stage` string does not match is a worse failure than one table everybody reads. Consequence worth knowing: every student sees the table, whichever university they belong to.
+- `timetable_entries` allows admin `delete`, unlike `announcements` (section 17 of the rules, delete `false`). The reason is the editor: the service exposes `deleteEntry`, and an append-only table would leave a mistyped lecture impossible to correct.
 - The existing personal `ClassItem` structure remains for legacy support; new university content flows through `UniversityFolder`/`UniversityFile`.

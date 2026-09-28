@@ -96,10 +96,10 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
         }
         for (final username in kickedUsernames) {
           if (username.isEmpty || username == ownerName) continue;
-          participantMap.putIfAbsent(username, () => {
-                'username': username,
-                'isKicked': true,
-              });
+          participantMap.putIfAbsent(
+            username,
+            () => {'username': username, 'isKicked': true},
+          );
           participantMap[username]!['isKicked'] = true;
         }
         setState(() {
@@ -123,9 +123,9 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
   Future<void> _showCreateSessionDialog() async {
     final activePdf = widget.app.activePdf;
     if (activePdf == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('يرجى فتح ملف PDF أولاً.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('يرجى فتح ملف PDF أولاً.')));
       return;
     }
 
@@ -171,7 +171,10 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
                           setDialogState(() {
                             useCustomCode = val;
                             if (val) {
-                              codeCtrl.text = SyncNamingUtils.suggestCodeFromName(nameCtrl.text);
+                              codeCtrl.text =
+                                  SyncNamingUtils.suggestCodeFromName(
+                                    nameCtrl.text,
+                                  );
                             } else {
                               codeCtrl.clear();
                             }
@@ -219,16 +222,21 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
                         if (useCustomCode) {
                           final inputCode = codeCtrl.text.trim().toUpperCase();
                           if (!SyncNamingUtils.isValidCode(inputCode)) {
-                            setDialogState(() => localError = 'تنسيق الكود غير صالح (4-12 رمزاً مسموحاً)');
+                            setDialogState(
+                              () => localError =
+                                  'تنسيق الكود غير صالح (4-12 رمزاً مسموحاً)',
+                            );
                             return;
                           }
 
                           setDialogState(() => isChecking = true);
                           try {
-                            final isUnique = await widget.syncService.isSessionCodeUnique(inputCode);
+                            final isUnique = await widget.syncService
+                                .isSessionCodeUnique(inputCode);
                             if (!isUnique) {
                               setDialogState(() {
-                                localError = 'هذا الكود مستخدم بالفعل، اختر كوداً آخر';
+                                localError =
+                                    'هذا الكود مستخدم بالفعل، اختر كوداً آخر';
                                 isChecking = false;
                               });
                               return;
@@ -253,7 +261,10 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
                     ? const SizedBox(
                         width: 18,
                         height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
                       )
                     : const Text('بدء البث'),
               ),
@@ -267,7 +278,7 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
   Future<void> _generateCode({String? customName, String? customCode}) async {
     final hardwareId = widget.app.currentUser?.hardwareId ?? '';
     final activePdf = widget.app.activePdf!;
-    
+
     setState(() {
       _generating = true;
       // _syncStatus = 'جاري إعداد الجلسة...';  // Removed loading message
@@ -285,31 +296,35 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
         customCode: customCode,
         displayName: customName,
       );
-      
+
       if (code == null) {
         if (mounted) setState(() => _error = 'فشل توليد كود الجلسة.');
         return;
       }
-      
+
       // 🚀 BULK SYNC EXISTING NOTES
-      final hasNotes = activePdf.highlights.isNotEmpty || activePdf.comments.isNotEmpty;
-      
+      final hasNotes =
+          activePdf.highlights.isNotEmpty || activePdf.comments.isNotEmpty;
+
       if (hasNotes) {
         // setState(() => _syncStatus = 'جاري رفع الملاحظات الحالية...');  // Removed loading message
-        
-        final alreadyExists = await widget.syncService.hasAnnotations(code, activePdf.fileHash ?? '');
+
+        final alreadyExists = await widget.syncService.hasAnnotations(
+          code,
+          activePdf.fileHash ?? '',
+        );
         if (!alreadyExists) {
-            await widget.syncService.syncExistingAnnotations(
-              code: code,
-              fileHash: activePdf.fileHash ?? '',
-              highlights: activePdf.highlights,
-              comments: activePdf.comments,
-            );
+          await widget.syncService.syncExistingAnnotations(
+            code: code,
+            fileHash: activePdf.fileHash ?? '',
+            highlights: activePdf.highlights,
+            comments: activePdf.comments,
+          );
         }
       }
 
       widget.app.setSessionCode(code);
-  _sessionOwnerName = widget.app.currentUser?.username ?? '';
+      _sessionOwnerName = widget.app.currentUser?.username ?? '';
       _startListening(code);
     } catch (e) {
       if (mounted) {
@@ -330,7 +345,10 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
     if (code == null) return;
     setState(() => _locking = true);
     try {
-      await widget.syncService.setLocked(code, locked: !widget.app.sessionLocked);
+      await widget.syncService.setLocked(
+        code,
+        locked: !widget.app.sessionLocked,
+      );
     } finally {
       if (mounted) {
         SchedulerBinding.instance.addPostFrameCallback((_) {
@@ -345,7 +363,10 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
     if (code == null) return;
     setState(() => _joinLocking = true);
     try {
-      await widget.syncService.setJoinLocked(code, locked: !widget.app.sessionJoinLocked);
+      await widget.syncService.setJoinLocked(
+        code,
+        locked: !widget.app.sessionJoinLocked,
+      );
     } finally {
       if (mounted) {
         SchedulerBinding.instance.addPostFrameCallback((_) {
@@ -387,9 +408,9 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
       if (mounted) {
         SchedulerBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('تم طرد المشارك.')),
-            );
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(const SnackBar(content: Text('تم طرد المشارك.')));
           }
         });
       }
@@ -397,9 +418,9 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
       if (mounted) {
         SchedulerBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('فشل الطرد: $e')),
-            );
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text('فشل الطرد: $e')));
           }
         });
       }
@@ -451,9 +472,9 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
       if (mounted) {
         SchedulerBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('فشل إلغاء الحظر: $e')),
-            );
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text('فشل إلغاء الحظر: $e')));
           }
         });
       }
@@ -462,7 +483,8 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
 
   Future<void> _syncNow() async {
     if (widget.app.isSyncing) return; // cooldown guard
-    if (widget.app.currentSessionCode == null || widget.app.activePdf == null) return;
+    if (widget.app.currentSessionCode == null || widget.app.activePdf == null)
+      return;
 
     setState(() => _syncingNow = true);
 
@@ -475,7 +497,9 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('تمت المزامنة بنجاح. تم تحديث وحذف العناصر غير المتطابقة.'),
+                content: Text(
+                  'تمت المزامنة بنجاح. تم تحديث وحذف العناصر غير المتطابقة.',
+                ),
                 backgroundColor: Colors.green,
               ),
             );
@@ -487,9 +511,9 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         SchedulerBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('فشل التزامن: $e')),
-            );
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text('فشل التزامن: $e')));
           }
         });
       }
@@ -519,7 +543,9 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
             child: const Text('إلغاء'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFDC2626),
+            ),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('متابعة الحذف'),
           ),
@@ -542,7 +568,9 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
             child: const Text('تراجع'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFB91C1C)),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFB91C1C),
+            ),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('حذف نهائي'),
           ),
@@ -568,13 +596,12 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('فشل الحذف النهائي: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('فشل الحذف النهائي: $e')));
       }
     }
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -584,10 +611,10 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
     final currentUsername = _norm(app.currentUser?.username);
     final ownerUsername = _norm(_sessionOwnerName);
     final canManageSession =
-      app.currentUser != null &&
-      (app.currentUser!.isLecturer) &&
-      ownerUsername.isNotEmpty &&
-      currentUsername == ownerUsername;
+        app.currentUser != null &&
+        (app.currentUser!.isLecturer) &&
+        ownerUsername.isNotEmpty &&
+        currentUsername == ownerUsername;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -598,7 +625,9 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
               padding: const EdgeInsets.symmetric(vertical: 8.0),
               child: Column(
                 children: [
-                  const RepaintBoundary(child: CircularProgressIndicator(strokeWidth: 2)),
+                  const RepaintBoundary(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
                   const SizedBox(height: 8),
                   Text(
                     _syncStatus,
@@ -642,7 +671,11 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
               ),
               child: Row(
                 children: [
-                  const Icon(LucideIcons.copy, size: 14, color: Color(0xFF93C5FD)),
+                  const Icon(
+                    LucideIcons.copy,
+                    size: 14,
+                    color: Color(0xFF93C5FD),
+                  ),
                   const SizedBox(width: 8),
                   Text(
                     'الكود: $code',
@@ -669,11 +702,19 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
               padding: const EdgeInsets.only(bottom: 8.0),
               child: Row(
                 children: [
-                   Icon(LucideIcons.checkCircle2, size: 14, color: Color(0xFF16A34A)),
-                   SizedBox(width: 6),
-                   Text(
+                  Icon(
+                    LucideIcons.checkCircle2,
+                    size: 14,
+                    color: Color(0xFF16A34A),
+                  ),
+                  SizedBox(width: 6),
+                  Text(
                     'مزامنة تلقائية نشطة (${app.drawingSyncStrategy == DrawingSyncStrategy.buffered ? 'خلفية 5ث' : 'لحظية'})',
-                    style: TextStyle(color: Color(0xFF16A34A), fontSize: 12, fontWeight: FontWeight.w500),
+                    style: TextStyle(
+                      color: Color(0xFF16A34A),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ],
               ),
@@ -686,7 +727,12 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
                 ? const SizedBox(
                     width: 14,
                     height: 14,
-                    child: RepaintBoundary(child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+                    child: RepaintBoundary(
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    ),
                   )
                 : const Icon(LucideIcons.refreshCw, size: 16),
             label: const Text('مزامنة التغييرات الآن'),
@@ -711,14 +757,18 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
                       Icon(
                         locked ? LucideIcons.lock : LucideIcons.unlock,
                         size: 16,
-                        color: locked ? const Color(0xFFF87171) : widget.textMuted,
+                        color: locked
+                            ? const Color(0xFFF87171)
+                            : widget.textMuted,
                       ),
                       const SizedBox(width: 8),
                       Flexible(
                         child: Text(
                           locked ? 'رسم الطلاب مقفل' : 'قفل رسم الطلاب',
                           style: TextStyle(
-                            color: locked ? const Color(0xFFF87171) : widget.textPrimary,
+                            color: locked
+                                ? const Color(0xFFF87171)
+                                : widget.textPrimary,
                             fontSize: 13,
                           ),
                           overflow: TextOverflow.ellipsis,
@@ -871,8 +921,9 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
                                 ? widget.textMuted
                                 : widget.textPrimary,
                             fontSize: 13,
-                            decoration:
-                                isKicked ? TextDecoration.lineThrough : null,
+                            decoration: isKicked
+                                ? TextDecoration.lineThrough
+                                : null,
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -956,10 +1007,10 @@ class _LecturerSessionCardState extends State<LecturerSessionCard> {
           if (canManageSession)
             TextButton(
               onPressed: () async {
-              // End locally only: do not delete session/annotations from server.
-              _sub?.cancel();
-              widget.app.setSessionCode(null);
-              setState(() => _participants = []);
+                // End locally only: do not delete session/annotations from server.
+                _sub?.cancel();
+                widget.app.setSessionCode(null);
+                setState(() => _participants = []);
               },
               style: TextButton.styleFrom(
                 padding: EdgeInsets.zero,
@@ -1067,7 +1118,7 @@ class _MemberSessionCardState extends State<MemberSessionCard> {
         studentFileHash: activePdf.fileHash ?? '',
         studentPageCount: activePdf.pageCount ?? 0,
       );
-      
+
       SchedulerBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         if (res != null) {
@@ -1075,9 +1126,9 @@ class _MemberSessionCardState extends State<MemberSessionCard> {
         } else {
           widget.app.setSessionCode(code);
           _codeCtrl.clear();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('تم الانضمام للدرس: $code')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('تم الانضمام للدرس: $code')));
         }
       });
     } catch (e) {
@@ -1105,11 +1156,15 @@ class _MemberSessionCardState extends State<MemberSessionCard> {
             builder: (context, snapshot) {
               final ownerName = snapshot.data?['ownerName'] ?? '...';
               final displayName = snapshot.data?['displayName'] as String?;
-              final hasDisplayName = displayName != null && displayName.isNotEmpty;
-              final notesPurgeFor = (snapshot.data?['notesPurgeFor'] as String?)?.trim() ?? '';
+              final hasDisplayName =
+                  displayName != null && displayName.isNotEmpty;
+              final notesPurgeFor =
+                  (snapshot.data?['notesPurgeFor'] as String?)?.trim() ?? '';
               final notesPurgeRequestId =
-                  (snapshot.data?['notesPurgeRequestId'] as String?)?.trim() ?? '';
-              final myUsername = (widget.app.currentUser?.username ?? '').trim();
+                  (snapshot.data?['notesPurgeRequestId'] as String?)?.trim() ??
+                  '';
+              final myUsername = (widget.app.currentUser?.username ?? '')
+                  .trim();
               final normalizedMyUsername = myUsername.toLowerCase();
               final normalizedPurgeTarget = notesPurgeFor.toLowerCase();
 
@@ -1137,7 +1192,10 @@ class _MemberSessionCardState extends State<MemberSessionCard> {
               }
 
               return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFF14532D),
                   borderRadius: BorderRadius.circular(8),
@@ -1148,11 +1206,17 @@ class _MemberSessionCardState extends State<MemberSessionCard> {
                   children: [
                     Row(
                       children: [
-                        const Icon(LucideIcons.checkCircle, size: 14, color: Color(0xFF4ADE80)),
+                        const Icon(
+                          LucideIcons.checkCircle,
+                          size: 14,
+                          color: Color(0xFF4ADE80),
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            hasDisplayName ? displayName : 'متصل بالدرس: $activeCode',
+                            hasDisplayName
+                                ? displayName
+                                : 'متصل بالدرس: $activeCode',
                             style: const TextStyle(
                               color: Color(0xFF4ADE80),
                               fontWeight: FontWeight.w600,
@@ -1167,13 +1231,21 @@ class _MemberSessionCardState extends State<MemberSessionCard> {
                       const SizedBox(height: 2),
                       Text(
                         'كود الدرس: $activeCode',
-                        style: const TextStyle(color: Color(0xFFBCF5D4), fontSize: 10, letterSpacing: 1),
+                        style: const TextStyle(
+                          color: Color(0xFFBCF5D4),
+                          fontSize: 10,
+                          letterSpacing: 1,
+                        ),
                       ),
                     ],
                     const SizedBox(height: 4),
                     Text(
                       'المحاضر: $ownerName',
-                      style: const TextStyle(color: Color(0xFFBCF5D4), fontSize: 11, fontWeight: FontWeight.w500),
+                      style: const TextStyle(
+                        color: Color(0xFFBCF5D4),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ],
                 ),
@@ -1276,7 +1348,9 @@ class _MemberSessionCardState extends State<MemberSessionCard> {
               ? const SizedBox(
                   width: 14,
                   height: 14,
-                  child: RepaintBoundary(child: CircularProgressIndicator(strokeWidth: 2)),
+                  child: RepaintBoundary(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
                 )
               : const Icon(LucideIcons.logIn, size: 16),
           label: const Text('الانضمام إلى درس'),

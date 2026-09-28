@@ -152,7 +152,10 @@ class _DeveloperModalState extends State<DeveloperModal>
 
   Widget _buildGlassContainer() {
     final screenWidth = MediaQuery.sizeOf(context).width;
-    final dialogWidth = ResponsiveBreakpoints.dialogWidth(screenWidth, max: 380);
+    final dialogWidth = ResponsiveBreakpoints.dialogWidth(
+      screenWidth,
+      max: 380,
+    );
     final horizontalMargin = screenWidth < 420 ? 16.0 : 24.0;
 
     return Container(
@@ -256,7 +259,11 @@ class _DeveloperModalState extends State<DeveloperModal>
                     ),
                   ),
                   SizedBox(width: 8),
-                  Icon(LucideIcons.heartHandshake, size: 14, color: Color(0xFF38BDF8)),
+                  Icon(
+                    LucideIcons.heartHandshake,
+                    size: 14,
+                    color: Color(0xFF38BDF8),
+                  ),
                 ],
               ),
             ),
@@ -538,7 +545,8 @@ class _DeveloperModalState extends State<DeveloperModal>
                   offset: const Offset(0, 5),
                 ),
               ],
-            ),            child: ElevatedButton(
+            ),
+            child: ElevatedButton(
               onPressed: _handleClose,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.transparent,

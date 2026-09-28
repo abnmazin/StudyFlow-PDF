@@ -94,8 +94,7 @@ class _UploadPdfDialogState extends State<UploadPdfDialog> {
   @override
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    final bgColor =
-        isDarkMode ? const Color(0xFF0F172A) : Colors.white;
+    final bgColor = isDarkMode ? const Color(0xFF0F172A) : Colors.white;
 
     return Dialog(
       backgroundColor: bgColor,
@@ -139,8 +138,9 @@ class _UploadPdfDialogState extends State<UploadPdfDialog> {
                       LucideIcons.x,
                       color: isDarkMode ? Colors.white54 : Colors.black54,
                     ),
-                    onPressed:
-                        _isUploading ? null : () => Navigator.pop(context),
+                    onPressed: _isUploading
+                        ? null
+                        : () => Navigator.pop(context),
                   ),
                 ],
               ),
@@ -183,9 +183,7 @@ class _UploadPdfDialogState extends State<UploadPdfDialog> {
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w500,
-                          color: isDarkMode
-                              ? Colors.white
-                              : Colors.black87,
+                          color: isDarkMode ? Colors.white : Colors.black87,
                         ),
                         textAlign: TextAlign.center,
                       ),
@@ -240,10 +238,9 @@ class _UploadPdfDialogState extends State<UploadPdfDialog> {
               SizedBox(
                 height: 48,
                 child: ElevatedButton.icon(
-                  onPressed:
-                      (_selectedFilePath == null || _isUploading)
-                          ? null
-                          : _upload,
+                  onPressed: (_selectedFilePath == null || _isUploading)
+                      ? null
+                      : _upload,
                   icon: _isUploading
                       ? const SizedBox(
                           width: 20,

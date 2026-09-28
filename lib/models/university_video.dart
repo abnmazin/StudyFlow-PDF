@@ -12,7 +12,8 @@ class UniversityVideo {
   final String folderId;
   final String title;
   final String videoId; // 11-char YouTube video ID
-  final String videoUrl; // Normalized watch URL (https://www.youtube.com/watch?v=<id>)
+  final String
+  videoUrl; // Normalized watch URL (https://www.youtube.com/watch?v=<id>)
   final String uploadedBy;
   final DateTime uploadedAt;
   final bool isDeleted;

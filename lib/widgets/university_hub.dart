@@ -181,9 +181,9 @@ class _UniversityHubState extends State<UniversityHub> {
       try {
         await _universityService.deleteFolder(folder.id);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('🗑️ Folder deleted')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('🗑️ Folder deleted')));
         }
       } catch (e) {
         if (mounted) {
@@ -231,8 +231,9 @@ class _UniversityHubState extends State<UniversityHub> {
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
-                        color:
-                            isDarkMode ? Colors.white : const Color(0xFF1E293B),
+                        color: isDarkMode
+                            ? Colors.white
+                            : const Color(0xFF1E293B),
                       ),
                     ),
                     Text(
@@ -318,9 +319,7 @@ class _UniversityHubState extends State<UniversityHub> {
             : const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isDarkMode
-              ? const Color(0xFF334155)
-              : const Color(0xFFE2E8F0),
+          color: isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
         ),
       ),
       child: Column(
@@ -412,9 +411,7 @@ class _FolderCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(16),
       child: Container(
         decoration: BoxDecoration(
-          color: isDarkMode
-              ? const Color(0xFF1E293B)
-              : const Color(0xFFF8FAFC),
+          color: isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isDarkMode
@@ -446,18 +443,15 @@ class _FolderCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    LucideIcons.folder,
-                    color: Colors.indigo[400],
-                    size: 32,
-                  ),
+                  Icon(LucideIcons.folder, color: Colors.indigo[400], size: 32),
                   const SizedBox(height: 12),
                   Text(
                     folder.name,
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
-                      color:
-                          isDarkMode ? Colors.white : const Color(0xFF1E293B),
+                      color: isDarkMode
+                          ? Colors.white
+                          : const Color(0xFF1E293B),
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,

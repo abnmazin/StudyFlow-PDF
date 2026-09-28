@@ -323,5 +323,23 @@ service cloud.firestore {
       allow create, update: if isAuthenticated() && userRole() == 'admin';
       allow delete: if false;
     }
+
+    // ================================================================
+    // 18. TIMETABLE
+    //     - The shared weekly table behind `timetable_entries/{entryId}`:
+    //       every signed-in user reads it, because the dashboard shows the
+    //       schedule to every student
+    //     - Writes are admin-only, matching `TimetableService._assertAdmin`.
+    //       That check is a convenience that turns a mistake into an Arabic
+    //       sentence; this rule is the boundary.
+    //     - Delete is admin-allowed on purpose. The append-only treatment
+    //       section 17 gives announcements would leave a mistyped lecture
+    //       impossible to remove, and the service exposes `deleteEntry`.
+    // ================================================================
+    match /timetable_entries/{entryId} {
+      allow read, list: if isAuthenticated();
+      allow create, update: if isAuthenticated() && userRole() == 'admin';
+      allow delete: if isAuthenticated() && userRole() == 'admin';
+    }
   }
 }

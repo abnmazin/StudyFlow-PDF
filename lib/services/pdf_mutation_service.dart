@@ -28,8 +28,10 @@ class PdfMutationService {
 
       if (pageIndex < 0 || pageIndex >= document.pages.count) {
         document.dispose();
-        throw RangeError('Page index $pageIndex out of bounds '
-            '(total pages: ${document.pages.count})');
+        throw RangeError(
+          'Page index $pageIndex out of bounds '
+          '(total pages: ${document.pages.count})',
+        );
       }
 
       document.pages.removeAt(pageIndex);
@@ -56,8 +58,10 @@ class PdfMutationService {
 
       if (insertIndex < 0 || insertIndex > document.pages.count) {
         document.dispose();
-        throw RangeError('Insert index $insertIndex out of bounds '
-            '(total pages: ${document.pages.count})');
+        throw RangeError(
+          'Insert index $insertIndex out of bounds '
+          '(total pages: ${document.pages.count})',
+        );
       }
 
       document.pages.insert(insertIndex);

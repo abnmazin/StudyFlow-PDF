@@ -110,14 +110,12 @@ class PrintService {
       enabled: settings.enableDiagnostics,
     );
 
-    final regularFontBytes =
-        (await rootBundle.load('assets/fonts/NotoNaskhArabic-Regular.ttf'))
-            .buffer
-            .asUint8List();
-    final boldFontBytes =
-        (await rootBundle.load('assets/fonts/NotoNaskhArabic-Bold.ttf'))
-            .buffer
-            .asUint8List();
+    final regularFontBytes = (await rootBundle.load(
+      'assets/fonts/NotoNaskhArabic-Regular.ttf',
+    )).buffer.asUint8List();
+    final boldFontBytes = (await rootBundle.load(
+      'assets/fonts/NotoNaskhArabic-Bold.ttf',
+    )).buffer.asUint8List();
 
     final processedBytes = await compute(
       _processPdfIsolate,
@@ -231,7 +229,7 @@ class PrintService {
         // 2. جلب قائمة الطابعات المتاحة في النظام
         final printers = await Printing.listPrinters();
         await logTiming('printers listed (${printers.length})');
-        
+
         // 3. البحث عن الطابعة الافتراضية
         Printer? targetPrinter;
         if (printers.isNotEmpty) {
@@ -257,7 +255,7 @@ class PrintService {
             dynamicLayout: false,
           );
           await logTiming('directPrintPdf completed');
-          
+
           await _clearPendingMarker();
           await _diagWrite(
             'Direct print job sent successfully',
@@ -272,7 +270,7 @@ class PrintService {
           'Direct Print Failed: $e. Falling back to layoutPdf...',
           enabled: settings.enableDiagnostics,
         );
-        
+
         // Fallback: إذا فشلت الطباعة المباشرة، نعود للطريقة التقليدية كخيار أخير
         await Printing.layoutPdf(
           onLayout: (_) => processedBytes, // بدون async
@@ -336,8 +334,8 @@ class PrintService {
       final sf.PdfPage srcPage = source.pages[pageNum - 1];
       final Size srcSize = srcPage.size; // dart:ui Size
       final List<Map<String, dynamic>> pageAnnotations = annotations
-        .where((a) => (a['page'] as num?)?.toInt() == pageNum)
-        .toList();
+          .where((a) => (a['page'] as num?)?.toInt() == pageNum)
+          .toList();
       final bool srcIsPortrait = srcSize.height >= srcSize.width;
       final bool wantLandscape =
           settings.orientation == PrintOrientation.landscape;
@@ -429,13 +427,7 @@ class PrintService {
     for (final a in pageAnnotations) {
       final kind = (a['annotationKind'] ?? '').toString();
       if (kind == 'comment') {
-        _drawCommentAnnotation(
-          g,
-          a,
-          pageSize,
-          regularFontBytes,
-          boldFontBytes,
-        );
+        _drawCommentAnnotation(g, a, pageSize, regularFontBytes, boldFontBytes);
       } else {
         _drawHighlightAnnotation(g, a, pageSize);
       }
@@ -477,10 +469,15 @@ class PrintService {
           _mapX(right, a, pageSize),
           _mapY(bottom, a, pageSize),
         );
-        g.drawRectangle(bounds: rect, brush: sf.PdfSolidBrush(_pdfColorFromArgb(
-          a['color'] as int? ?? 0xFF000000,
-          opacity: rectHighlightOpacity,
-        )));
+        g.drawRectangle(
+          bounds: rect,
+          brush: sf.PdfSolidBrush(
+            _pdfColorFromArgb(
+              a['color'] as int? ?? 0xFF000000,
+              opacity: rectHighlightOpacity,
+            ),
+          ),
+        );
       }
       return;
     }
@@ -566,17 +563,22 @@ class PrintService {
     final fontFamily = (a['fontFamily'] ?? '').toString();
     final showBorder = a['showBorder'] != false;
     final textColor = _pdfColorFromArgb(a['color'] as int? ?? 0xFF000000);
-    final borderColor = _pdfColorFromArgb(a['borderColor'] as int? ?? 0xFF000000);
+    final borderColor = _pdfColorFromArgb(
+      a['borderColor'] as int? ?? 0xFF000000,
+    );
     final bgColor = _pdfColorFromArgb(
       a['bgColor'] as int? ?? 0xFFFEF3C7,
       opacity: 0.10,
     );
     final isArabic = _containsArabic(content);
     final textFormat = sf.PdfStringFormat(
-      alignment: isArabic ? sf.PdfTextAlignment.right : sf.PdfTextAlignment.left,
+      alignment: isArabic
+          ? sf.PdfTextAlignment.right
+          : sf.PdfTextAlignment.left,
       lineAlignment: sf.PdfVerticalAlignment.top,
-      textDirection:
-          isArabic ? sf.PdfTextDirection.rightToLeft : sf.PdfTextDirection.leftToRight,
+      textDirection: isArabic
+          ? sf.PdfTextDirection.rightToLeft
+          : sf.PdfTextDirection.leftToRight,
       wordWrap: sf.PdfWordWrapType.word,
       measureTrailingSpaces: false,
     );
@@ -601,10 +603,7 @@ class PrintService {
 
     g.drawRectangle(bounds: bounds, brush: sf.PdfSolidBrush(bgColor));
     if (showBorder) {
-      g.drawRectangle(
-        bounds: bounds,
-        pen: sf.PdfPen(borderColor, width: 1),
-      );
+      g.drawRectangle(bounds: bounds, pen: sf.PdfPen(borderColor, width: 1));
     }
 
     g.drawString(
@@ -634,7 +633,8 @@ class PrintService {
     required Uint8List boldFontBytes,
   }) {
     final normalized = fontFamily.trim().toLowerCase();
-    final needsArabicFont = _containsArabic(content) ||
+    final needsArabicFont =
+        _containsArabic(content) ||
         normalized.contains('noto') ||
         normalized.contains('arabic') ||
         normalized.contains('amiri');
@@ -649,8 +649,8 @@ class PrintService {
     final pdfFamily = normalized.contains('courier')
         ? sf.PdfFontFamily.courier
         : normalized.contains('helvetica')
-            ? sf.PdfFontFamily.helvetica
-            : sf.PdfFontFamily.timesRoman;
+        ? sf.PdfFontFamily.helvetica
+        : sf.PdfFontFamily.timesRoman;
 
     return sf.PdfStandardFont(
       pdfFamily,

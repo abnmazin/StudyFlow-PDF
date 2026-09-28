@@ -121,9 +121,9 @@ extension _PDFViewerWidgetStateOverlay on _PDFViewerWidgetState {
                 context.read<AppProvider>().startEditing(c.id, c);
                 setState(() {
                   _editingCommentId = c.id;
-                  final styles = context
-                      .read<AppProvider>()
-                      .getEditingStyles(c.id);
+                  final styles = context.read<AppProvider>().getEditingStyles(
+                    c.id,
+                  );
                   if (styles != null) {
                     _textColor = Color(styles['color']);
                     _fontSize = styles['fontSize'];
@@ -293,7 +293,13 @@ extension _PDFViewerWidgetStateOverlay on _PDFViewerWidgetState {
           // مشكلة الكيبورد تم حلها عبر:
           //   - ExcludeFocus في _buildPdfViewerCore
           //   - enableKeyboardNavigation: showOverlays && _editingCommentId == null
-          ..._buildCommentOverlaysForPage(pdf, appProvider, pageRect, page, scale),
+          ..._buildCommentOverlaysForPage(
+            pdf,
+            appProvider,
+            pageRect,
+            page,
+            scale,
+          ),
         ],
       ),
     );

@@ -51,7 +51,6 @@ class AuthService {
     return '$ascii@$authEmailDomain';
   }
 
-
   /// Strictly enforces device binding and account sharing prevention.
   /// NO developers or special usernames (e.g., 'abn') can bypass these checks.
   Future<AppUser> secureLogin(String username, String password) async {
@@ -73,12 +72,18 @@ class AuthService {
     // users/{uid}, so the account's uid must be the users document id.
     final signedInUid = await _signIn(normalizedUsername, password);
 
-
     // 3. BLACKLIST CHECK: Prevent blocked devices from logging in
-    final blacklistDoc = await _firestore.collection('blacklisted_devices').doc(currentFingerprint).get();
+    final blacklistDoc = await _firestore
+        .collection('blacklisted_devices')
+        .doc(currentFingerprint)
+        .get();
     if (blacklistDoc.exists) {
-      final reason = blacklistDoc.data()?['reason'] ?? 'هذا الجهاز محظور من الاستخدام بشكل نهائي';
-      debugPrint('🚫 [Security] Blacklisted device denial: Fingerprint=$currentFingerprint');
+      final reason =
+          blacklistDoc.data()?['reason'] ??
+          'هذا الجهاز محظور من الاستخدام بشكل نهائي';
+      debugPrint(
+        '🚫 [Security] Blacklisted device denial: Fingerprint=$currentFingerprint',
+      );
       throw Exception(reason);
     }
 
@@ -104,8 +109,12 @@ class AuthService {
 
     // 4. USER BAN CHECK: Zero-tolerance policy
     if (user.isBanned) {
-      debugPrint('🚫 [Security] Banned account denial: UID=${user.uid}, Username=${user.username}');
-      throw Exception('تم حظر حسابك بسبب: ${user.banReason ?? "مشاركة الحساب مع جهاز آخر"}');
+      debugPrint(
+        '🚫 [Security] Banned account denial: UID=${user.uid}, Username=${user.username}',
+      );
+      throw Exception(
+        'تم حظر حسابك بسبب: ${user.banReason ?? "مشاركة الحساب مع جهاز آخر"}',
+      );
     }
 
     // 5. DEVICE BINDING & ACCOUNT SHARING DETECTION
@@ -115,31 +124,37 @@ class AuthService {
       // FIRST LOGIN: Bind this device as the primary one
       await doc.reference.update({
         'primaryDeviceFingerprint': currentFingerprint,
-        'displayName': user.displayName.isEmpty ? user.username : user.displayName,
+        'displayName': user.displayName.isEmpty
+            ? user.username
+            : user.displayName,
         'hardwareId': currentFingerprint, // Migration fallback
         'appVersion': appVersion,
         'lastSeenAt': FieldValue.serverTimestamp(),
       });
-      debugPrint('✅ [Security] Device binding success: User=${user.username} -> Fingerprint=$currentFingerprint');
-      
+      debugPrint(
+        '✅ [Security] Device binding success: User=${user.username} -> Fingerprint=$currentFingerprint',
+      );
+
       // Refresh user data after binding
       return AppUser.fromFirestore(doc.id, {
         ...data,
         'primaryDeviceFingerprint': currentFingerprint,
         'appVersion': appVersion,
       });
-    } 
-    
+    }
+
     if (primaryFingerprint != currentFingerprint) {
       // 🚨 VIOLATION DETECTED: ACCOUNT SHARING DETECTED
       debugPrint('🚨 [Security] Device mismatch denial: User=${user.username}');
       debugPrint('   Expected: $primaryFingerprint');
       debugPrint('   Received: $currentFingerprint');
-      
+
       // IMMEDIATE ZERO-TOLERANCE EXECUTION
       await _executeImmediateBan(doc.reference, user, currentFingerprint);
-      
-      throw Exception('تم حظر حسابك بسبب مشاركة حسابك مع جهاز آخر. هذا الجهاز وجهازك الأصلي تم منعهما نهائيا.');
+
+      throw Exception(
+        'تم حظر حسابك بسبب مشاركة حسابك مع جهاز آخر. هذا الجهاز وجهازك الأصلي تم منعهما نهائيا.',
+      );
     }
 
     await _updateLoginMetadata(doc.reference, appVersion);
@@ -177,7 +192,9 @@ class AuthService {
         case 'user-disabled':
           throw Exception('هذا الحساب معطّل. راجع مدير النظام.');
         case 'too-many-requests':
-          throw Exception('محاولات كثيرة متتالية. انتظر قليلاً ثم حاول مجدداً.');
+          throw Exception(
+            'محاولات كثيرة متتالية. انتظر قليلاً ثم حاول مجدداً.',
+          );
         default:
           throw Exception('تعذّر تسجيل الدخول: ${e.message ?? e.code}');
       }
@@ -211,7 +228,11 @@ class AuthService {
   }
 
   /// Part of the ZERO-TOLERANCE policy. Bans the user and blacklists both devices.
-  Future<void> _executeImmediateBan(DocumentReference userRef, AppUser user, String newFingerprint) async {
+  Future<void> _executeImmediateBan(
+    DocumentReference userRef,
+    AppUser user,
+    String newFingerprint,
+  ) async {
     final now = FieldValue.serverTimestamp();
 
     // The durable ban record is admin-only in firestore.rules, so a client
@@ -245,7 +266,9 @@ class AuthService {
       }
 
       // 3. BLACKLIST NEW DEVICE
-      final newRef = _firestore.collection('blacklisted_devices').doc(newFingerprint);
+      final newRef = _firestore
+          .collection('blacklisted_devices')
+          .doc(newFingerprint);
       batch.set(newRef, {
         'fingerprint': newFingerprint,
         'uid': user.uid,
@@ -357,7 +380,9 @@ class AuthService {
       // add-user form produced, where a random document id could never sign in.
       await _firestore.collection('users').doc(uid).set({
         'username': username.trim(),
-        'displayName': displayName.trim().isEmpty ? username.trim() : displayName.trim(),
+        'displayName': displayName.trim().isEmpty
+            ? username.trim()
+            : displayName.trim(),
         'role': role,
         'authProvisioned': true,
         'createdAt': FieldValue.serverTimestamp(),

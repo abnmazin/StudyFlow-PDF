@@ -7,6 +7,7 @@ import 'mini_apps/calculator/scientific_calculator.dart';
 import 'mini_apps/translator/translator.dart';
 import 'mini_apps/power/power.dart';
 import 'mini_apps/matrix/matrix.dart';
+
 class MiniAppsTabWidget extends StatelessWidget {
   const MiniAppsTabWidget({super.key});
 
@@ -143,7 +144,9 @@ class MiniAppsTabWidget extends StatelessWidget {
                             fontWeight: FontWeight.w700,
                             fontSize: textSize,
                             height: 1.2,
-                            color: isDark ? Colors.white : const Color(0xFF0F172A),
+                            color: isDark
+                                ? Colors.white
+                                : const Color(0xFF0F172A),
                           ),
                         ),
                       ),

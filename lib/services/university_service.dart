@@ -856,11 +856,21 @@ class UniversityService {
     return dir;
   }
 
+  /// Filename a library file occupies inside `university_pdfs` once it has been
+  /// downloaded. The storage key's basename is authoritative because that is
+  /// the name the bytes were written under; the display name is only a fallback
+  /// for a record whose storage path is malformed. Every disk lookup and every
+  /// "is it downloaded?" test has to agree on this one rule, or a file can be
+  /// on disk and still be reported as missing.
+  static String downloadedBasenameFor(UniversityFile file) {
+    final name = file.storagePath.split('/').last;
+    return name.isEmpty ? file.name : name;
+  }
+
   /// The on-disk path a library file occupies once downloaded, whether or not
   /// it still has a local database record.
   String _downloadedPathFor(Directory dir, UniversityFile file) {
-    final name = file.storagePath.split('/').last;
-    return p.join(dir.path, name.isEmpty ? file.name : name);
+    return p.join(dir.path, downloadedBasenameFor(file));
   }
 
   /// Local path of an already-downloaded file, or null when it has to be
@@ -898,6 +908,28 @@ class UniversityService {
     } catch (_) {
       return <String>{};
     }
+  }
+
+  /// The [UniversityFile.fileHash] of every file in [files] that already exists
+  /// on disk, given the [onDiskNames] listing from [getDownloadedFileNames].
+  ///
+  /// Deliberately a pure function taking the listing instead of fetching it:
+  /// that fetch returns an empty set when the directory cannot be read, and if
+  /// this were fused into it an unreadable directory would silently clear every
+  /// "downloaded" mark on screen. Callers keep their own fetch, so a transient
+  /// failure is theirs to interpret.
+  static Set<String> downloadedHashesIn(
+    Set<String> onDiskNames,
+    Iterable<UniversityFile> files,
+  ) {
+    final result = <String>{};
+    for (final file in files) {
+      if (onDiskNames.contains(downloadedBasenameFor(file)) ||
+          onDiskNames.contains(file.name)) {
+        result.add(file.fileHash);
+      }
+    }
+    return result;
   }
 
   // =========================================================================

@@ -54,7 +54,8 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
 
   void _insertAtCursor(String value) {
     _clampCursor();
-    _expression = _expression.substring(0, _cursorIndex) +
+    _expression =
+        _expression.substring(0, _cursorIndex) +
         value +
         _expression.substring(_cursorIndex);
     _cursorIndex += value.length;
@@ -63,7 +64,8 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
   void _deleteBeforeCursor() {
     _clampCursor();
     if (_cursorIndex <= 0 || _expression.isEmpty) return;
-    _expression = _expression.substring(0, _cursorIndex - 1) +
+    _expression =
+        _expression.substring(0, _cursorIndex - 1) +
         _expression.substring(_cursorIndex);
     _cursorIndex -= 1;
   }
@@ -71,7 +73,8 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
   void _deleteAtCursor() {
     _clampCursor();
     if (_cursorIndex >= _expression.length || _expression.isEmpty) return;
-    _expression = _expression.substring(0, _cursorIndex) +
+    _expression =
+        _expression.substring(0, _cursorIndex) +
         _expression.substring(_cursorIndex + 1);
   }
 
@@ -82,11 +85,15 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
     final key = event.logicalKey;
 
     if (key == LogicalKeyboardKey.arrowLeft) {
-      setState(() => _cursorIndex = (_cursorIndex - 1).clamp(0, _expression.length));
+      setState(
+        () => _cursorIndex = (_cursorIndex - 1).clamp(0, _expression.length),
+      );
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.arrowRight) {
-      setState(() => _cursorIndex = (_cursorIndex + 1).clamp(0, _expression.length));
+      setState(
+        () => _cursorIndex = (_cursorIndex + 1).clamp(0, _expression.length),
+      );
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.backspace) {
@@ -97,11 +104,13 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
       setState(() => _deleteAtCursor());
       return KeyEventResult.handled;
     }
-    if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter) {
+    if (key == LogicalKeyboardKey.enter ||
+        key == LogicalKeyboardKey.numpadEnter) {
       _calculateResult();
       return KeyEventResult.handled;
     }
-    if (key == LogicalKeyboardKey.shiftLeft || key == LogicalKeyboardKey.shiftRight) {
+    if (key == LogicalKeyboardKey.shiftLeft ||
+        key == LogicalKeyboardKey.shiftRight) {
       setState(() => _isShiftMode = !_isShiftMode);
       return KeyEventResult.handled;
     }
@@ -112,9 +121,18 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
       setState(() => _insertAtCursor(char));
       return KeyEventResult.handled;
     }
-    if (char.toLowerCase() == 'p') { setState(() => _insertAtCursor('pi')); return KeyEventResult.handled; }
-    if (char.toLowerCase() == 'e') { setState(() => _insertAtCursor('e')); return KeyEventResult.handled; }
-    if (char.toLowerCase() == 'i') { setState(() => _insertAtCursor('i')); return KeyEventResult.handled; }
+    if (char.toLowerCase() == 'p') {
+      setState(() => _insertAtCursor('pi'));
+      return KeyEventResult.handled;
+    }
+    if (char.toLowerCase() == 'e') {
+      setState(() => _insertAtCursor('e'));
+      return KeyEventResult.handled;
+    }
+    if (char.toLowerCase() == 'i') {
+      setState(() => _insertAtCursor('i'));
+      return KeyEventResult.handled;
+    }
     return KeyEventResult.ignored;
   }
 
@@ -128,9 +146,14 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
         .replaceAll(RegExp(r'\.$'), '');
   }
 
-  ({int numerator, int denominator}) _approximateFraction(double value,
-      {int maxDenominator = 16}) {
-    return MathResult.approximateFraction(value, maxDenominator: maxDenominator);
+  ({int numerator, int denominator}) _approximateFraction(
+    double value, {
+    int maxDenominator = 16,
+  }) {
+    return MathResult.approximateFraction(
+      value,
+      maxDenominator: maxDenominator,
+    );
   }
 
   // ─── Arg splitter (delegated to MathEngine) ──────────────────────────────
@@ -240,26 +263,45 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
       final si = s.indexOf('/');
       int startNum = si - 1, op = 0;
       while (startNum >= 0) {
-        if (s[startNum] == ')') op++;
-        else if (s[startNum] == '(') op--;
-        if (op < 0) { startNum++; break; }
-        if (op == 0 && '+-/=,*'.contains(s[startNum])) { startNum++; break; }
+        if (s[startNum] == ')')
+          op++;
+        else if (s[startNum] == '(')
+          op--;
+        if (op < 0) {
+          startNum++;
+          break;
+        }
+        if (op == 0 && '+-/=,*'.contains(s[startNum])) {
+          startNum++;
+          break;
+        }
         startNum--;
       }
       if (startNum < 0) startNum = 0;
-      int endNum = si + 1; op = 0;
+      int endNum = si + 1;
+      op = 0;
       while (endNum < s.length) {
-        if (s[endNum] == '(') op++;
-        else if (s[endNum] == ')') op--;
-        if (op < 0) { endNum--; break; }
-        if (op == 0 && '+-/=,*'.contains(s[endNum])) { endNum--; break; }
+        if (s[endNum] == '(')
+          op++;
+        else if (s[endNum] == ')')
+          op--;
+        if (op < 0) {
+          endNum--;
+          break;
+        }
+        if (op == 0 && '+-/=,*'.contains(s[endNum])) {
+          endNum--;
+          break;
+        }
         endNum++;
       }
       if (endNum >= s.length) endNum = s.length - 1;
       String num = s.substring(startNum, si);
       String den = s.substring(si + 1, endNum + 1);
-      if (num.startsWith('(') && num.endsWith(')')) num = num.substring(1, num.length - 1);
-      if (den.startsWith('(') && den.endsWith(')')) den = den.substring(1, den.length - 1);
+      if (num.startsWith('(') && num.endsWith(')'))
+        num = num.substring(1, num.length - 1);
+      if (den.startsWith('(') && den.endsWith(')'))
+        den = den.substring(1, den.length - 1);
       s = '${s.substring(0, startNum)}\\frac{$num}{$den}${s.substring(endNum + 1)}';
     }
     return s;
@@ -277,9 +319,16 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
       _errorType = '';
       switch (btn) {
         case 'AC':
-          _undoStack.clear(); _expression = ''; _history = ''; _lastAns = '0'; _cursorIndex = 0;
+          _undoStack.clear();
+          _expression = '';
+          _history = '';
+          _lastAns = '0';
+          _cursorIndex = 0;
         case 'DEL':
-          if (_expression.isNotEmpty) { _pushUndo(); _deleteBeforeCursor(); }
+          if (_expression.isNotEmpty) {
+            _pushUndo();
+            _deleteBeforeCursor();
+          }
         case 'UNDO':
           if (_undoStack.isNotEmpty) {
             _expression = _undoStack.removeLast();
@@ -288,45 +337,89 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
           }
           _errorType = '';
           _cursorIndex = _expression.length;
-        case 'SHIFT': _isShiftMode = !_isShiftMode;
-        case 'DEG\nRAD': _isDegreeMode = !_isDegreeMode;
-        case 'Frac' || 'Frac✓': _showCommonFractions = !_showCommonFractions;
-        case 'Eq': _insertAtCursor('=');
-        case 'π': _insertAtCursor('pi');
-        case 'e': _insertAtCursor('e');
-        case 'ans': _insertAtCursor(_lastAns);
-        case 'i': _insertAtCursor('i');
-        case 'x': _insertAtCursor('x');
-        case 'y': _insertAtCursor('y');
+        case 'SHIFT':
+          _isShiftMode = !_isShiftMode;
+        case 'DEG\nRAD':
+          _isDegreeMode = !_isDegreeMode;
+        case 'Frac' || 'Frac✓':
+          _showCommonFractions = !_showCommonFractions;
+        case 'Eq':
+          _insertAtCursor('=');
+        case 'π':
+          _insertAtCursor('pi');
+        case 'e':
+          _insertAtCursor('e');
+        case 'ans':
+          _insertAtCursor(_lastAns);
+        case 'i':
+          _insertAtCursor('i');
+        case 'x':
+          _insertAtCursor('x');
+        case 'y':
+          _insertAtCursor('y');
         case 'x²':
-          if (_isShiftMode) { _insertAtCursor('^(-1)'); _isShiftMode = false; }
-          else if (_expression.isEmpty) { _insertAtCursor('x^2'); }
-          else { _expression = '($_expression)^2'; _cursorIndex = _expression.length; }
-        case '^' || 'xʸ': _insertAtCursor('^');
+          if (_isShiftMode) {
+            _insertAtCursor('^(-1)');
+            _isShiftMode = false;
+          } else if (_expression.isEmpty) {
+            _insertAtCursor('x^2');
+          } else {
+            _expression = '($_expression)^2';
+            _cursorIndex = _expression.length;
+          }
+        case '^' || 'xʸ':
+          _insertAtCursor('^');
         case '√':
-          if (_isShiftMode) { _insertAtCursor(_expression.isEmpty ? 'cbrt(x)' : 'cbrt('); _isShiftMode = false; }
-          else { _insertAtCursor(_expression.isEmpty ? '√(9)' : '√('); }
-        case '!': _insertAtCursor('!');
-        case 'sin': _insertAtCursor(_isShiftMode ? 'asin(' : 'sin('); if (_isShiftMode) _isShiftMode = false;
-        case 'cos': _insertAtCursor(_isShiftMode ? 'acos(' : 'cos('); if (_isShiftMode) _isShiftMode = false;
-        case 'tan': _insertAtCursor(_isShiftMode ? 'atan(' : 'tan('); if (_isShiftMode) _isShiftMode = false;
-        case 'asin': _insertAtCursor('asin(');
-        case 'acos': _insertAtCursor('acos(');
-        case 'atan': _insertAtCursor('atan(');
+          if (_isShiftMode) {
+            _insertAtCursor(_expression.isEmpty ? 'cbrt(x)' : 'cbrt(');
+            _isShiftMode = false;
+          } else {
+            _insertAtCursor(_expression.isEmpty ? '√(9)' : '√(');
+          }
+        case '!':
+          _insertAtCursor('!');
+        case 'sin':
+          _insertAtCursor(_isShiftMode ? 'asin(' : 'sin(');
+          if (_isShiftMode) _isShiftMode = false;
+        case 'cos':
+          _insertAtCursor(_isShiftMode ? 'acos(' : 'cos(');
+          if (_isShiftMode) _isShiftMode = false;
+        case 'tan':
+          _insertAtCursor(_isShiftMode ? 'atan(' : 'tan(');
+          if (_isShiftMode) _isShiftMode = false;
+        case 'asin':
+          _insertAtCursor('asin(');
+        case 'acos':
+          _insertAtCursor('acos(');
+        case 'atan':
+          _insertAtCursor('atan(');
         case 'log':
-          if (_isShiftMode) { _insertAtCursor('10^('); _isShiftMode = false; }
-          else { _insertAtCursor('log10('); }
+          if (_isShiftMode) {
+            _insertAtCursor('10^(');
+            _isShiftMode = false;
+          } else {
+            _insertAtCursor('log10(');
+          }
         case 'ln':
-          if (_isShiftMode) { _insertAtCursor('e^('); _isShiftMode = false; }
-          else { _insertAtCursor('ln('); }
-        case 'd/dx': _insertAtCursor(_expression.isEmpty ? 'd/dx(' : 'd/dx(');
-        case '∫': _insertAtCursor(_expression.isEmpty ? '∫(' : '∫(');
+          if (_isShiftMode) {
+            _insertAtCursor('e^(');
+            _isShiftMode = false;
+          } else {
+            _insertAtCursor('ln(');
+          }
+        case 'd/dx':
+          _insertAtCursor(_expression.isEmpty ? 'd/dx(' : 'd/dx(');
+        case '∫':
+          _insertAtCursor(_expression.isEmpty ? '∫(' : '∫(');
         case '(':
           _insertAtCursor(_isShiftMode ? 'abs(' : '(');
           if (_isShiftMode) _isShiftMode = false;
-        case ',': _insertAtCursor(',');
-        case 'a/b': _insertAtCursor('/');
-        default: _insertAtCursor(btn);
+        case ',':
+          _insertAtCursor(',');
+        case 'a/b':
+          _insertAtCursor('/');
+        default:
+          _insertAtCursor(btn);
       }
       _clampCursor();
     });
@@ -350,11 +443,12 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
           resultStr = _mathEngine.differentiate(args[0], 'x');
         } else if (args.length == 2) {
           // Numerical derivative at point
-          resultStr = _trimNumber(_calcDerivative(args[0], double.parse(args[1])));
+          resultStr = _trimNumber(
+            _calcDerivative(args[0], double.parse(args[1])),
+          );
         } else {
           throw Exception('Syntax Error: d/dx expects 1 or 2 arguments');
         }
-
       } else if (_expression.startsWith('∫(') && _expression.endsWith(')')) {
         // Symbolic or numerical integral
         final inner = _expression.substring(2, _expression.length - 1);
@@ -364,15 +458,18 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
           resultStr = _mathEngine.integrate(args[0], 'x');
         } else if (args.length == 3) {
           // Definite integral
-          resultStr = _mathEngine.integrate(args[0], 'x', double.parse(args[1]), double.parse(args[2]));
+          resultStr = _mathEngine.integrate(
+            args[0],
+            'x',
+            double.parse(args[1]),
+            double.parse(args[2]),
+          );
         } else {
           throw Exception('Syntax Error: ∫ expects 1 or 3 arguments');
         }
-
       } else if (_expression.contains('=')) {
         // Equation solver (uses MathEngine + equations package fallback)
         resultStr = _mathEngine.solveEquation(_expression);
-
       } else {
         // Regular expression evaluation
         final result = _mathEngine.evaluate(_expression, {'y': _yValue});
@@ -385,8 +482,9 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
           final val = result.realValue!;
           if (_showCommonFractions && val != val.roundToDouble()) {
             final frac = _approximateFraction(val);
-            resultStr =
-                frac.denominator == 1 ? _trimNumber(val) : '${frac.numerator}/${frac.denominator}';
+            resultStr = frac.denominator == 1
+                ? _trimNumber(val)
+                : '${frac.numerator}/${frac.denominator}';
           } else {
             resultStr = _trimNumber(val);
           }
@@ -421,10 +519,10 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
         _errorType = msg.contains('Math Error')
             ? 'Math ERROR'
             : msg.contains('No Real')
-                ? 'No Real Solution'
-                : msg.contains('No Solution')
-                    ? 'No Solution'
-                    : 'Syntax ERROR';
+            ? 'No Real Solution'
+            : msg.contains('No Solution')
+            ? 'No Solution'
+            : 'Syntax ERROR';
       });
     }
   }
@@ -444,10 +542,14 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
     final defaultText = isDark ? Colors.white : const Color(0xFF1E293B);
 
     // Adaptive font size: long labels shrink gracefully
-    final autoSize = fontSize ??
-        (label.length >= 5 ? 11.5
-            : label.length == 4 ? 13.5
-            : label.length == 3 ? 15.5
+    final autoSize =
+        fontSize ??
+        (label.length >= 5
+            ? 11.5
+            : label.length == 4
+            ? 13.5
+            : label.length == 3
+            ? 15.5
             : 19.0);
 
     return Expanded(
@@ -520,7 +622,9 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
     final displayHeight = (screenHeight * 0.15).clamp(108.0, 140.0);
 
     const primaryColor = Color(0xFF3B82F6);
-    final scientificBg = isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9);
+    final scientificBg = isDark
+        ? const Color(0xFF1E293B)
+        : const Color(0xFFF1F5F9);
     final scientificText = isDark ? Colors.grey[300] : Colors.grey[800];
     final actionBg = isDark ? const Color(0xFF0F172A) : const Color(0xFFE2E8F0);
     const tealBg = Color(0xFF0F766E);
@@ -550,36 +654,50 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
             color: isDark ? const Color(0xFF0B1120) : const Color(0xFFF8FAFC),
             child: Column(
               children: [
-
                 // ── Display ────────────────────────────────────────────────
                 GestureDetector(
                   onTap: () {
-                    final text = _expression.isNotEmpty ? _expression : _history;
+                    final text = _expression.isNotEmpty
+                        ? _expression
+                        : _history;
                     if (text.isNotEmpty) {
                       Clipboard.setData(ClipboardData(text: text));
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                        content: Text('Copied!'),
-                        duration: Duration(milliseconds: 1000),
-                        behavior: SnackBarBehavior.floating,
-                      ));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Copied!'),
+                          duration: Duration(milliseconds: 1000),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
                     }
                   },
                   child: Container(
                     height: displayHeight,
                     width: double.infinity,
                     margin: const EdgeInsets.fromLTRB(10, 10, 10, 4),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
                     decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF020617) : const Color(0xFFE2E8F0),
+                      color: isDark
+                          ? const Color(0xFF020617)
+                          : const Color(0xFFE2E8F0),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: isDark ? const Color(0xFF334155) : Colors.grey.shade300,
+                        color: isDark
+                            ? const Color(0xFF334155)
+                            : Colors.grey.shade300,
                         width: 2,
                       ),
-                      boxShadow: [BoxShadow(
-                        color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.05),
-                        blurRadius: 10,
-                      )],
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(
+                            alpha: isDark ? 0.3 : 0.05,
+                          ),
+                          blurRadius: 10,
+                        ),
+                      ],
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -619,18 +737,22 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
                             child: Align(
                               alignment: Alignment.bottomLeft,
                               child: ScrollConfiguration(
-                                behavior: ScrollConfiguration.of(context).copyWith(
-                                  dragDevices: {
-                                    PointerDeviceKind.touch,
-                                    PointerDeviceKind.mouse,
-                                    PointerDeviceKind.trackpad,
-                                  },
-                                ),
+                                behavior: ScrollConfiguration.of(context)
+                                    .copyWith(
+                                      dragDevices: {
+                                        PointerDeviceKind.touch,
+                                        PointerDeviceKind.mouse,
+                                        PointerDeviceKind.trackpad,
+                                      },
+                                    ),
                                 child: SingleChildScrollView(
                                   scrollDirection: Axis.horizontal,
                                   reverse: true,
                                   child: Padding(
-                                    padding: const EdgeInsets.only(bottom: 4, top: 6),
+                                    padding: const EdgeInsets.only(
+                                      bottom: 4,
+                                      top: 6,
+                                    ),
                                     child: Math.tex(
                                       _getLatexExpression(
                                         _expression.substring(0, _cursorIndex) +
@@ -639,14 +761,22 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
                                       ),
                                       mathStyle: MathStyle.display,
                                       textStyle: TextStyle(
-                                        fontSize: _expression.length > 20 ? 21 : 27,
-                                        color: isDark ? Colors.white : Colors.black87,
+                                        fontSize: _expression.length > 20
+                                            ? 21
+                                            : 27,
+                                        color: isDark
+                                            ? Colors.white
+                                            : Colors.black87,
                                       ),
                                       onErrorFallback: (_) => Text(
-                                        _expression.isEmpty ? '...' : _expression,
+                                        _expression.isEmpty
+                                            ? '...'
+                                            : _expression,
                                         style: TextStyle(
                                           fontSize: 25,
-                                          color: isDark ? Colors.white : Colors.black87,
+                                          color: isDark
+                                              ? Colors.white
+                                              : Colors.black87,
                                         ),
                                       ),
                                     ),
@@ -668,55 +798,191 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
                       children: [
                         // Row 1: SHIFT  DEG/RAD  Frac  UNDO  Eq
                         _buildKeyRow([
-                          _buildButton('SHIFT',
-                              bgColor: _isShiftMode ? const Color(0xFF8B5CF6) : scientificBg,
-                              textColor: _isShiftMode ? Colors.white : scientificText,
-                              isPrimary: _isShiftMode, isDark: isDark),
-                          _buildButton('DEG\nRAD',
-                              bgColor: _isDegreeMode ? const Color(0xFF10B981) : actionBg,
-                              textColor: _isDegreeMode ? Colors.white : scientificText,
-                              isDark: isDark),
-                          _buildButton(_showCommonFractions ? 'Frac✓' : 'Frac',
-                              bgColor: scientificBg, textColor: scientificText, isDark: isDark),
-  _buildButton('DEL', bgColor: warningColor, textColor: Colors.white, isPrimary: true, isDark: isDark),
-                          _buildButton('AC', bgColor: dangerColor, textColor: Colors.white, isPrimary: true, isDark: isDark),
-
+                          _buildButton(
+                            'SHIFT',
+                            bgColor: _isShiftMode
+                                ? const Color(0xFF8B5CF6)
+                                : scientificBg,
+                            textColor: _isShiftMode
+                                ? Colors.white
+                                : scientificText,
+                            isPrimary: _isShiftMode,
+                            isDark: isDark,
+                          ),
+                          _buildButton(
+                            'DEG\nRAD',
+                            bgColor: _isDegreeMode
+                                ? const Color(0xFF10B981)
+                                : actionBg,
+                            textColor: _isDegreeMode
+                                ? Colors.white
+                                : scientificText,
+                            isDark: isDark,
+                          ),
+                          _buildButton(
+                            _showCommonFractions ? 'Frac✓' : 'Frac',
+                            bgColor: scientificBg,
+                            textColor: scientificText,
+                            isDark: isDark,
+                          ),
+                          _buildButton(
+                            'DEL',
+                            bgColor: warningColor,
+                            textColor: Colors.white,
+                            isPrimary: true,
+                            isDark: isDark,
+                          ),
+                          _buildButton(
+                            'AC',
+                            bgColor: dangerColor,
+                            textColor: Colors.white,
+                            isPrimary: true,
+                            isDark: isDark,
+                          ),
                         ]),
 
                         // Row 2: d/dx  ∫  ,  π  e
                         _buildKeyRow([
-                          _buildButton('d/dx', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
-                          _buildButton('∫', bgColor: scientificBg, textColor: scientificText, isDark: isDark, fontSize: 21),
-                          _buildButton(',', bgColor: scientificBg, textColor: scientificText, isDark: isDark, fontSize: 20),
-                          _buildButton('π', bgColor: scientificBg, textColor: scientificText, isDark: isDark, fontSize: 21),
-                          _buildButton('e', bgColor: scientificBg, textColor: scientificText, isDark: isDark, fontSize: 20),
+                          _buildButton(
+                            'd/dx',
+                            bgColor: scientificBg,
+                            textColor: scientificText,
+                            isDark: isDark,
+                          ),
+                          _buildButton(
+                            '∫',
+                            bgColor: scientificBg,
+                            textColor: scientificText,
+                            isDark: isDark,
+                            fontSize: 21,
+                          ),
+                          _buildButton(
+                            ',',
+                            bgColor: scientificBg,
+                            textColor: scientificText,
+                            isDark: isDark,
+                            fontSize: 20,
+                          ),
+                          _buildButton(
+                            'π',
+                            bgColor: scientificBg,
+                            textColor: scientificText,
+                            isDark: isDark,
+                            fontSize: 21,
+                          ),
+                          _buildButton(
+                            'e',
+                            bgColor: scientificBg,
+                            textColor: scientificText,
+                            isDark: isDark,
+                            fontSize: 20,
+                          ),
                         ]),
 
                         // Row 3: sin  cos  tan  log  ln
                         _buildKeyRow([
-                          _buildButton(sinLabel, bgColor: scientificBg, textColor: scientificText, isDark: isDark),
-                          _buildButton(cosLabel, bgColor: scientificBg, textColor: scientificText, isDark: isDark),
-                          _buildButton(tanLabel, bgColor: scientificBg, textColor: scientificText, isDark: isDark),
-                          _buildButton(logLabel, bgColor: scientificBg, textColor: scientificText, isDark: isDark),
-                          _buildButton(lnLabel, bgColor: scientificBg, textColor: scientificText, isDark: isDark),
+                          _buildButton(
+                            sinLabel,
+                            bgColor: scientificBg,
+                            textColor: scientificText,
+                            isDark: isDark,
+                          ),
+                          _buildButton(
+                            cosLabel,
+                            bgColor: scientificBg,
+                            textColor: scientificText,
+                            isDark: isDark,
+                          ),
+                          _buildButton(
+                            tanLabel,
+                            bgColor: scientificBg,
+                            textColor: scientificText,
+                            isDark: isDark,
+                          ),
+                          _buildButton(
+                            logLabel,
+                            bgColor: scientificBg,
+                            textColor: scientificText,
+                            isDark: isDark,
+                          ),
+                          _buildButton(
+                            lnLabel,
+                            bgColor: scientificBg,
+                            textColor: scientificText,
+                            isDark: isDark,
+                          ),
                         ]),
 
                         // Row 4: x²  ^  √  !  i
                         _buildKeyRow([
-                          _buildButton(powLabel, bgColor: scientificBg, textColor: scientificText, isDark: isDark),
-                          _buildButton('^', bgColor: scientificBg, textColor: scientificText, isDark: isDark, fontSize: 22),
-                          _buildButton(sqrtLabel, bgColor: scientificBg, textColor: scientificText, isDark: isDark, fontSize: 21),
-                          _buildButton('!', bgColor: scientificBg, textColor: scientificText, isDark: isDark, fontSize: 21),
-                          _buildButton('i', bgColor: scientificBg, textColor: scientificText, isDark: isDark, fontSize: 21),
+                          _buildButton(
+                            powLabel,
+                            bgColor: scientificBg,
+                            textColor: scientificText,
+                            isDark: isDark,
+                          ),
+                          _buildButton(
+                            '^',
+                            bgColor: scientificBg,
+                            textColor: scientificText,
+                            isDark: isDark,
+                            fontSize: 22,
+                          ),
+                          _buildButton(
+                            sqrtLabel,
+                            bgColor: scientificBg,
+                            textColor: scientificText,
+                            isDark: isDark,
+                            fontSize: 21,
+                          ),
+                          _buildButton(
+                            '!',
+                            bgColor: scientificBg,
+                            textColor: scientificText,
+                            isDark: isDark,
+                            fontSize: 21,
+                          ),
+                          _buildButton(
+                            'i',
+                            bgColor: scientificBg,
+                            textColor: scientificText,
+                            isDark: isDark,
+                            fontSize: 21,
+                          ),
                         ]),
 
                         // Row 5: (  )  x  y  ans
                         _buildKeyRow([
-                          _buildButton(parenLabel, bgColor: scientificBg, textColor: scientificText, isDark: isDark),
-                          _buildButton(')', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
-                          _buildButton('x', bgColor: tealBg, textColor: Colors.white, isDark: isDark),
-                          _buildButton('y', bgColor: tealBg, textColor: Colors.white, isDark: isDark),
-                          _buildButton('ans', bgColor: scientificBg, textColor: scientificText, isDark: isDark),
+                          _buildButton(
+                            parenLabel,
+                            bgColor: scientificBg,
+                            textColor: scientificText,
+                            isDark: isDark,
+                          ),
+                          _buildButton(
+                            ')',
+                            bgColor: scientificBg,
+                            textColor: scientificText,
+                            isDark: isDark,
+                          ),
+                          _buildButton(
+                            'x',
+                            bgColor: tealBg,
+                            textColor: Colors.white,
+                            isDark: isDark,
+                          ),
+                          _buildButton(
+                            'y',
+                            bgColor: tealBg,
+                            textColor: Colors.white,
+                            isDark: isDark,
+                          ),
+                          _buildButton(
+                            'ans',
+                            bgColor: scientificBg,
+                            textColor: scientificText,
+                            isDark: isDark,
+                          ),
                         ]),
 
                         // Row 6: 7  8  9  DEL  AC
@@ -724,19 +990,40 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
                           _buildButton('7', isDark: isDark),
                           _buildButton('8', isDark: isDark),
                           _buildButton('9', isDark: isDark),
-                                                    _buildButton('UNDO',
-                              bgColor: scientificBg, textColor: warningColor, isDark: isDark),
-                          _buildButton('Eq',
-                              bgColor: tealBg, textColor: Colors.white, isPrimary: true, isDark: isDark),
-                                                ]),
+                          _buildButton(
+                            'UNDO',
+                            bgColor: scientificBg,
+                            textColor: warningColor,
+                            isDark: isDark,
+                          ),
+                          _buildButton(
+                            'Eq',
+                            bgColor: tealBg,
+                            textColor: Colors.white,
+                            isPrimary: true,
+                            isDark: isDark,
+                          ),
+                        ]),
 
                         // Row 7: 4  5  6  ×  ÷
                         _buildKeyRow([
                           _buildButton('4', isDark: isDark),
                           _buildButton('5', isDark: isDark),
                           _buildButton('6', isDark: isDark),
-                          _buildButton('*', bgColor: actionBg, textColor: primaryColor, isDark: isDark, fontSize: 23),
-                          _buildButton('/', bgColor: actionBg, textColor: primaryColor, isDark: isDark, fontSize: 23),
+                          _buildButton(
+                            '*',
+                            bgColor: actionBg,
+                            textColor: primaryColor,
+                            isDark: isDark,
+                            fontSize: 23,
+                          ),
+                          _buildButton(
+                            '/',
+                            bgColor: actionBg,
+                            textColor: primaryColor,
+                            isDark: isDark,
+                            fontSize: 23,
+                          ),
                         ]),
 
                         // Row 8: 1  2  3  +  -
@@ -744,15 +1031,34 @@ class _MiniCalculatorWidgetState extends State<MiniCalculatorWidget> {
                           _buildButton('1', isDark: isDark),
                           _buildButton('2', isDark: isDark),
                           _buildButton('3', isDark: isDark),
-                          _buildButton('+', bgColor: actionBg, textColor: primaryColor, isDark: isDark, fontSize: 25),
-                          _buildButton('-', bgColor: actionBg, textColor: primaryColor, isDark: isDark, fontSize: 25),
+                          _buildButton(
+                            '+',
+                            bgColor: actionBg,
+                            textColor: primaryColor,
+                            isDark: isDark,
+                            fontSize: 25,
+                          ),
+                          _buildButton(
+                            '-',
+                            bgColor: actionBg,
+                            textColor: primaryColor,
+                            isDark: isDark,
+                            fontSize: 25,
+                          ),
                         ]),
 
                         // Row 9: 0 (×2)  .  CALC (×2)
                         _buildKeyRow([
                           _buildButton('0', flex: 2, isDark: isDark),
                           _buildButton('.', isDark: isDark, fontSize: 25),
-                          _buildButton('CALC', flex: 2, bgColor: primaryColor, textColor: Colors.white, isPrimary: true, isDark: isDark),
+                          _buildButton(
+                            'CALC',
+                            flex: 2,
+                            bgColor: primaryColor,
+                            textColor: Colors.white,
+                            isPrimary: true,
+                            isDark: isDark,
+                          ),
                         ]),
                       ],
                     ),

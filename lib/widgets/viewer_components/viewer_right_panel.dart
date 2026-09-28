@@ -20,6 +20,7 @@ import '../../services/mcp_client_service.dart';
 import '../../utils/responsive_utils.dart';
 import '../mini_apps_menu.dart';
 import 'session_cards.dart';
+import 'tool_width_limits.dart';
 import '../../models/isar_models.dart' hide PdfDocument;
 
 /// Which color slot the picker is editing.
@@ -161,9 +162,9 @@ class StudyFlowRightPanel extends StatelessWidget {
     // We use 'num' for fontSize to strictly handle int/double safety
     final effectiveFontSize =
         ((isTextEditing && editingStyles?['fontSize'] != null)
-            ? (editingStyles!['fontSize'] as num).toDouble()
-            : fontSize)
-        .clamp(10.0, 48.0);
+                ? (editingStyles!['fontSize'] as num).toDouble()
+                : fontSize)
+            .clamp(10.0, 48.0);
 
     final effectiveFontFamily =
         (isTextEditing && editingStyles?['fontFamily'] != null)
@@ -423,7 +424,8 @@ class StudyFlowRightPanel extends StatelessWidget {
                                     if (_applyTextStyleToSelection(
                                       context,
                                       fontFamily: value,
-                                    )) return;
+                                    ))
+                                      return;
                                     onFontFamilyChanged(value);
                                   },
                                 ),
@@ -465,7 +467,8 @@ class StudyFlowRightPanel extends StatelessWidget {
                                           if (_applyTextStyleToSelection(
                                             context,
                                             fontSize: val,
-                                          )) return;
+                                          ))
+                                            return;
                                           onFontSizeChanged(val);
                                         },
                                       ),
@@ -492,7 +495,8 @@ class StudyFlowRightPanel extends StatelessWidget {
                                           if (_applyTextStyleToSelection(
                                             context,
                                             isBold: val,
-                                          )) return;
+                                          ))
+                                            return;
                                           onBoldChanged(val);
                                         },
                                         activeTrackColor: const Color(
@@ -533,7 +537,8 @@ class StudyFlowRightPanel extends StatelessWidget {
                                           if (_applyTextStyleToSelection(
                                             context,
                                             isLatex: val,
-                                          )) return;
+                                          ))
+                                            return;
                                           onLatexChanged(val);
                                         },
                                         activeTrackColor: const Color(
@@ -575,7 +580,8 @@ class StudyFlowRightPanel extends StatelessWidget {
                                           if (_applyTextStyleToSelection(
                                             context,
                                             showBorder: val,
-                                          )) return;
+                                          ))
+                                            return;
                                           onShowBorderChanged(val);
                                         },
                                         activeTrackColor: const Color(
@@ -607,7 +613,8 @@ class StudyFlowRightPanel extends StatelessWidget {
                                     if (_applyTextStyleToSelection(
                                       context,
                                       borderColor: color,
-                                    )) return;
+                                    ))
+                                      return;
                                     onBorderColorChanged(color);
                                   },
                                   colorTarget: _ColorTarget.border,
@@ -639,7 +646,8 @@ class StudyFlowRightPanel extends StatelessWidget {
                                     if (_applyTextStyleToSelection(
                                       context,
                                       bgColor: color,
-                                    )) return;
+                                    ))
+                                      return;
                                     onBgColorChanged(color);
                                   },
                                   allowTransparent: true,
@@ -815,9 +823,23 @@ class StudyFlowRightPanel extends StatelessWidget {
                                           thumbColor: const Color(0xFF2563EB),
                                         ),
                                         child: Slider(
-                                          value: strokeWidth,
-                                          min: 1.0,
-                                          max: 20.0,
+                                          // The panel used to cap every tool
+                                          // at 20 without clamping, so a
+                                          // highlighter the rail had widened to
+                                          // 30 asserted here and took the whole
+                                          // screen down.
+                                          value: ToolWidthLimits.clampFor(
+                                            activeTool,
+                                            strokeWidth,
+                                          ),
+                                          min: ToolWidthLimits.min,
+                                          max: ToolWidthLimits.maxFor(
+                                            activeTool,
+                                          ),
+                                          divisions:
+                                              ToolWidthLimits.divisionsFor(
+                                                activeTool,
+                                              ),
                                           onChanged: onStrokeWidthChanged,
                                         ),
                                       ),
@@ -846,7 +868,8 @@ class StudyFlowRightPanel extends StatelessWidget {
                                     if (_applyTextStyleToSelection(
                                       context,
                                       color: color,
-                                    )) return;
+                                    ))
+                                      return;
                                     onColorChanged(color);
                                   },
                                   colorTarget: _ColorTarget.stroke,
@@ -1141,7 +1164,6 @@ class StudyFlowRightPanel extends StatelessWidget {
       ),
     );
   }
-
 
   Widget _buildSettingsCard(
     BuildContext context,
@@ -2005,7 +2027,6 @@ class _CursorUtilitiesHubState extends State<_CursorUtilitiesHub> {
   }
 }
 
-
 class _AnimatedDots extends StatefulWidget {
   final Color color;
   const _AnimatedDots({required this.color});
@@ -2260,10 +2281,7 @@ class _AiChatWidgetState extends State<_AiChatWidget>
     // own line surrounded by text lines, merge it with adjacent lines.
     // Pattern: text_line \n $var$ \n text_line → text_line $var$ text_line
     result = result.replaceAllMapped(
-      RegExp(
-        r'([^\n\$]+)\n(\$[^\$\n]+?\$)\n([^\n\$]+)',
-        multiLine: true,
-      ),
+      RegExp(r'([^\n\$]+)\n(\$[^\$\n]+?\$)\n([^\n\$]+)', multiLine: true),
       (m) => '${m[1]} ${m[2]} ${m[3]}',
     );
 
@@ -2392,10 +2410,7 @@ class _AiChatWidgetState extends State<_AiChatWidget>
 
   Future<String> _generateMcpReply(String prompt) async {
     if (!await McpClientService.instance.isNodeAvailable) {
-      throw const McpException(
-        'MCP_UNAVAILABLE',
-        'Node.js is not installed.',
-      );
+      throw const McpException('MCP_UNAVAILABLE', 'Node.js is not installed.');
     }
     final pageText = await _getActivePageText();
     final systemPrompt = _buildSystemPrompt(pageText);
@@ -2418,8 +2433,7 @@ class _AiChatWidgetState extends State<_AiChatWidget>
       'AI:',
     ].join('\n');
 
-    final answer =
-        await McpClientService.instance.askQuestion(fullPrompt);
+    final answer = await McpClientService.instance.askQuestion(fullPrompt);
     return answer.isEmpty ? 'لم أتمكن من توليد إجابة.' : answer;
   }
 
@@ -2429,12 +2443,11 @@ class _AiChatWidgetState extends State<_AiChatWidget>
 
     while (true) {
       final provider = app.aiProvider;
-      final model =
-          provider == 'gemini'
-              ? app.geminiModel
-              : provider == 'mcp'
-                  ? app.mcpModel
-                  : app.groqModel;
+      final model = provider == 'gemini'
+          ? app.geminiModel
+          : provider == 'mcp'
+          ? app.mcpModel
+          : app.groqModel;
 
       try {
         if (provider == 'gemini') {
@@ -2475,9 +2488,7 @@ class _AiChatWidgetState extends State<_AiChatWidget>
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!_scrollController.hasClients) return;
         if (jump) {
-          _scrollController.jumpTo(
-            _scrollController.position.maxScrollExtent,
-          );
+          _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
         } else {
           _scrollController.animateTo(
             _scrollController.position.maxScrollExtent,
@@ -2600,7 +2611,9 @@ class _AiChatWidgetState extends State<_AiChatWidget>
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: widget.isDarkMode ? 0.2 : 0.06),
+            color: Colors.black.withValues(
+              alpha: widget.isDarkMode ? 0.2 : 0.06,
+            ),
             blurRadius: 6,
             offset: const Offset(0, 2),
           ),
@@ -2609,47 +2622,47 @@ class _AiChatWidgetState extends State<_AiChatWidget>
       child: Directionality(
         textDirection: TextDirection.rtl,
         child: MarkdownBody(
-        data: content,
-        selectable: true,
-        styleSheet: MarkdownStyleSheet(
-          p: TextStyle(color: textColor, fontSize: 14, height: 1.35),
-          pPadding: EdgeInsets.zero,
-          blockSpacing: 6,
-          listBullet: TextStyle(color: textColor, fontSize: 14),
-          listBulletPadding: const EdgeInsets.only(right: 4),
-          code: TextStyle(
-            color: widget.isDarkMode
-                ? const Color(0xFFE2E8F0)
-                : const Color(0xFF1E293B),
-            backgroundColor: widget.isDarkMode
-                ? const Color(0xFF334155)
-                : const Color(0xFFE2E8F0),
-            fontFamily: 'monospace',
+          data: content,
+          selectable: true,
+          styleSheet: MarkdownStyleSheet(
+            p: TextStyle(color: textColor, fontSize: 14, height: 1.35),
+            pPadding: EdgeInsets.zero,
+            blockSpacing: 6,
+            listBullet: TextStyle(color: textColor, fontSize: 14),
+            listBulletPadding: const EdgeInsets.only(right: 4),
+            code: TextStyle(
+              color: widget.isDarkMode
+                  ? const Color(0xFFE2E8F0)
+                  : const Color(0xFF1E293B),
+              backgroundColor: widget.isDarkMode
+                  ? const Color(0xFF334155)
+                  : const Color(0xFFE2E8F0),
+              fontFamily: 'monospace',
+            ),
+            codeblockDecoration: BoxDecoration(
+              color: widget.isDarkMode
+                  ? const Color(0xFF0F172A)
+                  : const Color(0xFFCBD5E1),
+              borderRadius: BorderRadius.circular(8),
+            ),
           ),
-          codeblockDecoration: BoxDecoration(
-            color: widget.isDarkMode
-                ? const Color(0xFF0F172A)
-                : const Color(0xFFCBD5E1),
-            borderRadius: BorderRadius.circular(8),
-          ),
+          builders: {
+            'math_block': LatexElementBuilder(
+              textStyle: TextStyle(color: textColor, fontSize: 14),
+              maxWidth: bubbleMaxWidth - 24,
+            ),
+            'math_inline': LatexElementBuilder(
+              textStyle: TextStyle(color: textColor, fontSize: 14),
+              maxWidth: bubbleMaxWidth - 24,
+            ),
+          },
+          extensionSet:
+              md.ExtensionSet(md.ExtensionSet.gitHubFlavored.blockSyntaxes, [
+                md.EmojiSyntax(),
+                LatexInlineSyntax(),
+                ...md.ExtensionSet.gitHubFlavored.inlineSyntaxes,
+              ]),
         ),
-        builders: {
-          'math_block': LatexElementBuilder(
-            textStyle: TextStyle(color: textColor, fontSize: 14),
-            maxWidth: bubbleMaxWidth - 24,
-          ),
-          'math_inline': LatexElementBuilder(
-            textStyle: TextStyle(color: textColor, fontSize: 14),
-            maxWidth: bubbleMaxWidth - 24,
-          ),
-        },
-        extensionSet:
-            md.ExtensionSet(md.ExtensionSet.gitHubFlavored.blockSyntaxes, [
-              md.EmojiSyntax(),
-              LatexInlineSyntax(),
-              ...md.ExtensionSet.gitHubFlavored.inlineSyntaxes,
-            ]),
-      ),
       ),
     );
 
@@ -2716,9 +2729,7 @@ class _AiChatWidgetState extends State<_AiChatWidget>
                 bottomRight: Radius.circular(14),
               ),
             ),
-            child: const RepaintBoundary(
-              child: _AnimatedDots(color: dotColor),
-            ),
+            child: const RepaintBoundary(child: _AnimatedDots(color: dotColor)),
           ),
         ],
       ),

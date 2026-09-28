@@ -78,7 +78,9 @@ class _MiniTranslatorWidgetState extends State<MiniTranslatorWidget> {
             decoration: BoxDecoration(
               color: inputBg,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: isDark ? Colors.white12 : Colors.black12),
+              border: Border.all(
+                color: isDark ? Colors.white12 : Colors.black12,
+              ),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             child: Row(
@@ -170,7 +172,9 @@ class _MiniTranslatorWidgetState extends State<MiniTranslatorWidget> {
               decoration: BoxDecoration(
                 color: inputBg,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: isDark ? Colors.white12 : Colors.black12),
+                border: Border.all(
+                  color: isDark ? Colors.white12 : Colors.black12,
+                ),
               ),
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: TextField(
@@ -179,7 +183,9 @@ class _MiniTranslatorWidgetState extends State<MiniTranslatorWidget> {
                 style: TextStyle(color: textColor),
                 decoration: InputDecoration(
                   hintText: 'أدخل النص للترجمة...',
-                  hintStyle: TextStyle(color: isDark ? Colors.white38 : Colors.black38),
+                  hintStyle: TextStyle(
+                    color: isDark ? Colors.white38 : Colors.black38,
+                  ),
                   border: InputBorder.none,
                 ),
               ),
@@ -197,11 +203,12 @@ class _MiniTranslatorWidgetState extends State<MiniTranslatorWidget> {
                   : const Color(0xFF10B981),
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 16),
-              disabledBackgroundColor: (_useAI
-                      ? const Color(0xFF8B5CF6)
-                      : const Color(0xFF10B981))
-                  .withOpacity(0.5),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              disabledBackgroundColor:
+                  (_useAI ? const Color(0xFF8B5CF6) : const Color(0xFF10B981))
+                      .withOpacity(0.5),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
             icon: _isLoading
                 ? const SizedBox(
@@ -215,7 +222,9 @@ class _MiniTranslatorWidgetState extends State<MiniTranslatorWidget> {
                 : const Icon(Icons.translate),
             label: Text(
               _isLoading
-                  ? (_useAI ? 'جاري الترجمة بالذكاء...' : 'جاري الترجمة السريعة...')
+                  ? (_useAI
+                        ? 'جاري الترجمة بالذكاء...'
+                        : 'جاري الترجمة السريعة...')
                   : 'ترجم الآن',
               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
             ),
@@ -239,7 +248,9 @@ class _MiniTranslatorWidgetState extends State<MiniTranslatorWidget> {
               decoration: BoxDecoration(
                 color: inputBg,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: isDark ? Colors.white12 : Colors.black12),
+                border: Border.all(
+                  color: isDark ? Colors.white12 : Colors.black12,
+                ),
               ),
               padding: const EdgeInsets.all(12),
               child: Stack(

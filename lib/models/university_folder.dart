@@ -21,10 +21,7 @@ class UniversityFolder {
     this.sortOrder = 0,
   });
 
-  factory UniversityFolder.fromFirestore(
-    String id,
-    Map<String, dynamic> data,
-  ) {
+  factory UniversityFolder.fromFirestore(String id, Map<String, dynamic> data) {
     return UniversityFolder(
       id: id,
       universityId: (data['universityId'] ?? '').toString(),

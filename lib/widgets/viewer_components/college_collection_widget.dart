@@ -72,6 +72,12 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
   /// Tracks which files are currently being opened (download + open).
   final Set<String> _openHashes = {};
 
+  /// fileHashes of the files in the open folder that already exist on disk, so
+  /// the sidebar can mark what opens instantly and offline. The name matching
+  /// lives in UniversityService, which is what keeps the sidebar and the full
+  /// library panel from disagreeing about the same file.
+  final Set<String> _cachedHashes = {};
+
   bool _serviceReady = false;
 
   @override
@@ -170,40 +176,65 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
       _files = [];
       _videos = [];
       _filesError = null;
+      // Marks belong to the folder that produced them. A hash left over from
+      // the previous folder would otherwise light up a same-hash file in the
+      // folder opened next, before its own listing has come back.
+      _cachedHashes.clear();
     });
     _filesSub?.cancel();
     _videosSub?.cancel();
     if (nextId == null) return;
     setState(() => _filesLoading = true);
-    _filesSub = _universityService.streamFilesInFolder(folder.id).listen(
-      (files) {
-        if (mounted && _openFolderId == folder.id) {
-          setState(() {
-            _files = files;
-            _filesLoading = false;
-            _filesError = null;
-          });
-        }
-      },
-      onError: (err) {
-        if (mounted && _openFolderId == folder.id) {
-          setState(() {
-            _filesError = err.toString();
-            _filesLoading = false;
-          });
-        }
-      },
-    );
-    _videosSub = _universityService.streamVideosInFolder(folder.id).listen(
-      (videos) {
-        if (mounted && _openFolderId == folder.id) {
-          setState(() => _videos = videos);
-        }
-      },
-      onError: (err) {
-        debugPrint('⚠️ [College] Video stream error: $err');
-      },
-    );
+    _filesSub = _universityService
+        .streamFilesInFolder(folder.id)
+        .listen(
+          (files) {
+            if (mounted && _openFolderId == folder.id) {
+              setState(() {
+                _files = files;
+                _filesLoading = false;
+                _filesError = null;
+              });
+              unawaited(_refreshCachedHashes(files));
+            }
+          },
+          onError: (err) {
+            if (mounted && _openFolderId == folder.id) {
+              setState(() {
+                _filesError = err.toString();
+                _filesLoading = false;
+              });
+            }
+          },
+        );
+    _videosSub = _universityService
+        .streamVideosInFolder(folder.id)
+        .listen(
+          (videos) {
+            if (mounted && _openFolderId == folder.id) {
+              setState(() => _videos = videos);
+            }
+          },
+          onError: (err) {
+            debugPrint('⚠️ [College] Video stream error: $err');
+          },
+        );
+  }
+
+  /// Marks which of [files] already sit on disk, so a row can tell a file that
+  /// opens instantly and works offline from one that still has to be fetched.
+  /// One directory listing covers the whole folder, and the matching rule is
+  /// the service's, so both listings of the same file agree.
+  Future<void> _refreshCachedHashes(List<UniversityFile> files) async {
+    final names = await _universityService.getDownloadedFileNames();
+    if (names.isEmpty && files.isEmpty) return;
+    final result = UniversityService.downloadedHashesIn(names, files);
+    if (!mounted || _openFolderId == null) return;
+    setState(() {
+      _cachedHashes
+        ..clear()
+        ..addAll(result);
+    });
   }
 
   @override
@@ -239,10 +270,7 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
             onTap: _toggleExpand,
             borderRadius: BorderRadius.circular(14),
             child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 10,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               child: Row(
                 children: [
                   Container(
@@ -283,7 +311,9 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
                     ),
                   ),
                   Icon(
-                    _isExpanded ? LucideIcons.chevronUp : LucideIcons.chevronDown,
+                    _isExpanded
+                        ? LucideIcons.chevronUp
+                        : LucideIcons.chevronDown,
                     size: 18,
                     color: widget.textMuted,
                   ),
@@ -378,8 +408,7 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
     }
 
     return [
-      for (final folder in _folders)
-        _buildSidebarSubfolder(isDark, folder),
+      for (final folder in _folders) _buildSidebarSubfolder(isDark, folder),
     ];
   }
 
@@ -410,17 +439,11 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
               borderRadius: BorderRadius.circular(4),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 120),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 8,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                 decoration: BoxDecoration(
-                  color:
-                      isHovering
-                          ? const Color(0x223B82F6)
-                          : (isOpen
-                                ? activeSidebarBg(isDark)
-                                : Colors.transparent),
+                  color: isHovering
+                      ? const Color(0x223B82F6)
+                      : (isOpen ? activeSidebarBg(isDark) : Colors.transparent),
                   borderRadius: BorderRadius.circular(4),
                   border: isHovering
                       ? Border.all(color: const Color(0xFF3B82F6), width: 1)
@@ -451,19 +474,14 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
                       ),
                     ),
                     Icon(
-                      isOpen
-                          ? LucideIcons.chevronUp
-                          : LucideIcons.chevronDown,
+                      isOpen ? LucideIcons.chevronUp : LucideIcons.chevronDown,
                       size: 14,
                       color: widget.textMuted,
                     ),
                     if (isAdmin) ...[
                       const SizedBox(width: 4),
                       Draggable<Map<String, String>>(
-                        data: {
-                          'dragType': 'uniFolder',
-                          'folderId': folder.id,
-                        },
+                        data: {'dragType': 'uniFolder', 'folderId': folder.id},
                         feedback: Material(
                           color: Colors.transparent,
                           child: Container(
@@ -609,7 +627,10 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
 
   /// Drag & drop: reorder a folder in front of [targetFolderId]. The batch
   /// write in the service syncs the new order to every member in real time.
-  Future<void> _reorderFolders(String draggedFolderId, String targetFolderId) async {
+  Future<void> _reorderFolders(
+    String draggedFolderId,
+    String targetFolderId,
+  ) async {
     if (draggedFolderId == targetFolderId) return;
     final user = context.read<AppProvider>().currentUser;
     if (user == null) return;
@@ -675,7 +696,9 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 12,
-                color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                color: isDark
+                    ? const Color(0xFF94A3B8)
+                    : const Color(0xFF64748B),
               ),
             ),
             const SizedBox(height: 8),
@@ -688,7 +711,10 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
                 _startFoldersStream();
               },
               icon: const Icon(LucideIcons.refreshCw, size: 14),
-              label: const Text('إعادة المحاولة', style: TextStyle(fontSize: 12)),
+              label: const Text(
+                'إعادة المحاولة',
+                style: TextStyle(fontSize: 12),
+              ),
             ),
           ],
         ),
@@ -710,7 +736,9 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
               'لا توجد مجلدات بعد',
               style: TextStyle(
                 fontSize: 12,
-                color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                color: isDark
+                    ? const Color(0xFF94A3B8)
+                    : const Color(0xFF64748B),
               ),
             ),
           ],
@@ -720,8 +748,7 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
 
     return Column(
       children: [
-        for (final folder in _folders)
-          _buildFolderTile(isDark, folder),
+        for (final folder in _folders) _buildFolderTile(isDark, folder),
         if (_filesLoading || _filesError != null || _files.isNotEmpty)
           const Divider(height: 1, thickness: 1, color: Colors.transparent),
         if (_openFolderId != null) _buildFilesBody(isDark),
@@ -742,7 +769,9 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
                 Icon(
                   isOpen ? LucideIcons.folderOpen : LucideIcons.folder,
                   size: 16,
-                  color: isDark ? const Color(0xFF93C5FD) : Colors.indigo.shade400,
+                  color: isDark
+                      ? const Color(0xFF93C5FD)
+                      : Colors.indigo.shade400,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -840,9 +869,7 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
         child: Container(
           margin: const EdgeInsets.symmetric(vertical: 2),
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(4),
-          ),
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(4)),
           child: Row(
             children: [
               const Icon(
@@ -960,9 +987,7 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
           duration: const Duration(milliseconds: 120),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(4),
-            color: isHovering
-                ? const Color(0x22EF4444)
-                : Colors.transparent,
+            color: isHovering ? const Color(0x22EF4444) : Colors.transparent,
             border: isHovering
                 ? Border.all(color: const Color(0xFFEF4444), width: 1)
                 : null,
@@ -1021,9 +1046,9 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
         if (!_universityService.isReady) await _universityService.init(user);
         await _universityService.deleteVideo(video);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('🗑️ تم حذف الفيديو')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('🗑️ تم حذف الفيديو')));
         }
       } catch (e) {
         if (mounted) {
@@ -1037,6 +1062,7 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
 
   Widget _buildFileTile(bool isDark, UniversityFile file, String folderId) {
     final isBusy = _openHashes.contains(file.fileHash);
+    final isCached = _cachedHashes.contains(file.fileHash);
     final isAdmin = context.read<AppProvider>().currentUser?.isAdmin ?? false;
 
     final child = Material(
@@ -1048,23 +1074,38 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
         child: Container(
           margin: const EdgeInsets.symmetric(vertical: 2),
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(4),
-          ),
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(4)),
           child: Row(
             children: [
-              const Icon(
+              Icon(
                 LucideIcons.fileText,
                 size: 14,
-                color: Color(0xFF94A3B8),
+                color: !isCached
+                    ? const Color(0xFF94A3B8)
+                    : isDark
+                    ? const Color(0xFF93C5FD)
+                    : Colors.indigo.shade400,
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   file.name,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
-                    color: Color(0xFF94A3B8),
+                    // A file already on disk reads brighter and heavier than one
+                    // that still has to be fetched, so what opens instantly and
+                    // works offline is recognisable at a glance — the same pair
+                    // of states the full library panel shows. The colours come
+                    // from the sidebar's own palette, so both themes stay
+                    // readable (a bare Colors.white would not survive a light
+                    // theme) and the grey the rest already uses is untouched.
+                    color: isCached ? widget.textPrimary : widget.textMuted,
+                    fontWeight: isCached ? FontWeight.w600 : FontWeight.w400,
+                    shadows: !(isCached && isDark)
+                        ? null
+                        : const [
+                            Shadow(color: Color(0x66FFFFFF), blurRadius: 8),
+                          ],
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -1187,9 +1228,15 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
       if (!fileManager.isInitialized) await fileManager.init();
       final quickAccess = await fileManager.getOrCreateQuickAccessFolder();
 
-      // 2. Download to a local path (no record yet).
+      // 2. Download to a local path (no record yet). downloadPdfToLocal is
+      //    idempotent, so a file already on disk comes back from the cache
+      //    instead of being fetched a second time.
       final localPath = await _universityService.downloadPdfToLocal(file);
       if (!mounted) return;
+
+      // The bytes are on disk either way, so the row should say so now rather
+      // than wait for the next stream event to re-list the folder.
+      setState(() => _cachedHashes.add(hash));
 
       // 3. Import into "Quick Access" (hash-deduped) + hydrate + open.
       final doc = await fileManager.importAndOpenPdf(

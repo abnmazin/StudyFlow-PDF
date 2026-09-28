@@ -63,37 +63,37 @@ class _FolderViewScreenState extends State<FolderViewScreen> {
       _fileSub = _universityService
           .streamFilesInFolder(widget.folder.id)
           .listen(
-        (files) {
-          if (mounted) {
-            setState(() {
-              _files = files;
-              _isLoading = false;
-              _error = null;
-            });
-          }
-        },
-        onError: (err) {
-          if (mounted) {
-            setState(() {
-              _error = err.toString();
-              _isLoading = false;
-            });
-          }
-        },
-      );
+            (files) {
+              if (mounted) {
+                setState(() {
+                  _files = files;
+                  _isLoading = false;
+                  _error = null;
+                });
+              }
+            },
+            onError: (err) {
+              if (mounted) {
+                setState(() {
+                  _error = err.toString();
+                  _isLoading = false;
+                });
+              }
+            },
+          );
 
       _videoSub = _universityService
           .streamVideosInFolder(widget.folder.id)
           .listen(
-        (videos) {
-          if (mounted) {
-            setState(() => _videos = videos);
-          }
-        },
-        onError: (err) {
-          debugPrint('⚠️ [FolderView] Video stream error: $err');
-        },
-      );
+            (videos) {
+              if (mounted) {
+                setState(() => _videos = videos);
+              }
+            },
+            onError: (err) {
+              debugPrint('⚠️ [FolderView] Video stream error: $err');
+            },
+          );
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -116,20 +116,16 @@ class _FolderViewScreenState extends State<FolderViewScreen> {
   Future<void> _showUploadDialog() async {
     await showDialog(
       context: context,
-      builder: (_) => UploadPdfDialog(
-        folderId: widget.folder.id,
-        user: widget.user,
-      ),
+      builder: (_) =>
+          UploadPdfDialog(folderId: widget.folder.id, user: widget.user),
     );
   }
 
   Future<void> _showAddVideoDialog() async {
     await showDialog(
       context: context,
-      builder: (_) => UniversityVideoDialog(
-        folderId: widget.folder.id,
-        user: widget.user,
-      ),
+      builder: (_) =>
+          UniversityVideoDialog(folderId: widget.folder.id, user: widget.user),
     );
   }
 
@@ -214,9 +210,7 @@ class _FolderViewScreenState extends State<FolderViewScreen> {
           );
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(
-                '📖 Resumed from page ${progress['lastPage']}',
-              ),
+              content: Text('📖 Resumed from page ${progress['lastPage']}'),
               duration: const Duration(seconds: 2),
             ),
           );
@@ -253,9 +247,9 @@ class _FolderViewScreenState extends State<FolderViewScreen> {
       try {
         await _universityService.deleteFile(file);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('🗑️ File deleted')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('🗑️ File deleted')));
         }
       } catch (e) {
         if (mounted) {
@@ -293,9 +287,9 @@ class _FolderViewScreenState extends State<FolderViewScreen> {
       try {
         await _universityService.deleteVideo(video);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('🗑️ Video deleted')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('🗑️ Video deleted')));
         }
       } catch (e) {
         if (mounted) {
@@ -314,10 +308,10 @@ class _FolderViewScreenState extends State<FolderViewScreen> {
     final isDarkMode = widget.isDarkMode;
     final isAdmin = widget.user.isAdmin;
 
-    final bgColor =
-        isDarkMode ? const Color(0xFF020617) : const Color(0xFFE2E8F0);
-    final canvasColor =
-        isDarkMode ? const Color(0xFF0F172A) : Colors.white;
+    final bgColor = isDarkMode
+        ? const Color(0xFF020617)
+        : const Color(0xFFE2E8F0);
+    final canvasColor = isDarkMode ? const Color(0xFF0F172A) : Colors.white;
 
     return Scaffold(
       backgroundColor: bgColor,
@@ -592,8 +586,9 @@ class _FileTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sizeStr = _formatBytes(file.sizeBytes);
-    final pagesStr =
-        file.totalPages != null ? '${file.totalPages} pages' : null;
+    final pagesStr = file.totalPages != null
+        ? '${file.totalPages} pages'
+        : null;
 
     return Dismissible(
       key: Key(file.id),
@@ -611,9 +606,7 @@ class _FileTile extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isDarkMode
-              ? const Color(0xFF1E293B)
-              : const Color(0xFFF8FAFC),
+          color: isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isDarkMode
@@ -649,8 +642,9 @@ class _FileTile extends StatelessWidget {
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 14,
-                      color:
-                          isDarkMode ? Colors.white : const Color(0xFF0F172A),
+                      color: isDarkMode
+                          ? Colors.white
+                          : const Color(0xFF0F172A),
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,

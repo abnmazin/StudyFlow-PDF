@@ -6,9 +6,8 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SupabaseStorageService {
-  SupabaseStorageService({
-    String? bucketName,
-  }) : bucketName = bucketName ?? _readBucketName();
+  SupabaseStorageService({String? bucketName})
+    : bucketName = bucketName ?? _readBucketName();
 
   final String bucketName;
 
@@ -31,11 +30,9 @@ class SupabaseStorageService {
       final folder = isAudio ? 'audio' : 'images';
       final filePath = '$folder/$fileName';
 
-      await _client.storage.from(bucketName).upload(
-            filePath,
-            file,
-            fileOptions: FileOptions(upsert: upsert),
-          );
+      await _client.storage
+          .from(bucketName)
+          .upload(filePath, file, fileOptions: FileOptions(upsert: upsert));
 
       return _client.storage.from(bucketName).getPublicUrl(filePath);
     } catch (error) {
@@ -44,26 +41,29 @@ class SupabaseStorageService {
     }
   }
 
-  Future<String?> uploadBytes(Uint8List bytes, String extension, {bool isAudio = false}) async {
+  Future<String?> uploadBytes(
+    Uint8List bytes,
+    String extension, {
+    bool isAudio = false,
+  }) async {
     try {
       final fileName = '${DateTime.now().millisecondsSinceEpoch}$extension';
       final folder = isAudio ? 'audio' : 'images';
       final filePath = '$folder/$fileName';
-      
+
       String mimeType = 'image/png';
       if (extension == '.jpg' || extension == '.jpeg') mimeType = 'image/jpeg';
       if (extension == '.gif') mimeType = 'image/gif';
       if (extension == '.webp') mimeType = 'image/webp';
-      
-      await _client.storage.from(bucketName).uploadBinary(
-        filePath,
-        bytes,
-        fileOptions: FileOptions(
-          upsert: false,
-          contentType: mimeType,
-        ),
-      );
-      
+
+      await _client.storage
+          .from(bucketName)
+          .uploadBinary(
+            filePath,
+            bytes,
+            fileOptions: FileOptions(upsert: false, contentType: mimeType),
+          );
+
       return _client.storage.from(bucketName).getPublicUrl(filePath);
     } catch (e) {
       print('❌ [SupabaseStorage] uploadBytes failed: $e');

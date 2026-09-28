@@ -107,7 +107,8 @@ extension _PDFViewerWidgetStateGestures on _PDFViewerWidgetState {
     final app = context.read<AppProvider>();
     final pdf = app.activePdf;
     if (pdf == null) return;
-    final double hitRadius = 20.0 / scale; // Tolerance in PDF units (20px screen)
+    final double hitRadius =
+        20.0 / scale; // Tolerance in PDF units (20px screen)
     List<Highlight> toRemove = [];
 
     for (var h in pdf.highlights) {
@@ -141,14 +142,15 @@ extension _PDFViewerWidgetStateGestures on _PDFViewerWidgetState {
           // Better logic: inside inflated rect, but specifically hitting the stroke or the fill
           if (rect.inflate(effectiveRadius).contains(pt)) {
             // Hit edge
-            final onEdge = (pt.dx - rect.left).abs() <= effectiveRadius ||
+            final onEdge =
+                (pt.dx - rect.left).abs() <= effectiveRadius ||
                 (pt.dx - rect.right).abs() <= effectiveRadius ||
                 (pt.dy - rect.top).abs() <= effectiveRadius ||
                 (pt.dy - rect.bottom).abs() <= effectiveRadius;
-            
+
             // Hit interior if it has a background fill
             final filled = h.backgroundColor != null && rect.contains(pt);
-            
+
             hit = onEdge || filled;
           }
         } else if (h.type == HighlightType.circle) {
@@ -162,25 +164,26 @@ extension _PDFViewerWidgetStateGestures on _PDFViewerWidgetState {
             // Distance from center relative to radius (ellipsoid distance)
             final dx = (pt.dx - cx);
             final dy = (pt.dy - cy);
-            
+
             // Check border hit
             // In a circle rx=ry=R, distance is sqrt(dx^2+dy^2). Hit if distance close to R.
             // For ellipses, we check if the point is within tolerance of the edge
-            final double distFromCenter = (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry);
-            
-            // Border tolerance: 1.0 is the exact edge. 
+            final double distFromCenter =
+                (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry);
+
+            // Border tolerance: 1.0 is the exact edge.
             // We want to be within tolerance on either side of 1.0
             final double tol = effectiveRadius / ((rx + ry) / 2);
             final hitBorder = (distFromCenter - 1.0).abs() <= tol;
             final hitFill = h.backgroundColor != null && distFromCenter <= 1.0;
-            
+
             hit = hitBorder || hitFill;
           }
         }
       }
       // Freehand pen or highlight
       else {
-        // PER-STROKE HIT DETECTION: 
+        // PER-STROKE HIT DETECTION:
         // strokeWidth / 2 (the radius of the line) + base tolerance (hitRadius already in PDF units)
         final double effectiveRadius = (h.strokeWidth / 2) + hitRadius;
 

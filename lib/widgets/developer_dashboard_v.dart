@@ -35,39 +35,27 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
 
     final tabContent = switch (_adminTabIndex) {
       0 => _buildAdminCard(
-          surfaceAlt,
-          panelBorder,
-          SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.all(12),
-            child: _buildDetailedStats(surfaceAlt, panelBorder),
-          ),
+        surfaceAlt,
+        panelBorder,
+        SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.all(12),
+          child: _buildDetailedStats(surfaceAlt, panelBorder),
         ),
-      1 => _buildAdminCard(
-          surfaceAlt,
-          panelBorder,
-          _buildUserManagementList(),
-        ),
-      2 => _buildAdminCard(
-          surfaceAlt,
-          panelBorder,
-          _buildBannedDevicesList(),
-        ),
+      ),
+      1 => _buildAdminCard(surfaceAlt, panelBorder, _buildUserManagementList()),
+      2 => _buildAdminCard(surfaceAlt, panelBorder, _buildBannedDevicesList()),
       3 => _buildAdminCard(
-          surfaceAlt,
-          panelBorder,
-          _buildActiveBundlesList(app),
-        ),
+        surfaceAlt,
+        panelBorder,
+        _buildActiveBundlesList(app),
+      ),
       4 => _buildAdminCard(
-          surfaceAlt,
-          panelBorder,
-          _buildActiveSessionsList(app),
-        ),
-      5 => _buildAdminCard(
-          surfaceAlt,
-          panelBorder,
-          _buildAnnouncementsList(),
-        ),
+        surfaceAlt,
+        panelBorder,
+        _buildActiveSessionsList(app),
+      ),
+      5 => _buildAdminCard(surfaceAlt, panelBorder, _buildAnnouncementsList()),
       _ => const SizedBox.shrink(),
     };
 
@@ -133,36 +121,35 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
             ],
           ),
         ),
-          const SizedBox(height: 12),
-          Expanded(child: tabContent),
+        const SizedBox(height: 12),
+        Expanded(child: tabContent),
       ],
     );
+  }
 
-    }
-
-    Widget _buildAdminChoiceChip(String label, IconData icon, int index) {
-      final isSelected = _adminTabIndex == index;
-      return ChoiceChip(
-          selected: isSelected,
-          onSelected: (_) => setState(() => _adminTabIndex = index),
-          avatar: Icon(
-            icon,
-            size: 14,
-            color: isSelected ? Colors.white : Colors.blueGrey,
-          ),
-          label: Text(
-            label,
-            style: TextStyle(
-              color: isSelected ? Colors.white : Colors.blueGrey,
-              fontWeight: FontWeight.w700,
-              fontSize: 12,
-            ),
-          ),
-          selectedColor: const Color(0xFF3B82F6),
-          backgroundColor: Colors.blueGrey.withOpacity(0.08),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      );
-    }
+  Widget _buildAdminChoiceChip(String label, IconData icon, int index) {
+    final isSelected = _adminTabIndex == index;
+    return ChoiceChip(
+      selected: isSelected,
+      onSelected: (_) => setState(() => _adminTabIndex = index),
+      avatar: Icon(
+        icon,
+        size: 14,
+        color: isSelected ? Colors.white : Colors.blueGrey,
+      ),
+      label: Text(
+        label,
+        style: TextStyle(
+          color: isSelected ? Colors.white : Colors.blueGrey,
+          fontWeight: FontWeight.w700,
+          fontSize: 12,
+        ),
+      ),
+      selectedColor: const Color(0xFF3B82F6),
+      backgroundColor: Colors.blueGrey.withOpacity(0.08),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    );
+  }
 
   /// Turns a failed query into a readable message. A StreamBuilder keeps
   /// hasData false when the stream errors, so guarding on hasData alone spins
@@ -170,7 +157,8 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
   /// are all indistinguishable from "still loading" and the panel never
   /// recovers. Checking hasError first is what makes the failure visible.
   Widget _buildStreamFailure(Object? error) {
-    final isDenied = error is FirebaseException && error.code == 'permission-denied';
+    final isDenied =
+        error is FirebaseException && error.code == 'permission-denied';
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Center(
@@ -237,9 +225,7 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
                     sessionSnap.hasError ||
                     masterSnap.hasError) {
                   return _buildStreamFailure(
-                    userSnap.error ??
-                        sessionSnap.error ??
-                        masterSnap.error,
+                    userSnap.error ?? sessionSnap.error ?? masterSnap.error,
                   );
                 }
                 if (!userSnap.hasData ||
@@ -897,7 +883,10 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
     String role = currentRole ?? 'student';
     final isEdit = id != null;
     // Get the current admin's universityId to auto-assign
-    final adminUniversityId = context.read<AppProvider>().currentUser?.universityId;
+    final adminUniversityId = context
+        .read<AppProvider>()
+        .currentUser
+        ?.universityId;
 
     showDialog(
       context: context,
@@ -908,121 +897,132 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-            TextField(
-              controller: nameCtrl,
-              decoration: InputDecoration(
-                labelText: 'اسم المستخدم (المعرف)',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+              TextField(
+                controller: nameCtrl,
+                decoration: InputDecoration(
+                  labelText: 'اسم المستخدم (المعرف)',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  isDense: true,
                 ),
-                isDense: true,
               ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: dispCtrl,
-              decoration: InputDecoration(
-                labelText: 'الاسم المستعار (العرض)',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+              const SizedBox(height: 16),
+              TextField(
+                controller: dispCtrl,
+                decoration: InputDecoration(
+                  labelText: 'الاسم المستعار (العرض)',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  isDense: true,
                 ),
-                isDense: true,
               ),
-            ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              value: role,
-              decoration: InputDecoration(
-                labelText: 'الصلاحية (Role)',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                value: role,
+                decoration: InputDecoration(
+                  labelText: 'الصلاحية (Role)',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  isDense: true,
                 ),
-                isDense: true,
+                items: const [
+                  DropdownMenuItem(
+                    value: 'student',
+                    child: Text('طالب (Student)'),
+                  ),
+                  DropdownMenuItem(value: 'admin', child: Text('مشرف (Admin)')),
+                ],
+                onChanged: (v) => role = v!,
               ),
-              items: const [
-                DropdownMenuItem(value: 'student', child: Text('طالب (Student)')),
-                DropdownMenuItem(value: 'admin', child: Text('مشرف (Admin)')),
+              if (!isEdit) ...[
+                const SizedBox(height: 16),
+                TextField(
+                  controller: passCtrl,
+                  obscureText: true,
+                  decoration: InputDecoration(
+                    labelText: 'كلمة المرور',
+                    helperText:
+                        '6 أحرف على الأقل. سلّمها للمستخدم ليدخل بها الآن.',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    isDense: true,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: passConfCtrl,
+                  obscureText: true,
+                  decoration: InputDecoration(
+                    labelText: 'تأكيد كلمة المرور',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    isDense: true,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.amber.withOpacity(0.25)),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(
+                        LucideIcons.fingerprint,
+                        size: 16,
+                        color: Colors.amber,
+                      ),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'يُنشأ الحساب بدون بصمة. أول من يسجّل الدخول يربط جهازه '
+                          'به، وأي جهاز ثانٍ لنفس الحساب يُرفض.',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ],
-              onChanged: (v) => role = v!,
-            ),
-            if (!isEdit) ...[
-              const SizedBox(height: 16),
-              TextField(
-                controller: passCtrl,
-                obscureText: true,
-                decoration: InputDecoration(
-                  labelText: 'كلمة المرور',
-                  helperText:
-                      '6 أحرف على الأقل. سلّمها للمستخدم ليدخل بها الآن.',
-                  border: OutlineInputBorder(
+              if (adminUniversityId != null &&
+                  adminUniversityId.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.indigo.withOpacity(0.05),
                     borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.indigo.withOpacity(0.2)),
                   ),
-                  isDense: true,
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: passConfCtrl,
-                obscureText: true,
-                decoration: InputDecoration(
-                  labelText: 'تأكيد كلمة المرور',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        LucideIcons.landmark,
+                        size: 16,
+                        color: Colors.indigo,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'University: $adminUniversityId',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  isDense: true,
                 ),
-              ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.amber.withOpacity(0.05),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.amber.withOpacity(0.25)),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(
-                      LucideIcons.fingerprint,
-                      size: 16,
-                      color: Colors.amber,
-                    ),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'يُنشأ الحساب بدون بصمة. أول من يسجّل الدخول يربط جهازه '
-                        'به، وأي جهاز ثانٍ لنفس الحساب يُرفض.',
-                        style: TextStyle(fontSize: 12),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              ],
             ],
-            if (adminUniversityId != null && adminUniversityId.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.indigo.withOpacity(0.05),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.indigo.withOpacity(0.2)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(LucideIcons.landmark, size: 16, color: Colors.indigo),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'University: $adminUniversityId',
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ],
           ),
         ),
         actions: [
@@ -1052,12 +1052,12 @@ class _DeveloperDashboardViewState extends State<DeveloperDashboardView> {
 
                 try {
                   final uid = await AuthService().provisionAccount(
-                        username: uname,
-                        password: pass,
-                        displayName: dname,
-                        role: role,
-                        universityId: adminUniversityId,
-                      );
+                    username: uname,
+                    password: pass,
+                    displayName: dname,
+                    role: role,
+                    universityId: adminUniversityId,
+                  );
                   if (!context.mounted) return;
                   Navigator.pop(ctx);
                   _toast(context, 'تم إنشاء الحساب $uname ويمكنه الدخول الآن');

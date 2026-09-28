@@ -6,7 +6,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/version_check_service.dart';
 import 'developer_modal_w.dart';
 
-const String _kUpdateUrl = ''; // TODO: Replace with your actual Windows installer download URL
+const String _kUpdateUrl =
+    ''; // TODO: Replace with your actual Windows installer download URL
 const String _kForceUpdateKey = 'force_update_active';
 const String _kForceUpdateMinVersionKey = 'force_update_min_version';
 const String _kForceUpdateLatestVersionKey = 'force_update_latest_version';
@@ -163,10 +164,10 @@ class _VersionCheckGateState extends State<VersionCheckGate> {
                 // widget lives above MaterialApp in the widget tree).
                 final hasLocalization =
                     Localizations.of<MaterialLocalizations>(
-                          context,
-                          MaterialLocalizations,
-                        ) !=
-                        null;
+                      context,
+                      MaterialLocalizations,
+                    ) !=
+                    null;
                 if (!hasLocalization) return;
                 await _showSoftUpdateDialog(result);
               });

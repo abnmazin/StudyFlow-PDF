@@ -9,12 +9,26 @@ enum HighlightType {
   select,
 }
 
-enum ToolType { cursor, select, highlight, pen, text, eraser, arrow, rectangle, circle }
+enum ToolType {
+  cursor,
+  select,
+  highlight,
+  pen,
+  text,
+  eraser,
+  arrow,
+  rectangle,
+  circle,
+}
 
 extension ToolTypeX on ToolType {
   bool get isDrawing => switch (this) {
-    ToolType.pen || ToolType.highlight || ToolType.arrow ||
-    ToolType.rectangle || ToolType.circle || ToolType.eraser => true,
+    ToolType.pen ||
+    ToolType.highlight ||
+    ToolType.arrow ||
+    ToolType.rectangle ||
+    ToolType.circle ||
+    ToolType.eraser => true,
     _ => false,
   };
 

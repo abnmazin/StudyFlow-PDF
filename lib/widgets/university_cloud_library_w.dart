@@ -655,17 +655,13 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
 
   /// Marks which library files already exist on disk. A file that is present
   /// opens instantly and offline, so it is worth telling apart from one that
-  /// still has to be fetched. One directory listing covers the whole page.
+  /// still has to be fetched. One directory listing covers the whole page, and
+  /// the name matching itself lives in the service so the sidebar lists the
+  /// same file the same way.
   Future<void> _refreshCachedHashes(List<UniversityFile> files) async {
     final names = await widget.universityService.getDownloadedFileNames();
     if (names.isEmpty && files.isEmpty) return;
-    final result = <String>{};
-    for (final f in files) {
-      final stored = f.storagePath.split('/').last;
-      if (names.contains(stored) || names.contains(f.name)) {
-        result.add(f.fileHash);
-      }
-    }
+    final result = UniversityService.downloadedHashesIn(names, files);
     if (!mounted) return;
     setState(() {
       _cachedHashes
@@ -743,9 +739,7 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
       localPath ??= await widget.universityService.getCachedPath(hash);
 
       // 2. Only download when there is genuinely nothing on disk.
-      if (localPath == null) {
-        localPath = await widget.universityService.downloadPdfToLocal(file);
-      }
+      localPath ??= await widget.universityService.downloadPdfToLocal(file);
       _localPaths[hash] = localPath;
 
       // The file is on disk either way, so the listing should say so now
@@ -1065,8 +1059,8 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.indigo,
                                 foregroundColor: Colors.white,
-                                disabledBackgroundColor:
-                                    Colors.indigo.withOpacity(0.5),
+                                disabledBackgroundColor: Colors.indigo
+                                    .withOpacity(0.5),
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 20,
                                   vertical: 12,
@@ -1151,7 +1145,8 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
         if (_videos.isNotEmpty) ...[
           _sectionHeader('🎬 دروس فيديو', textMuted),
           ..._videos.map(
-            (video) => _buildVideoTile(isDarkMode, textPrimary, textMuted, video),
+            (video) =>
+                _buildVideoTile(isDarkMode, textPrimary, textMuted, video),
           ),
         ],
         if (_files.isNotEmpty) ...[
@@ -1189,6 +1184,7 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
     UniversityFile file,
   ) {
     final isDownloading = _downloadingHashes.contains(file.fileHash);
+    final isDownloaded = _cachedHashes.contains(file.fileHash);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -1248,26 +1244,28 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
                       Text(
                         file.name,
                         style: TextStyle(
-                          fontWeight: FontWeight.w700,
+                          fontWeight: isDownloaded
+                              ? FontWeight.w800
+                              : FontWeight.w500,
                           fontSize: 14,
                           // Files already on disk read brighter than the ones
                           // that still need fetching, so the ones that open
                           // instantly and work offline are recognisable at a
-                          // glance. Colors.white alone was invisible here
-                          // because textPrimary is already white in dark mode,
-                          // so the two states needed to differ in weight and
-                          // colour, not colour alone.
-                          color: _cachedHashes.contains(file.fileHash)
-                              ? Colors.white
-                              : textMuted,
-                          shadows: _cachedHashes.contains(file.fileHash)
-                              ? const [
+                          // glance. The colour comes from the panel's own
+                          // palette because a bare Colors.white is invisible on
+                          // the light theme's white background — the same
+                          // defect the dark theme had before this pair existed.
+                          // Weight carries the distinction in both themes; the
+                          // glow only in dark, where it is visible at all.
+                          color: !isDownloaded ? textMuted : textPrimary,
+                          shadows: !(isDownloaded && isDarkMode)
+                              ? null
+                              : const [
                                   Shadow(
                                     color: Color(0x66FFFFFF),
                                     blurRadius: 8,
                                   ),
-                                ]
-                              : null,
+                                ],
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -1378,15 +1376,15 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
               color: hovering
                   ? const Color(0xFFEF4444).withOpacity(0.06)
                   : (isDarkMode
-                      ? Colors.white.withOpacity(0.02)
-                      : Colors.black.withOpacity(0.01)),
+                        ? Colors.white.withOpacity(0.02)
+                        : Colors.black.withOpacity(0.01)),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
                 color: hovering
                     ? const Color(0xFFEF4444).withOpacity(0.4)
                     : (isDarkMode
-                        ? Colors.white.withOpacity(0.05)
-                        : Colors.black.withOpacity(0.05)),
+                          ? Colors.white.withOpacity(0.05)
+                          : Colors.black.withOpacity(0.05)),
               ),
             ),
             child: Material(
@@ -1429,10 +1427,7 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
                             ),
                             Text(
                               'يوتيوب',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: textMuted,
-                              ),
+                              style: TextStyle(fontSize: 11, color: textMuted),
                             ),
                           ],
                         ),
@@ -1525,10 +1520,8 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
   Future<void> _adminAddVideo() async {
     await showDialog(
       context: context,
-      builder: (_) => UniversityVideoDialog(
-        folderId: widget.folder.id,
-        user: widget.user,
-      ),
+      builder: (_) =>
+          UniversityVideoDialog(folderId: widget.folder.id, user: widget.user),
     );
   }
 
@@ -1580,7 +1573,10 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
     }
   }
 
-  Future<void> _reorderVideos(String draggedVideoId, String targetVideoId) async {
+  Future<void> _reorderVideos(
+    String draggedVideoId,
+    String targetVideoId,
+  ) async {
     if (!_isAdmin) return;
     try {
       await widget.universityService.reorderVideos(

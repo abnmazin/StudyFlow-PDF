@@ -5,6 +5,7 @@ import '../providers/app_state.dart';
 import '../models/models.dart';
 import '../utils/responsive_utils.dart';
 import 'viewer_components/college_collection_widget.dart';
+import 'university_cloud_library_w.dart';
 
 class Sidebar extends StatefulWidget {
   const Sidebar({super.key});
@@ -318,16 +319,31 @@ class _SidebarState extends State<Sidebar> {
                     Visibility(
                       visible: _showUniversityFolders,
                       maintainState: true,
-                      child: CollegeCollectionWidget(
-                        isDarkMode: isDarkMode,
-                        panelBg: sidebarBg,
-                        panelBorder: separatorColor,
-                        surfaceAlt: isDarkMode
-                            ? const Color(0xFF1E293B)
-                            : scheme.surfaceContainerHighest,
-                        textPrimary: textPrimary,
-                        textMuted: textMuted,
-                        folderStyle: true,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          CollegeCollectionWidget(
+                            isDarkMode: isDarkMode,
+                            panelBg: sidebarBg,
+                            panelBorder: separatorColor,
+                            surfaceAlt: isDarkMode
+                                ? const Color(0xFF1E293B)
+                                : scheme.surfaceContainerHighest,
+                            textPrimary: textPrimary,
+                            textMuted: textMuted,
+                            folderStyle: true,
+                          ),
+
+                          // The collection above is the shortcut list; this is
+                          // the same library as its own page. It used to live on
+                          // the dashboard as a card, and moved here when the
+                          // dashboard was redesigned around the header and the
+                          // services row.
+                          if (app.currentUser != null) ...[
+                            const SizedBox(height: 8),
+                            _buildOpenLibraryButton(context, app),
+                          ],
+                        ],
                       ),
                     ),
 
@@ -387,88 +403,98 @@ class _SidebarState extends State<Sidebar> {
                       maintainState: true,
                       child: Column(
                         children: [
-                        const SizedBox(height: 16),
-    
-                        // Add Class Input
-                        if (_isAdding)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 16.0),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Builder(
-                                    builder: (ctx) {
-                                      final scheme = Theme.of(ctx).colorScheme;
-                                      final inputBg = isDarkMode
-                                          ? const Color(0xFF1E293B)
-                                          : scheme.surfaceContainerHigh;
-                                      final inputText = isDarkMode
-                                          ? Colors.white
-                                          : scheme.onSurface;
-                                      return TextField(
-                                        controller: _classController,
-                                        autofocus: true,
-                                        style: TextStyle(
-                                          color: inputText,
-                                          fontSize: 14,
-                                        ),
-                                        decoration: InputDecoration(
-                                          hintText: 'اسم القسم...',
-                                          hintStyle: TextStyle(
-                                            color: isDarkMode
-                                                ? Colors.white.withOpacity(0.5)
-                                                : scheme.onSurfaceVariant
-                                                      .withOpacity(0.6),
-                                          ),
-                                          filled: true,
-                                          fillColor: inputBg,
-                                          border: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(4),
-                                            borderSide: BorderSide.none,
-                                          ),
-                                          contentPadding:
-                                              const EdgeInsets.symmetric(
-                                                horizontal: 8,
-                                                vertical: 8,
-                                              ),
-                                          isDense: true,
-                                        ),
-                                        onSubmitted: (_) =>
-                                            _handleAddClass(context),
-                                      );
-                                    },
-                                  ),
-                                ),
-                                IconButton(
-                                  icon: const Icon(
-                                    LucideIcons.check,
-                                    color: Color(0xFF4ADE80),
-                                    size: 18,
-                                  ), // green-400
-                                  onPressed: () => _handleAddClass(context),
-                                  constraints: const BoxConstraints(),
-                                  padding: const EdgeInsets.all(4),
-                                  tooltip: 'حفظ المجلد',
-                                ),
-                                IconButton(
-                                  icon: const Icon(
-                                    LucideIcons.x,
-                                    color: Color(0xFFF87171),
-                                    size: 18,
-                                  ), // red-400
-                                  onPressed: () =>
-                                      setState(() => _isAdding = false),
-                                  constraints: const BoxConstraints(),
-                                  padding: const EdgeInsets.all(4),
-                                  tooltip: 'إلغاء',
-                                ),
-                              ],
-                            ),
-                          ),
+                          const SizedBox(height: 16),
 
-                            // Local class list (custom drag/drop for folders)
-                            for (final entry in classes.asMap().entries)
-                              _buildClassItem(context, entry.value, app, entry.key),
+                          // Add Class Input
+                          if (_isAdding)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 16.0),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Builder(
+                                      builder: (ctx) {
+                                        final scheme = Theme.of(
+                                          ctx,
+                                        ).colorScheme;
+                                        final inputBg = isDarkMode
+                                            ? const Color(0xFF1E293B)
+                                            : scheme.surfaceContainerHigh;
+                                        final inputText = isDarkMode
+                                            ? Colors.white
+                                            : scheme.onSurface;
+                                        return TextField(
+                                          controller: _classController,
+                                          autofocus: true,
+                                          style: TextStyle(
+                                            color: inputText,
+                                            fontSize: 14,
+                                          ),
+                                          decoration: InputDecoration(
+                                            hintText: 'اسم القسم...',
+                                            hintStyle: TextStyle(
+                                              color: isDarkMode
+                                                  ? Colors.white.withOpacity(
+                                                      0.5,
+                                                    )
+                                                  : scheme.onSurfaceVariant
+                                                        .withOpacity(0.6),
+                                            ),
+                                            filled: true,
+                                            fillColor: inputBg,
+                                            border: OutlineInputBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
+                                              borderSide: BorderSide.none,
+                                            ),
+                                            contentPadding:
+                                                const EdgeInsets.symmetric(
+                                                  horizontal: 8,
+                                                  vertical: 8,
+                                                ),
+                                            isDense: true,
+                                          ),
+                                          onSubmitted: (_) =>
+                                              _handleAddClass(context),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(
+                                      LucideIcons.check,
+                                      color: Color(0xFF4ADE80),
+                                      size: 18,
+                                    ), // green-400
+                                    onPressed: () => _handleAddClass(context),
+                                    constraints: const BoxConstraints(),
+                                    padding: const EdgeInsets.all(4),
+                                    tooltip: 'حفظ المجلد',
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(
+                                      LucideIcons.x,
+                                      color: Color(0xFFF87171),
+                                      size: 18,
+                                    ), // red-400
+                                    onPressed: () =>
+                                        setState(() => _isAdding = false),
+                                    constraints: const BoxConstraints(),
+                                    padding: const EdgeInsets.all(4),
+                                    tooltip: 'إلغاء',
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                          // Local class list (custom drag/drop for folders)
+                          for (final entry in classes.asMap().entries)
+                            _buildClassItem(
+                              context,
+                              entry.value,
+                              app,
+                              entry.key,
+                            ),
                         ],
                       ),
                     ),
@@ -667,7 +693,7 @@ class _SidebarState extends State<Sidebar> {
                       height: 24,
                       width: 24,
                       child: IconButton(
-                                                padding: EdgeInsets.zero,
+                        padding: EdgeInsets.zero,
 
                         icon: Icon(
                           LucideIcons.upload,
@@ -801,7 +827,6 @@ class _SidebarState extends State<Sidebar> {
     final isActive = app.activePdfId == pdf.id;
     final isSecondary = app.isSplitMode && app.secondaryPdfId == pdf.id;
 
-
     final child = InkWell(
       onTap: () {
         if (app.isSplitMode && !isActive) {
@@ -830,7 +855,9 @@ class _SidebarState extends State<Sidebar> {
               size: 14,
               color: isActive
                   ? const Color(0xFFBFDBFE)
-                  : (isSecondary ? const Color(0xFFCBD5E1) : const Color(0xFF94A3B8)),
+                  : (isSecondary
+                        ? const Color(0xFFCBD5E1)
+                        : const Color(0xFF94A3B8)),
             ),
             const SizedBox(width: 8),
             Expanded(
@@ -840,7 +867,9 @@ class _SidebarState extends State<Sidebar> {
                   fontSize: 14,
                   color: isActive
                       ? const Color(0xFFBFDBFE)
-                      : (isSecondary ? const Color(0xFFCBD5E1) : const Color(0xFF94A3B8)),
+                      : (isSecondary
+                            ? const Color(0xFFCBD5E1)
+                            : const Color(0xFF94A3B8)),
                 ),
                 overflow: TextOverflow.ellipsis,
               ),
@@ -969,6 +998,46 @@ class _SidebarState extends State<Sidebar> {
           style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8)),
         ),
       ],
+    );
+  }
+
+  /// Opens the full cloud library as its own page, the way the dashboard's
+  /// library card used to. Guarded on a signed-in user because the library is
+  /// keyed by `user.universityId`.
+  Widget _buildOpenLibraryButton(BuildContext context, AppProvider app) {
+    final isDarkMode = app.isDarkMode;
+    final user = app.currentUser!;
+
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => Scaffold(
+                appBar: AppBar(
+                  title: const Text('المكتبة الجامعية'),
+                  backgroundColor: isDarkMode
+                      ? const Color(0xFF0F172A)
+                      : Colors.white,
+                ),
+                body: UniversityCloudLibraryWidget(
+                  isDarkMode: isDarkMode,
+                  user: user,
+                ),
+              ),
+            ),
+          );
+        },
+        icon: const Icon(LucideIcons.library, size: 16),
+        label: const Text('فتح المكتبة', style: TextStyle(fontSize: 12)),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: const Color(0xFF60A5FA),
+          side: const BorderSide(color: Color(0xFF334155)),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      ),
     );
   }
 }

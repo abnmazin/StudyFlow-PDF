@@ -16,8 +16,8 @@ class HighlightPainter extends CustomPainter {
     required this.scale,
     this.isCurrent = false,
     String? selectedHighlightId,
-  })  : _highlightsHash = _calculateHighlightsHash(highlights),
-        _selectedHighlightId = selectedHighlightId;
+  }) : _highlightsHash = _calculateHighlightsHash(highlights),
+       _selectedHighlightId = selectedHighlightId;
 
   static int _calculateHighlightsHash(List<Highlight> highlights) {
     // Simple hash to catch structural changes without deep comparison
@@ -32,8 +32,8 @@ class HighlightPainter extends CustomPainter {
 
     for (var h in highlights) {
       if (h.path.isEmpty && (h.rects == null || h.rects!.isEmpty)) continue;
-      final isSelected = _selectedHighlightId != null &&
-          h.id == _selectedHighlightId;
+      final isSelected =
+          _selectedHighlightId != null && h.id == _selectedHighlightId;
 
       // Base paint configuration - will be customized per shape type
       final paint = Paint()

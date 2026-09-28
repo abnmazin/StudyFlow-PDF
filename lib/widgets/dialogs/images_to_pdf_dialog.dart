@@ -95,7 +95,10 @@ class _ImagesToPdfDialogState extends State<ImagesToPdfDialog> {
   @override
   Widget build(BuildContext context) {
     final screen = MediaQuery.sizeOf(context);
-    final dialogWidth = ResponsiveBreakpoints.dialogWidth(screen.width, max: 600);
+    final dialogWidth = ResponsiveBreakpoints.dialogWidth(
+      screen.width,
+      max: 600,
+    );
     final dialogHeight = (screen.height * 0.9).clamp(420.0, 700.0).toDouble();
 
     return Dialog(

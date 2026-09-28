@@ -15,7 +15,6 @@ import 'dart:ui';
 import '../services/translation_service.dart';
 import '../providers/app_state.dart';
 import '../models/models.dart';
-import '../models/app_user.dart';
 import '../models/print_settings.dart'; // NEW
 import '../services/print_service.dart'; // NEW
 import 'viewer_components/viewer_toolbar.dart';
@@ -25,16 +24,9 @@ import 'viewer_components/drawing_toolbar.dart';
 import 'viewer_components/print_dialog.dart';
 import '../painters/highlight_painter.dart';
 import 'draggable_text_widget.dart';
-import '../models/isar_models.dart'; // NEW: for PdfDocument
-import '../services/file_manager_service.dart'; // NEW: for getRecentDocuments
-import 'dialogs/merge_pdf_dialog.dart'; // NEW
-import 'dialogs/images_to_pdf_dialog.dart'; // NEW
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/sync_service.dart';
-import '../services/university_service.dart';
-import 'university_hub.dart';
-import 'university_cloud_library_w.dart';
 import '../utils/responsive_utils.dart';
+import 'dashboard/dashboard_page.dart';
 
 part 'pdf_viewer_widget_dashboard.dart';
 part 'pdf_viewer_widget_actions.dart';
@@ -148,7 +140,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   final GlobalKey _secondaryViewerKey = GlobalKey();
 
   String? _editingCommentId;
-  
+
   // 🆕 Floating toolbar state: null = hidden, non-null = visible with that tool
   ToolType? _floatingToolbarSelectedTool;
   bool _isFloatingToolbarOpen = false;
@@ -667,8 +659,6 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     return author;
   }
 
-
-
   void _runShortcut(VoidCallback action, {bool ignoreTyping = true}) {
     // Check global keyboard lock from AppProvider
     final isLocked = context.read<AppProvider>().isKeyboardLocked;
@@ -738,33 +728,63 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
         // Phones deliberately keep it: their menu button is the only route to
         // the file drawer, so hiding the toolbar there would strand the user
         // on a dashboard that cannot open a file by itself.
-        final showViewerChrome = pdf != null ||
+        final showViewerChrome =
+            pdf != null ||
             ResponsiveBreakpoints.isMobile(MediaQuery.sizeOf(context).width);
         // Only disable shortcuts if no PDF or editing comment, or if keyboard is locked (TextField has focus)
-        final shortcutsDisabled = _editingCommentId != null || pdf == null || app.isKeyboardLocked;
+        final shortcutsDisabled =
+            _editingCommentId != null || pdf == null || app.isKeyboardLocked;
 
         return CallbackShortcuts(
           bindings: shortcutsDisabled
               ? <ShortcutActivator, VoidCallback>{}
               : {
                   // Ctrl+P → Pen tool
-                  const SingleActivator(LogicalKeyboardKey.keyP, control: true): () =>
-                      _runShortcut(() => _activateTool(ToolType.pen), ignoreTyping: false),
+                  const SingleActivator(
+                    LogicalKeyboardKey.keyP,
+                    control: true,
+                  ): () => _runShortcut(
+                    () => _activateTool(ToolType.pen),
+                    ignoreTyping: false,
+                  ),
                   // Ctrl+H → Highlight tool
-                  const SingleActivator(LogicalKeyboardKey.keyH, control: true): () =>
-                      _runShortcut(() => _activateTool(ToolType.highlight), ignoreTyping: false),
+                  const SingleActivator(
+                    LogicalKeyboardKey.keyH,
+                    control: true,
+                  ): () => _runShortcut(
+                    () => _activateTool(ToolType.highlight),
+                    ignoreTyping: false,
+                  ),
                   // Ctrl+E → Eraser tool
-                  const SingleActivator(LogicalKeyboardKey.keyE, control: true): () =>
-                      _runShortcut(() => _activateTool(ToolType.eraser), ignoreTyping: false),
+                  const SingleActivator(
+                    LogicalKeyboardKey.keyE,
+                    control: true,
+                  ): () => _runShortcut(
+                    () => _activateTool(ToolType.eraser),
+                    ignoreTyping: false,
+                  ),
                   // Ctrl+T → Text tool
-                  const SingleActivator(LogicalKeyboardKey.keyT, control: true): () =>
-                      _runShortcut(() => _activateTool(ToolType.text), ignoreTyping: false),
+                  const SingleActivator(
+                    LogicalKeyboardKey.keyT,
+                    control: true,
+                  ): () => _runShortcut(
+                    () => _activateTool(ToolType.text),
+                    ignoreTyping: false,
+                  ),
                   // Escape → Cursor/Hand tool
                   const SingleActivator(LogicalKeyboardKey.escape): () =>
-                      _runShortcut(() => _activateTool(ToolType.cursor), ignoreTyping: true),
+                      _runShortcut(
+                        () => _activateTool(ToolType.cursor),
+                        ignoreTyping: true,
+                      ),
                   // Ctrl+V → Cursor/Hand tool
-                  const SingleActivator(LogicalKeyboardKey.keyV, control: true): () =>
-                      _runShortcut(() => _activateTool(ToolType.cursor), ignoreTyping: true),
+                  const SingleActivator(
+                    LogicalKeyboardKey.keyV,
+                    control: true,
+                  ): () => _runShortcut(
+                    () => _activateTool(ToolType.cursor),
+                    ignoreTyping: true,
+                  ),
                   // Ctrl+F → Search
                   const SingleActivator(
                     LogicalKeyboardKey.keyF,
@@ -798,14 +818,18 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                   const SingleActivator(
                     LogicalKeyboardKey.equal,
                     control: true,
-                  ): () =>
-                      _runShortcut(() => _pdfController.zoomUp(), ignoreTyping: true),
+                  ): () => _runShortcut(
+                    () => _pdfController.zoomUp(),
+                    ignoreTyping: true,
+                  ),
                   // Ctrl+- â†’ Zoom out
                   const SingleActivator(
                     LogicalKeyboardKey.minus,
                     control: true,
-                  ): () =>
-                      _runShortcut(() => _pdfController.zoomDown(), ignoreTyping: true),
+                  ): () => _runShortcut(
+                    () => _pdfController.zoomDown(),
+                    ignoreTyping: true,
+                  ),
                   // Ctrl+Z â†’ Undo (Windows/Linux)
                   const SingleActivator(
                     LogicalKeyboardKey.keyZ,
@@ -1021,26 +1045,33 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                             activeTool: selectedFloatingTool,
                                             onToolChanged: (tool) {
                                               setState(() {
-                                                _floatingToolbarSelectedTool = tool;
+                                                _floatingToolbarSelectedTool =
+                                                    tool;
                                               });
                                               _activateTool(tool);
                                             },
                                             // Only the three shapes reach this
                                             // toolbar, so the per-tool colour
                                             // lookup is enough.
-                                            activeColor: _colorForTool(panelTool),
+                                            activeColor: _colorForTool(
+                                              panelTool,
+                                            ),
                                             strokeWidth:
                                                 _toolStrokeWidths[panelTool] ??
                                                 2.0,
                                             fillColor: _shapeFillColor,
                                             showFill:
-                                                panelTool == ToolType.rectangle ||
+                                                panelTool ==
+                                                    ToolType.rectangle ||
                                                 panelTool == ToolType.circle,
                                             isDarkMode: isDarkMode,
-                                            colorPaletteIndex: _colorPaletteIndex,
+                                            colorPaletteIndex:
+                                                _colorPaletteIndex,
                                             onTogglePalette: () {
                                               setState(() {
-                                                _colorPaletteIndex = (_colorPaletteIndex + 1) % 2;
+                                                _colorPaletteIndex =
+                                                    (_colorPaletteIndex + 1) %
+                                                    2;
                                               });
                                             },
                                             onStrokeWidthChanged: (value) {
@@ -1050,51 +1081,56 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                               _onColorChanged(color);
                                             },
                                             onFillColorChanged:
-                                                (panelTool == ToolType.rectangle ||
-                                                        panelTool ==
-                                                            ToolType.circle)
-                                                    ? (color) {
-                                                        setState(() {
-                                                          _shapeFillColor = color;
-                                                        });
-                                                      }
-                                                    : null,
+                                                (panelTool ==
+                                                        ToolType.rectangle ||
+                                                    panelTool ==
+                                                        ToolType.circle)
+                                                ? (color) {
+                                                    setState(() {
+                                                      _shapeFillColor = color;
+                                                    });
+                                                  }
+                                                : null,
                                             onToggleFill:
-                                                (panelTool == ToolType.rectangle ||
-                                                        panelTool ==
-                                                            ToolType.circle)
-                                                    ? () {
-                                                        setState(() {
-                                                          _shapeFillColor = _shapeFillColor ==
-                                                                  Colors.transparent
-                                                              ? _shapeStrokeColor
-                                                              : Colors.transparent;
-                                                        });
-                                                      }
-                                                    : null,
+                                                (panelTool ==
+                                                        ToolType.rectangle ||
+                                                    panelTool ==
+                                                        ToolType.circle)
+                                                ? () {
+                                                    setState(() {
+                                                      _shapeFillColor =
+                                                          _shapeFillColor ==
+                                                              Colors.transparent
+                                                          ? _shapeStrokeColor
+                                                          : Colors.transparent;
+                                                    });
+                                                  }
+                                                : null,
                                             onDeleteSelected:
                                                 (_selectedHighlightId != null &&
-                                                        panelTool ==
-                                                            ToolType.select)
-                                                    ? () {
-                                                        if (pdf == null) return;
-                                                        final selectedShape = pdf.highlights
-                                                            .where(
-                                                              (h) =>
-                                                                  h.id ==
-                                                                  _selectedHighlightId,
-                                                            )
-                                                            .firstOrNull;
-                                                        if (selectedShape == null) return;
-                                                        context
-                                                            .read<AppProvider>()
-                                                            .removeHighlight(
-                                                              pdf.id,
-                                                              selectedShape,
-                                                            );
-                                                        _deselectShape();
-                                                      }
-                                                    : null,
+                                                    panelTool ==
+                                                        ToolType.select)
+                                                ? () {
+                                                    if (pdf == null) return;
+                                                    final selectedShape = pdf
+                                                        .highlights
+                                                        .where(
+                                                          (h) =>
+                                                              h.id ==
+                                                              _selectedHighlightId,
+                                                        )
+                                                        .firstOrNull;
+                                                    if (selectedShape == null)
+                                                      return;
+                                                    context
+                                                        .read<AppProvider>()
+                                                        .removeHighlight(
+                                                          pdf.id,
+                                                          selectedShape,
+                                                        );
+                                                    _deselectShape();
+                                                  }
+                                                : null,
                                           ),
                                         ),
                                       ),
@@ -1502,50 +1538,103 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                               _updateCurrentEditingText();
                                             },
                                             // Image controls
-                                            hasAttachedImage: (pdf != null &&
+                                            hasAttachedImage:
+                                                (pdf != null &&
                                                 _editingCommentId != null &&
-                                                pdf.comments.any((c) =>
-                                                    c.id == _editingCommentId &&
-                                                    c.attachedMediaUrl != null &&
-                                                    c.attachedMediaUrl!.isNotEmpty)),
+                                                pdf.comments.any(
+                                                  (c) =>
+                                                      c.id ==
+                                                          _editingCommentId &&
+                                                      c.attachedMediaUrl !=
+                                                          null &&
+                                                      c
+                                                          .attachedMediaUrl!
+                                                          .isNotEmpty,
+                                                )),
                                             onIncreaseImageSize: () {
-                                              if (pdf == null || _editingCommentId == null) return;
-                                              final comment = pdf.comments.firstWhere(
-                                                (c) => c.id == _editingCommentId,
-                                                orElse: () => pdf.comments.first,
+                                              if (pdf == null ||
+                                                  _editingCommentId == null)
+                                                return;
+                                              final comment = pdf.comments
+                                                  .firstWhere(
+                                                    (c) =>
+                                                        c.id ==
+                                                        _editingCommentId,
+                                                    orElse: () =>
+                                                        pdf.comments.first,
+                                                  );
+                                              if (comment.id !=
+                                                  _editingCommentId)
+                                                return;
+                                              final newHeight =
+                                                  ((comment.mediaHeight ??
+                                                              150.0) +
+                                                          20)
+                                                      .clamp(50.0, 800.0);
+                                              app.updateComment(
+                                                pdf.id,
+                                                comment,
+                                                comment.copyWith(
+                                                  mediaHeight: newHeight,
+                                                  attachedMediaUrl:
+                                                      comment.attachedMediaUrl,
+                                                ),
                                               );
-                                              if (comment.id != _editingCommentId) return;
-                                              final newHeight = ((comment.mediaHeight ?? 150.0) + 20).clamp(50.0, 800.0);
-                                              app.updateComment(pdf.id, comment, comment.copyWith(
-                                                mediaHeight: newHeight,
-                                                attachedMediaUrl: comment.attachedMediaUrl,
-                                              ));
                                               if (mounted) setState(() {});
                                             },
                                             onDecreaseImageSize: () {
-                                              if (pdf == null || _editingCommentId == null) return;
-                                              final comment = pdf.comments.firstWhere(
-                                                (c) => c.id == _editingCommentId,
-                                                orElse: () => pdf.comments.first,
+                                              if (pdf == null ||
+                                                  _editingCommentId == null)
+                                                return;
+                                              final comment = pdf.comments
+                                                  .firstWhere(
+                                                    (c) =>
+                                                        c.id ==
+                                                        _editingCommentId,
+                                                    orElse: () =>
+                                                        pdf.comments.first,
+                                                  );
+                                              if (comment.id !=
+                                                  _editingCommentId)
+                                                return;
+                                              final newHeight =
+                                                  ((comment.mediaHeight ??
+                                                              150.0) -
+                                                          20)
+                                                      .clamp(50.0, 800.0);
+                                              app.updateComment(
+                                                pdf.id,
+                                                comment,
+                                                comment.copyWith(
+                                                  mediaHeight: newHeight,
+                                                  attachedMediaUrl:
+                                                      comment.attachedMediaUrl,
+                                                ),
                                               );
-                                              if (comment.id != _editingCommentId) return;
-                                              final newHeight = ((comment.mediaHeight ?? 150.0) - 20).clamp(50.0, 800.0);
-                                              app.updateComment(pdf.id, comment, comment.copyWith(
-                                                mediaHeight: newHeight,
-                                                attachedMediaUrl: comment.attachedMediaUrl,
-                                              ));
                                               if (mounted) setState(() {});
-                                            },  
+                                            },
                                             onRemoveImage: () {
-                                              if (pdf == null || _editingCommentId == null) return;
-                                              final comment = pdf.comments.firstWhere(
-                                                (c) => c.id == _editingCommentId,
-                                                orElse: () => pdf.comments.first,
+                                              if (pdf == null ||
+                                                  _editingCommentId == null)
+                                                return;
+                                              final comment = pdf.comments
+                                                  .firstWhere(
+                                                    (c) =>
+                                                        c.id ==
+                                                        _editingCommentId,
+                                                    orElse: () =>
+                                                        pdf.comments.first,
+                                                  );
+                                              if (comment.id !=
+                                                  _editingCommentId)
+                                                return;
+                                              app.updateComment(
+                                                pdf.id,
+                                                comment,
+                                                comment.copyWith(
+                                                  attachedMediaUrl: null,
+                                                ),
                                               );
-                                              if (comment.id != _editingCommentId) return;
-                                              app.updateComment(pdf.id, comment, comment.copyWith(
-                                                attachedMediaUrl: null,
-                                              ));
                                               if (mounted) setState(() {});
                                             },
                                           ),
@@ -1767,9 +1856,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
           loadingBannerBuilder: (context, bytesDownloaded, totalBytes) =>
               const SizedBox.shrink(),
           enableKeyboardNavigation:
-              showOverlays &&
-              _editingCommentId == null &&
-              !_isSearchVisible,
+              showOverlays && _editingCommentId == null && !_isSearchVisible,
           textSelectionParams: showOverlays
               ? PdfTextSelectionParams(
                   onTextSelectionChange: (selection) {

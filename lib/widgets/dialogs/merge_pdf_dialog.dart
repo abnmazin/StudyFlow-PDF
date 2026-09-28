@@ -94,7 +94,10 @@ class _MergePdfDialogState extends State<MergePdfDialog> {
   @override
   Widget build(BuildContext context) {
     final screen = MediaQuery.sizeOf(context);
-    final dialogWidth = ResponsiveBreakpoints.dialogWidth(screen.width, max: 520);
+    final dialogWidth = ResponsiveBreakpoints.dialogWidth(
+      screen.width,
+      max: 520,
+    );
     final listHeight = (screen.height * 0.45).clamp(220.0, 360.0).toDouble();
 
     return Dialog(

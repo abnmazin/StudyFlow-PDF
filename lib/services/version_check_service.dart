@@ -38,10 +38,12 @@ class VersionCheckService {
     if (minVersion.isEmpty || latestVersion.isEmpty) {
       try {
         final remoteConfig = FirebaseRemoteConfig.instance;
-        await remoteConfig.setConfigSettings(RemoteConfigSettings(
-          fetchTimeout: const Duration(seconds: 10),
-          minimumFetchInterval: const Duration(hours: 1),
-        ));
+        await remoteConfig.setConfigSettings(
+          RemoteConfigSettings(
+            fetchTimeout: const Duration(seconds: 10),
+            minimumFetchInterval: const Duration(hours: 1),
+          ),
+        );
         await remoteConfig.fetchAndActivate();
         if (minVersion.isEmpty) {
           minVersion = remoteConfig.getString('min_version');
@@ -67,11 +69,7 @@ class VersionCheckService {
     );
   }
 
-  static VersionStatus _compare(
-    String current,
-    String min,
-    String latest,
-  ) {
+  static VersionStatus _compare(String current, String min, String latest) {
     if (_isLessThan(current, min)) return VersionStatus.forceUpdate;
     if (_isLessThan(current, latest)) return VersionStatus.softUpdate;
     return VersionStatus.upToDate;

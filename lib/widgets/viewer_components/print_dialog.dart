@@ -43,21 +43,22 @@ class _PrintDialogState extends State<PrintDialog> {
 
   // ── Colours ────────────────────────────────────────────────────────────────
   static const Color _accent = Color(0xFF3B82F6); // blue-500
-    ThemeData get _theme => Theme.of(context);
+  ThemeData get _theme => Theme.of(context);
   bool get _isDark => Theme.of(context).brightness == Brightness.dark;
 
-    Color get _surface =>
+  Color get _surface =>
       _theme.dialogTheme.backgroundColor ?? _theme.colorScheme.surface;
 
-    Color get _cardBg => _theme.cardColor;
+  Color get _cardBg => _theme.cardColor;
 
-    Color get _border =>
+  Color get _border =>
       _theme.dividerColor.withValues(alpha: _isDark ? 0.45 : 0.8);
 
-    Color get _labelColor =>
-      _theme.textTheme.bodyMedium?.color ?? (_isDark ? Colors.white : Colors.black87);
+  Color get _labelColor =>
+      _theme.textTheme.bodyMedium?.color ??
+      (_isDark ? Colors.white : Colors.black87);
 
-    Color get _sectionLabelColor =>
+  Color get _sectionLabelColor =>
       (_theme.textTheme.bodySmall?.color ?? _labelColor).withValues(alpha: 0.9);
 
   // ── Build ──────────────────────────────────────────────────────────────────
@@ -139,8 +140,7 @@ class _PrintDialogState extends State<PrintDialog> {
     );
   }
 
-  Widget _buildDivider() =>
-      Divider(height: 24, thickness: 1, color: _border);
+  Widget _buildDivider() => Divider(height: 24, thickness: 1, color: _border);
 
   Widget _buildSectionLabel(String label) => Padding(
     padding: const EdgeInsets.only(bottom: 10),
@@ -373,10 +373,7 @@ class _PrintDialogState extends State<PrintDialog> {
               ),
             ),
             const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(fontSize: 13, color: _labelColor),
-            ),
+            Text(label, style: TextStyle(fontSize: 13, color: _labelColor)),
           ],
         ),
       ),
@@ -401,10 +398,7 @@ class _PrintDialogState extends State<PrintDialog> {
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
             ),
-            Text(
-              label,
-              style: TextStyle(fontSize: 13, color: _labelColor),
-            ),
+            Text(label, style: TextStyle(fontSize: 13, color: _labelColor)),
           ],
         ),
       ),
@@ -633,10 +627,7 @@ class _PrintDialogState extends State<PrintDialog> {
         children: [
           TextButton(
             onPressed: _isPrinting ? null : () => Navigator.of(context).pop(),
-            child: Text(
-              'إلغاء',
-              style: TextStyle(color: _sectionLabelColor),
-            ),
+            child: Text('إلغاء', style: TextStyle(color: _sectionLabelColor)),
           ),
           const SizedBox(width: 10),
           FilledButton.icon(

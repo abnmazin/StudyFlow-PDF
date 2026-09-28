@@ -126,8 +126,9 @@ class PdfToolsService {
     img.Image processed = decoded;
 
     if (maxImageDimension > 0) {
-      final longestSide =
-          decoded.width > decoded.height ? decoded.width : decoded.height;
+      final longestSide = decoded.width > decoded.height
+          ? decoded.width
+          : decoded.height;
       if (longestSide > maxImageDimension) {
         if (decoded.width >= decoded.height) {
           processed = img.copyResize(

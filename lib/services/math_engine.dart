@@ -43,8 +43,10 @@ class MathResult {
   }
 
   /// Approximate fraction (up to denominator 16)
-  static ({int numerator, int denominator}) approximateFraction(double value,
-      {int maxDenominator = 16}) {
+  static ({int numerator, int denominator}) approximateFraction(
+    double value, {
+    int maxDenominator = 16,
+  }) {
     int bestNum = value.round(), bestDen = 1;
     double bestErr = (value - bestNum).abs();
     for (int d = 1; d <= maxDenominator; d++) {
@@ -165,7 +167,10 @@ class MathEngine {
   }
 
   /// Fallback evaluation using basic math functions
-  MathResult _evaluateFallback(String expression, Map<String, double> variables) {
+  MathResult _evaluateFallback(
+    String expression,
+    Map<String, double> variables,
+  ) {
     try {
       // Replace variables with values
       String expr = expression;
@@ -178,9 +183,15 @@ class MathEngine {
       expr = expr.replaceAll('e', math.e.toString());
 
       // For now, return error - real implementation would need a parser
-      return MathResult(isSuccess: false, error: 'Evaluation requires texpr package');
+      return MathResult(
+        isSuccess: false,
+        error: 'Evaluation requires texpr package',
+      );
     } catch (e) {
-      return MathResult(isSuccess: false, error: 'Fallback evaluation failed: $e');
+      return MathResult(
+        isSuccess: false,
+        error: 'Fallback evaluation failed: $e',
+      );
     }
   }
 
@@ -191,10 +202,10 @@ class MathEngine {
       final texpr = Texpr();
       // differentiate returns an Expression (AST)
       final derivative = texpr.differentiate(expression, variable);
-      
+
       // Try to get a readable representation
       String result = _formatExpressionAst(derivative);
-      
+
       return result;
     } catch (e) {
       return 'Differentiation error: ${e.toString()}';
@@ -204,214 +215,230 @@ class MathEngine {
   /// Format texpr Expression AST to human-readable string
   String _formatExpressionAst(dynamic expr) {
     if (expr == null) return '0';
-    
+
     final exprStr = expr.toString();
-    
+
     // Fallback: use regex-based parsing of common AST patterns
     return _simplifyAstString(exprStr);
   }
 
   /// Simplify AST string representation to readable math
   String _simplifyAstString(String astStr) {
-      // Recursively process nested BinaryOp structures
-      var result = astStr;
-    
-      // Keep processing until no more BinaryOp patterns exist
-      int iterations = 0;
-      while (result.contains('BinaryOp(') && iterations < 20) {
-        iterations++;
-        result = _processBinaryOp(result);
-      }
-    
-      // Clean up remaining artifacts
-      result = result.replaceAllMapped(
-        RegExp(r'NumberLiteral\(([\d.]+)\)'),
-        (match) => match[1]!,
-      );
-      result = result.replaceAllMapped(
-        RegExp(r'Variable\((\w+)\)'),
-        (match) => match[1]!,
-      );
-      result = result.replaceAllMapped(
-        RegExp(r'FunctionCall\((\w+)'),
-        (match) => match[1]!,
-      );
-      result = result.replaceAll(RegExp(r'[\[\]]'), '');
-      result = result.replaceAll(RegExp(r'\.0(?![0-9])'), '');
-      result = _simplifyReadablePowers(result);
+    // Recursively process nested BinaryOp structures
+    var result = astStr;
 
-      // Clean up redundant calculus exponents and multipliers
-      result = result.replaceAllMapped(
-        RegExp(r'\^\(([0-9]+(?:\.[0-9]+)?)\-1\)'),
-        (m) {
-          final val = double.parse(m[1]!) - 1;
-          if (val == 0) return '^0';
-          if (val == 1) return '';
-          return '^${val == val.toInt() ? val.toInt() : val}';
-        },
-      );
-      result = result.replaceAll(RegExp(r'[a-zA-Z]+\^0|\([^\)]+\)\^0'), '1');
-      result = result.replaceAllMapped(
-        RegExp(r'\(([a-zA-Z])\)'),
-        (m) => m[1]!,
-      );
-      result = result.replaceAll(RegExp(r'\*1(?!\d)'), '');
-      result = result.replaceAll(RegExp(r'(?<!\d)1\*'), '');
+    // Keep processing until no more BinaryOp patterns exist
+    int iterations = 0;
+    while (result.contains('BinaryOp(') && iterations < 20) {
+      iterations++;
+      result = _processBinaryOp(result);
+    }
 
-      result = result.trim();
-      // Remove fully wrapping outer parentheses to make it cleaner
-      while (result.startsWith('(') && result.endsWith(')')) {
-        int depth = 0;
-        bool fullyWrapped = true;
-        for (int i = 0; i < result.length - 1; i++) {
-          if (result[i] == '(') depth++;
-          if (result[i] == ')') depth--;
-          if (depth == 0) {
-            fullyWrapped = false;
-            break;
-          }
-        }
-        if (fullyWrapped) {
-          result = result.substring(1, result.length - 1).trim();
-        } else {
+    // Clean up remaining artifacts
+    result = result.replaceAllMapped(
+      RegExp(r'NumberLiteral\(([\d.]+)\)'),
+      (match) => match[1]!,
+    );
+    result = result.replaceAllMapped(
+      RegExp(r'Variable\((\w+)\)'),
+      (match) => match[1]!,
+    );
+    result = result.replaceAllMapped(
+      RegExp(r'FunctionCall\((\w+)'),
+      (match) => match[1]!,
+    );
+    result = result.replaceAll(RegExp(r'[\[\]]'), '');
+    result = result.replaceAll(RegExp(r'\.0(?![0-9])'), '');
+    result = _simplifyReadablePowers(result);
+
+    // Clean up redundant calculus exponents and multipliers
+    result = result.replaceAllMapped(
+      RegExp(r'\^\(([0-9]+(?:\.[0-9]+)?)\-1\)'),
+      (m) {
+        final val = double.parse(m[1]!) - 1;
+        if (val == 0) return '^0';
+        if (val == 1) return '';
+        return '^${val == val.toInt() ? val.toInt() : val}';
+      },
+    );
+    result = result.replaceAll(RegExp(r'[a-zA-Z]+\^0|\([^\)]+\)\^0'), '1');
+    result = result.replaceAllMapped(RegExp(r'\(([a-zA-Z])\)'), (m) => m[1]!);
+    result = result.replaceAll(RegExp(r'\*1(?!\d)'), '');
+    result = result.replaceAll(RegExp(r'(?<!\d)1\*'), '');
+
+    result = result.trim();
+    // Remove fully wrapping outer parentheses to make it cleaner
+    while (result.startsWith('(') && result.endsWith(')')) {
+      int depth = 0;
+      bool fullyWrapped = true;
+      for (int i = 0; i < result.length - 1; i++) {
+        if (result[i] == '(') depth++;
+        if (result[i] == ')') depth--;
+        if (depth == 0) {
+          fullyWrapped = false;
           break;
         }
       }
-
-      return result;
+      if (fullyWrapped) {
+        result = result.substring(1, result.length - 1).trim();
+      } else {
+        break;
+      }
     }
 
-    /// Process one level of BinaryOp: BinaryOp(left, BinaryOperator.op, right) -> left op right
-    String _processBinaryOp(String str) {
-      // Find the first BinaryOp and extract its components
-      final startIdx = str.indexOf('BinaryOp(');
-      if (startIdx == -1) return str;
-    
-      // Find matching closing parenthesis for BinaryOp(
-      int parenDepth = 0;
-      int endIdx = -1;
-    
-      for (int i = startIdx + 9; i < str.length; i++) { // 9 = length of 'BinaryOp('
-        if (str[i] == '(') parenDepth++;
-        if (str[i] == ')') {
-          if (parenDepth == 0) {
-            endIdx = i;
+    return result;
+  }
+
+  /// Process one level of BinaryOp: BinaryOp(left, BinaryOperator.op, right) -> left op right
+  String _processBinaryOp(String str) {
+    // Find the first BinaryOp and extract its components
+    final startIdx = str.indexOf('BinaryOp(');
+    if (startIdx == -1) return str;
+
+    // Find matching closing parenthesis for BinaryOp(
+    int parenDepth = 0;
+    int endIdx = -1;
+
+    for (int i = startIdx + 9; i < str.length; i++) {
+      // 9 = length of 'BinaryOp('
+      if (str[i] == '(') parenDepth++;
+      if (str[i] == ')') {
+        if (parenDepth == 0) {
+          endIdx = i;
+          break;
+        }
+        parenDepth--;
+      }
+    }
+
+    if (endIdx == -1) return str;
+
+    // Extract the content between BinaryOp( and )
+    final content = str.substring(startIdx + 9, endIdx);
+
+    // Split on ', BinaryOperator.' to separate left, operator, right
+    final parts = _splitBinaryOp(content);
+    if (parts.length != 3) return str;
+
+    final left = parts[0].trim();
+    final opName = parts[1].trim();
+    final right = parts[2].trim();
+
+    final op = _operatorSymbol(opName);
+    final replacement = '($left$op$right)';
+
+    return str.substring(0, startIdx) + replacement + str.substring(endIdx + 1);
+  }
+
+  /// Split BinaryOp content respecting nested parentheses
+  /// Returns [left, operator, right]
+  List<String> _splitBinaryOp(String content) {
+    // Find ', BinaryOperator.' which separates the parts
+    int parenDepth = 0;
+    int bracketDepth = 0;
+
+    for (int i = 0; i < content.length - 15; i++) {
+      // 15 = min length of ', BinaryOperator.'
+      if (content[i] == '(') parenDepth++;
+      if (content[i] == ')') parenDepth--;
+      if (content[i] == '[') bracketDepth++;
+      if (content[i] == ']') bracketDepth--;
+
+      if (parenDepth == 0 &&
+          bracketDepth == 0 &&
+          content.startsWith(', BinaryOperator.', i)) {
+        // Found the separator
+        final left = content.substring(0, i);
+
+        // Extract operator name
+        int opStart = i + 17; // 17 = length of ', BinaryOperator.'
+        int opEnd = opStart;
+        while (opEnd < content.length) {
+          final code = content.codeUnitAt(opEnd);
+          final isAlphaNumeric =
+              (code >= 48 && code <= 57) ||
+              (code >= 65 && code <= 90) ||
+              (code >= 97 && code <= 122);
+          if (!isAlphaNumeric && content[opEnd] != '_') {
             break;
           }
-          parenDepth--;
+          opEnd++;
         }
-      }
-    
-      if (endIdx == -1) return str;
-    
-      // Extract the content between BinaryOp( and )
-      final content = str.substring(startIdx + 9, endIdx);
-    
-      // Split on ', BinaryOperator.' to separate left, operator, right
-      final parts = _splitBinaryOp(content);
-      if (parts.length != 3) return str;
-    
-      final left = parts[0].trim();
-      final opName = parts[1].trim();
-      final right = parts[2].trim();
-    
-      final op = _operatorSymbol(opName);
-      final replacement = '($left$op$right)';
-    
-      return str.substring(0, startIdx) + replacement + str.substring(endIdx + 1);
-    }
+        final op = content.substring(opStart, opEnd);
 
-    /// Split BinaryOp content respecting nested parentheses
-    /// Returns [left, operator, right]
-    List<String> _splitBinaryOp(String content) {
-      // Find ', BinaryOperator.' which separates the parts
-      int parenDepth = 0;
-      int bracketDepth = 0;
-    
-      for (int i = 0; i < content.length - 15; i++) { // 15 = min length of ', BinaryOperator.'
-        if (content[i] == '(') parenDepth++;
-        if (content[i] == ')') parenDepth--;
-        if (content[i] == '[') bracketDepth++;
-        if (content[i] == ']') bracketDepth--;
-      
-        if (parenDepth == 0 && bracketDepth == 0 && content.startsWith(', BinaryOperator.', i)) {
-          // Found the separator
-          final left = content.substring(0, i);
-        
-          // Extract operator name
-          int opStart = i + 17; // 17 = length of ', BinaryOperator.'
-          int opEnd = opStart;
-          while (opEnd < content.length) {
-            final code = content.codeUnitAt(opEnd);
-            final isAlphaNumeric = (code >= 48 && code <= 57) ||
-                (code >= 65 && code <= 90) ||
-                (code >= 97 && code <= 122);
-            if (!isAlphaNumeric && content[opEnd] != '_') {
-              break;
-            }
-            opEnd++;
-          }
-          final op = content.substring(opStart, opEnd);
-        
-          // Find the right side: should start with ', '
-          int rightStart = opEnd + 2; // skip ', '
-          final right = content.substring(rightStart);
-        
-          return [left, op, right];
-        }
-      }
-    
-      return [];
-    }
+        // Find the right side: should start with ', '
+        int rightStart = opEnd + 2; // skip ', '
+        final right = content.substring(rightStart);
 
-    /// Map texpr operator names to math symbols
-    String _operatorSymbol(String opName) {
-      switch (opName) {
-        case 'multiply': return '';
-        case 'plus': return '+';
-        case 'subtract': return '-';
-        case 'divide': return '/';
-        case 'power': return '^';
-        default: return opName;
+        return [left, op, right];
       }
     }
 
-    /// Simplify common readable power patterns after AST flattening.
-    String _simplifyReadablePowers(String input) {
-      var result = input;
+    return [];
+  }
 
-      // x^1 -> x, (x)^1 -> x
-      result = result.replaceAllMapped(
-        RegExp(r'\(([^()]+)\)\^1(?![0-9])'),
-        (match) => match[1]!,
-      );
-      result = result.replaceAllMapped(
-        RegExp(r'([A-Za-z0-9]+)\^1(?![0-9])'),
-        (match) => match[1]!,
-      );
-
-      // x^0 -> 1, (x)^0 -> 1
-      result = result.replaceAllMapped(
-        RegExp(r'\(([^()]+)\)\^0(?![0-9])'),
-        (_) => '1',
-      );
-      result = result.replaceAllMapped(
-        RegExp(r'([A-Za-z0-9]+)\^0(?![0-9])'),
-        (_) => '1',
-      );
-
-      return result;
+  /// Map texpr operator names to math symbols
+  String _operatorSymbol(String opName) {
+    switch (opName) {
+      case 'multiply':
+        return '';
+      case 'plus':
+        return '+';
+      case 'subtract':
+        return '-';
+      case 'divide':
+        return '/';
+      case 'power':
+        return '^';
+      default:
+        return opName;
     }
+  }
+
+  /// Simplify common readable power patterns after AST flattening.
+  String _simplifyReadablePowers(String input) {
+    var result = input;
+
+    // x^1 -> x, (x)^1 -> x
+    result = result.replaceAllMapped(
+      RegExp(r'\(([^()]+)\)\^1(?![0-9])'),
+      (match) => match[1]!,
+    );
+    result = result.replaceAllMapped(
+      RegExp(r'([A-Za-z0-9]+)\^1(?![0-9])'),
+      (match) => match[1]!,
+    );
+
+    // x^0 -> 1, (x)^0 -> 1
+    result = result.replaceAllMapped(
+      RegExp(r'\(([^()]+)\)\^0(?![0-9])'),
+      (_) => '1',
+    );
+    result = result.replaceAllMapped(
+      RegExp(r'([A-Za-z0-9]+)\^0(?![0-9])'),
+      (_) => '1',
+    );
+
+    return result;
+  }
 
   /// Integration - symbolic for basic patterns, numerical for definite integrals
-  String integrate(String expression, String variable,
-      [double? lowerBound, double? upperBound]) {
+  String integrate(
+    String expression,
+    String variable, [
+    double? lowerBound,
+    double? upperBound,
+  ]) {
     try {
       expression = _normalizeForTexpr(expression);
       if (lowerBound != null && upperBound != null) {
         // Definite integral (numerical using Simpson's rule)
-        final result =
-            numericalIntegral(expression, variable, lowerBound, upperBound);
+        final result = numericalIntegral(
+          expression,
+          variable,
+          lowerBound,
+          upperBound,
+        );
         if (result.isNaN) return 'Integration failed';
         return MathResult._formatNumber(result);
       } else {
@@ -428,24 +455,26 @@ class MathEngine {
   String _symbolicIntegrate(String expr, String variable) {
     try {
       expr = expr.trim();
-      
+
       // Handle simple power: x^n or x (where n is constant)
-      final powerMatch = RegExp('$variable\\^\\(([^)]+)\\)|$variable\\^([0-9.]+)|^$variable\$').firstMatch(expr);
+      final powerMatch = RegExp(
+        '$variable\\^\\(([^)]+)\\)|$variable\\^([0-9.]+)|^$variable\$',
+      ).firstMatch(expr);
       if (powerMatch != null) {
         final expStr = powerMatch.group(1) ?? powerMatch.group(2) ?? '1';
         final exponent = double.tryParse(expStr) ?? 1.0;
-        
+
         if (exponent == -1) {
           return 'ln($variable) + C';
         }
-        
+
         final newExp = exponent + 1;
         final coeff = 1 / newExp;
         final frac = MathResult.approximateFraction(coeff);
-        final coeffStr = frac.denominator == 1 
+        final coeffStr = frac.denominator == 1
             ? frac.numerator.toString()
             : '${frac.numerator}/${frac.denominator}';
-        
+
         if (newExp == 0) {
           return '1 + C';
         } else if (newExp == 1) {
@@ -456,27 +485,29 @@ class MathEngine {
       }
 
       // Handle coefficient * x^n: e.g., "3*x^2"
-      final coeffPowerMatch = RegExp(r'([0-9.]+)\s*\*?\s*' + variable + r'(?:\^([0-9.]+))?').firstMatch(expr);
+      final coeffPowerMatch = RegExp(
+        r'([0-9.]+)\s*\*?\s*' + variable + r'(?:\^([0-9.]+))?',
+      ).firstMatch(expr);
       if (coeffPowerMatch != null) {
         final coeff = double.parse(coeffPowerMatch.group(1)!);
         final expStr = coeffPowerMatch.group(2) ?? '1';
         final exponent = double.tryParse(expStr) ?? 1.0;
-        
+
         if (exponent == -1) {
           final frac = MathResult.approximateFraction(coeff);
-          final coeffStr = frac.denominator == 1 
+          final coeffStr = frac.denominator == 1
               ? frac.numerator.toString()
               : '${frac.numerator}/${frac.denominator}';
           return '$coeffStr*ln($variable) + C';
         }
-        
+
         final newExp = exponent + 1;
         final newCoeff = coeff / newExp;
         final frac = MathResult.approximateFraction(newCoeff);
-        final coeffStr = frac.denominator == 1 
+        final coeffStr = frac.denominator == 1
             ? frac.numerator.toString()
             : '${frac.numerator}/${frac.denominator}';
-        
+
         if (newExp == 1) {
           return '$coeffStr*$variable + C';
         } else {
@@ -495,7 +526,9 @@ class MathEngine {
       }
 
       // Handle e^x
-      if (expr.contains('e^$variable') || expr == 'e^$variable' || expr == 'e^($variable)') {
+      if (expr.contains('e^$variable') ||
+          expr == 'e^$variable' ||
+          expr == 'e^($variable)') {
         return 'e^$variable + C';
       }
 
@@ -538,7 +571,22 @@ class MathEngine {
     if (equation.contains('y')) return 'y';
 
     // Find first single-letter variable (a-z, excluding known functions)
-    final reserved = {'sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'log', 'ln', 'sqrt', 'abs', 'cbrt', 'e', 'pi', 'i'};
+    final reserved = {
+      'sin',
+      'cos',
+      'tan',
+      'asin',
+      'acos',
+      'atan',
+      'log',
+      'ln',
+      'sqrt',
+      'abs',
+      'cbrt',
+      'e',
+      'pi',
+      'i',
+    };
     for (final match in RegExp(r'\b([a-z])\b').allMatches(equation)) {
       final char = match.group(1)!;
       if (!reserved.contains(char)) return char;
@@ -576,15 +624,12 @@ class MathEngine {
 
           // Numerical derivative
           final h = 1e-7;
-          final fxPlus =
-              evaluate('($lhs) - ($rhs)', {variable: x + h});
-          final fxMinus =
-              evaluate('($lhs) - ($rhs)', {variable: x - h});
+          final fxPlus = evaluate('($lhs) - ($rhs)', {variable: x + h});
+          final fxMinus = evaluate('($lhs) - ($rhs)', {variable: x - h});
 
           if (!fxPlus.isSuccess || !fxMinus.isSuccess) break;
 
-          final dfx =
-              (fxPlus.realValue! - fxMinus.realValue!) / (2 * h);
+          final dfx = (fxPlus.realValue! - fxMinus.realValue!) / (2 * h);
 
           if (dfx.abs() < 1e-15) break;
 
@@ -627,8 +672,12 @@ class MathEngine {
   }
 
   /// Numerical derivative at point using central difference
-  double numericalDerivative(String expression, String variable, double atPoint,
-      {double step = 1e-5}) {
+  double numericalDerivative(
+    String expression,
+    String variable,
+    double atPoint, {
+    double step = 1e-5,
+  }) {
     try {
       final h = step;
 
@@ -646,9 +695,13 @@ class MathEngine {
   }
 
   /// Numerical integration using Simpson's rule
-  double numericalIntegral(String expression, String variable, double from,
-      double to,
-      {int steps = 200}) {
+  double numericalIntegral(
+    String expression,
+    String variable,
+    double from,
+    double to, {
+    int steps = 200,
+  }) {
     try {
       final h = (to - from) / steps;
 

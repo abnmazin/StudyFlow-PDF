@@ -16,8 +16,10 @@ class FileHashService {
     try {
       final bytes = await file.readAsBytes();
       final hash = sha256.convert(bytes);
-      
-      debugPrint('📋 [FileHashService] File size: ${bytes.length} bytes | Hash: ${hash.toString().substring(0, 16)}...');
+
+      debugPrint(
+        '📋 [FileHashService] File size: ${bytes.length} bytes | Hash: ${hash.toString().substring(0, 16)}...',
+      );
       return hash.toString();
     } catch (e) {
       throw Exception('Error calculating file hash: $e');
@@ -33,10 +35,7 @@ class FileHashService {
 
     final basename = p.basename(filePath);
     final fileSize = await file.length();
-    return {
-      'filename': basename,
-      'size': fileSize,
-    };
+    return {'filename': basename, 'size': fileSize};
   }
 
   /// Calculates SHA-256 of file content for integrity verification (optional).
@@ -55,4 +54,3 @@ class FileHashService {
     }
   }
 }
-
