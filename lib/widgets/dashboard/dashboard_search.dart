@@ -17,11 +17,16 @@ import 'dashboard_palette.dart';
 /// Local files only, on purpose. The university library lives in Firestore, and
 /// searching it would mean a network round trip per keystroke on a dashboard
 /// that is otherwise offline-first.
+///
+/// Opened empty-handed the panel is still a list, not an empty box: it offers
+/// the files worth resuming (see [buildSearchSuggestions]) plus the size of the
+/// library it searches, so the field reads as a search before the first key.
 class DashboardSearch extends StatefulWidget {
   const DashboardSearch({
     super.key,
     required this.isWide,
     required this.contentWidth,
+    this.libraryOverride,
   });
 
   final bool isWide;
@@ -30,9 +35,20 @@ class DashboardSearch extends StatefulWidget {
   /// is the one element allowed to shrink and the panel follows it.
   final double contentWidth;
 
+  /// The local library, injected. Production leaves it null and the panel reads
+  /// `AppProvider`; a widget test cannot, because an `AppProvider` opens
+  /// `SyncService`, Isar and Firebase in its constructor, and the two things
+  /// worth locking here — that the panel hangs off the field's *bottom* edge and
+  /// that it shows a list rather than an empty box — are its rendered behaviour.
+  final SearchLibrary Function()? libraryOverride;
+
   @override
   State<DashboardSearch> createState() => _DashboardSearchState();
 }
+
+/// The slice of the app state the search reads, in one read rather than four.
+typedef SearchLibrary =
+    ({List<ClassItem> classes, String? activeClassId, String? activePdfId});
 
 class _DashboardSearchState extends State<DashboardSearch> {
   final TextEditingController _controller = TextEditingController();
@@ -137,22 +153,53 @@ class _DashboardSearchState extends State<DashboardSearch> {
     _focusNode.requestFocus();
   }
 
-  List<_SearchHit> _search(String query) {
+  /// The app state this panel reads, or the injected stand-in for it.
+  ///
+  /// Read with `read`, not `watch`, exactly like the rest of the widget: watching
+  /// the provider would rebuild the field on every unrelated notify — a page
+  /// turn writes reading progress through it — and both lists are a snapshot of
+  /// the frame the panel opened on anyway.
+  SearchLibrary _library() {
+    final override = widget.libraryOverride;
+    if (override != null) return override();
+    final app = context.read<AppProvider>();
+    return (
+      classes: app.classes,
+      activeClassId: app.activeClassId,
+      activePdfId: app.activePdfId,
+    );
+  }
+
+  static List<SearchSuggestion> _search(
+    String query,
+    List<ClassItem> classes,
+  ) {
     final needle = query.trim().toLowerCase();
     if (needle.isEmpty) return const [];
-    final classes = context.read<AppProvider>().classes;
-    final hits = <_SearchHit>[];
+    final hits = <SearchSuggestion>[];
     for (final cls in classes) {
       for (final pdf in cls.pdfs) {
         if (pdf.name.toLowerCase().contains(needle)) {
-          hits.add(_SearchHit(classId: cls.id, className: cls.name, pdf: pdf));
+          hits.add(
+            SearchSuggestion(classId: cls.id, className: cls.name, pdf: pdf),
+          );
         }
       }
     }
     return hits;
   }
 
-  void _openResult(_SearchHit hit) {
+  /// Every local file. The panel's footer quotes the library's size, which the
+  /// capped suggestion list cannot report on its own.
+  static int _totalFiles(List<ClassItem> classes) {
+    var total = 0;
+    for (final cls in classes) {
+      total += cls.pdfs.length;
+    }
+    return total;
+  }
+
+  void _openResult(SearchSuggestion hit) {
     final app = context.read<AppProvider>();
     // Unfocusing first: the focus listener hides the panel, so the list is gone
     // before the class and PDF ids move underneath it.
@@ -166,8 +213,22 @@ class _DashboardSearchState extends State<DashboardSearch> {
   @override
   Widget build(BuildContext context) {
     final geometry = _geometry();
-    final matches = _search(_query);
+    final library = _library();
+    // One list or the other, decided here rather than inside the panel: an
+    // empty query means the suggestions, and typing means the matches.
     final hasQuery = _query.trim().isNotEmpty;
+    final matches = hasQuery
+        ? _search(_query, library.classes)
+        : const <SearchSuggestion>[];
+    final suggestions = hasQuery
+        ? const <SearchSuggestion>[]
+        : buildSearchSuggestions(
+            library.classes,
+            activeClassId: library.activeClassId,
+            activePdfId: library.activePdfId,
+            max: _maxResults,
+          );
+    final totalFiles = hasQuery ? 0 : _totalFiles(library.classes);
     return OverlayPortal(
       controller: _portal,
       // Floats over the page instead of pushing the sections below it down, and
@@ -175,10 +236,17 @@ class _DashboardSearchState extends State<DashboardSearch> {
       overlayChildBuilder: (context) => CompositedTransformFollower(
         link: _link,
         showWhenUnlinked: false,
-        // The follower takes physical `Alignment`, and matching the same edge
-        // on both sides is what keeps the panel inside the window: it grows
+        // The follower takes physical `Alignment`. Horizontally the two sides
+        // match, which is what keeps the panel inside the window: it grows
         // towards whichever side the field has room on, sized to that room.
-        targetAnchor: geometry.toRight ? Alignment.topLeft : Alignment.topRight,
+        // Vertically they deliberately do not: the follower keeps the panel's
+        // *top* while the target is the field's *bottom*, so the panel opens
+        // under the field instead of 8px below the field's top — where it used
+        // to cover the field itself and the rest of the bar's controls. It also
+        // agrees with `_geometry`, which measures the room from `rect.bottom`.
+        targetAnchor: geometry.toRight
+            ? Alignment.bottomLeft
+            : Alignment.bottomRight,
         followerAnchor: geometry.toRight
             ? Alignment.topLeft
             : Alignment.topRight,
@@ -188,8 +256,8 @@ class _DashboardSearchState extends State<DashboardSearch> {
         // constraints straight to its child, so a `maxWidth` below could never
         // shrink anything — the panel came out full-screen. `Align` is what
         // loosens them: it fills the window itself, so the anchors above still
-        // land the panel on the field, and its empty half is not hit-tested, so
-        // a tap outside the panel still reaches the field's `TapRegion`.
+        // land the panel under the field, and its empty half is not hit-tested,
+        // so a tap outside the panel still reaches the field's `TapRegion`.
         child: Align(
           alignment: geometry.toRight ? Alignment.topLeft : Alignment.topRight,
           child: TapRegion(
@@ -208,8 +276,10 @@ class _DashboardSearchState extends State<DashboardSearch> {
               ),
               child: _SearchResults(
                 matches: matches,
+                suggestions: suggestions,
+                query: _query,
+                totalFiles: totalFiles,
                 maxResults: _maxResults,
-                showEmpty: hasQuery,
                 onPick: _openResult,
               ),
             ),
@@ -289,33 +359,159 @@ class _DashboardSearchState extends State<DashboardSearch> {
   }
 }
 
-class _SearchHit {
-  const _SearchHit({
+/// One row of the panel: a file, the folder it lives in, and — for a row from
+/// the pre-typing list — the reading position that earned it its place.
+class SearchSuggestion {
+  const SearchSuggestion({
     required this.classId,
     required this.className,
     required this.pdf,
+    this.note,
   });
 
   final String classId;
   final String className;
   final PdfItem pdf;
+
+  /// A short status line for the suggestion list ('آخر ملف فتحته', 'صفحة 12'),
+  /// printed under the name. Null on a plain query match, which stays one line.
+  final String? note;
+}
+
+/// The label on the row the reader would resume, and on the ones they never
+/// started. Literals because the row prints them and nothing else reads them.
+const String _resumeNote = 'آخر ملف فتحته';
+const String _noProgressNote = 'لا تقدّم محفوظ';
+
+/// Whether the reader has a place saved in this file.
+///
+/// `lastPage` counts from 1 and Isar defaults it to 1, so "has a place" means
+/// "past the first page": a plain `!= null` would mark every hydrated file as
+/// progress and flatten the ranking into the sidebar's own order.
+bool _hasPlace(PdfItem pdf) {
+  final page = pdf.lastPage;
+  return page != null && page > 1;
+}
+
+/// The list shown before the user types anything.
+///
+/// Ranked the way a reader resumes work rather than the way the sidebar is
+/// ordered: where they are, then the files with a place saved in them, then the
+/// rest of the active folder, then everything else. Top-level and pure on
+/// purpose: the widget's own lists come from `context.read<AppProvider>()`,
+/// which a widget test cannot seed, so the ranking is kept callable on its own.
+List<SearchSuggestion> buildSearchSuggestions(
+  List<ClassItem> classes, {
+  String? activeClassId,
+  String? activePdfId,
+  int max = 8,
+}) {
+  final ranked = <SearchSuggestion>[];
+  final taken = <String>{};
+
+  void add(ClassItem cls, PdfItem pdf, String? note) {
+    // `taken` as well as the cap: the same file can sit in two folders, and two
+    // identical rows a reader cannot tell apart is worse than one.
+    if (ranked.length >= max || !taken.add(pdf.id)) return;
+    ranked.add(
+      SearchSuggestion(
+        classId: cls.id,
+        className: cls.name,
+        pdf: pdf,
+        note: note,
+      ),
+    );
+  }
+
+  // 1. Where the reader is: the open file, or the active folder's memory of the
+  //    last file opened in it when nothing is open.
+  final active = _classById(classes, activeClassId);
+  final resumeId = activePdfId ?? active?.lastActivePdfId;
+  if (resumeId != null) {
+    for (final cls in classes) {
+      for (final pdf in cls.pdfs) {
+        if (pdf.id == resumeId) add(cls, pdf, _resumeNote);
+      }
+    }
+  }
+
+  // 2. Every file with a place saved in it, in the sidebar's own order.
+  for (final cls in classes) {
+    for (final pdf in cls.pdfs) {
+      if (ranked.length >= max) break;
+      if (_hasPlace(pdf)) add(cls, pdf, 'صفحة ${pdf.lastPage}');
+    }
+  }
+
+  // 3. What is left: the active folder's files first, then the other folders'
+  //    — the sidebar's order again, for a reader who has started nothing yet.
+  if (active != null) {
+    for (final pdf in active.pdfs) {
+      if (ranked.length >= max) break;
+      add(active, pdf, _noProgressNote);
+    }
+  }
+  for (final cls in classes) {
+    for (final pdf in cls.pdfs) {
+      if (ranked.length >= max) break;
+      add(cls, pdf, _noProgressNote);
+    }
+  }
+
+  return ranked;
+}
+
+ClassItem? _classById(List<ClassItem> classes, String? id) {
+  if (id == null) return null;
+  for (final cls in classes) {
+    if (cls.id == id) return cls;
+  }
+  return null;
+}
+
+/// The word above the pre-typing list: "continue" is only promised when a row
+/// can actually keep it.
+String _heading(List<SearchSuggestion> rows) =>
+    rows.any((row) => _hasPlace(row.pdf)) ? 'تابع من حيث توقفت' : 'ملفاتك';
+
+/// Arabic counts a file total several ways, and "1 ملفات" is the kind of wrong
+/// a reader notices. Only the four shapes this footer can produce are handled.
+String _filesCount(int count) {
+  if (count == 1) return 'ملف واحد';
+  if (count == 2) return 'ملفين';
+  if (count <= 10) return '$count ملفات';
+  return '$count ملفاً';
 }
 
 class _SearchResults extends StatelessWidget {
   const _SearchResults({
     required this.matches,
+    required this.suggestions,
+    required this.query,
+    required this.totalFiles,
     required this.maxResults,
-    required this.showEmpty,
     required this.onPick,
   });
 
-  final List<_SearchHit> matches;
+  /// The query's hits — empty when there is no query.
+  final List<SearchSuggestion> matches;
+
+  /// The pre-typing list — empty once the user has typed something.
+  final List<SearchSuggestion> suggestions;
+
+  final String query;
+
+  /// Every local file, which the footer quotes: the list itself is capped, so
+  /// it cannot report the size of the library it is a window onto.
+  final int totalFiles;
+
   final int maxResults;
-  final bool showEmpty;
-  final ValueChanged<_SearchHit> onPick;
+  final ValueChanged<SearchSuggestion> onPick;
 
   @override
   Widget build(BuildContext context) {
+    final typed = query.trim().isNotEmpty;
+    final rows = typed ? matches : suggestions;
     return Material(
       color: Colors.transparent,
       // No width cap of its own: the caller measures the room beside the field
@@ -327,32 +523,117 @@ class _SearchResults extends StatelessWidget {
           border: Border.all(color: DashboardColors.border),
           boxShadow: DashboardColors.panelShadow,
         ),
-        child: showEmpty && matches.isEmpty
-            ? const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                child: Text(
-                  'لا نتائج',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: DashboardColors.subtitle,
-                  ),
-                ),
-              )
+        // Two empty states, and neither is a box with nothing in it: a query
+        // that matched nothing, and a user who has no local files yet.
+        child: rows.isEmpty
+            ? _PanelNote(text: typed ? 'لا نتائج' : 'لا توجد ملفات محلية بعد')
             : ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                // Scrollable and shrink-wrapped: eight results must not
-                // overflow a short window, and one result must not leave a
-                // tall empty box behind it.
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  padding: EdgeInsets.zero,
-                  itemCount: min(matches.length, maxResults),
-                  itemBuilder: (context, index) {
-                    final hit = matches[index];
-                    return _ResultTile(hit: hit, onTap: () => onPick(hit));
-                  },
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  // The heading only heads a list the user did not ask for: a
+                  // query's own results need no word above them.
+                  children: [
+                    if (!typed) _PanelHeading(text: _heading(rows)),
+                    // Scrollable and shrink-wrapped: eight rows must not
+                    // overflow a short window, and one row must not leave a
+                    // tall empty box behind it. `Flexible` is what bounds the
+                    // list to the room the heading and the footer leave.
+                    Flexible(
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        padding: EdgeInsets.zero,
+                        itemCount: min(rows.length, maxResults),
+                        itemBuilder: (context, index) {
+                          final hit = rows[index];
+                          return _ResultTile(
+                            hit: hit,
+                            onTap: () => onPick(hit),
+                          );
+                        },
+                      ),
+                    ),
+                    if (!typed)
+                      _PanelFooter(
+                        text:
+                            'اكتب اسم الملف للبحث في ${_filesCount(totalFiles)}',
+                      ),
+                  ],
                 ),
               ),
+      ),
+    );
+  }
+}
+
+/// One empty state, sized to its own words rather than to the panel.
+class _PanelNote extends StatelessWidget {
+  const _PanelNote({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Text(
+        text,
+        style: const TextStyle(fontSize: 13, color: DashboardColors.subtitle),
+      ),
+    );
+  }
+}
+
+/// The word above the pre-typing list.
+class _PanelHeading extends StatelessWidget {
+  const _PanelHeading({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+      child: Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: Text(
+          text,
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: DashboardColors.subtitle,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The hint under the list. Dividers, not padding, because it is a footnote to
+/// the list rather than one more row of it.
+class _PanelFooter extends StatelessWidget {
+  const _PanelFooter({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: DashboardColors.divider)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+        child: Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: Text(
+            text,
+            style: const TextStyle(
+              fontSize: 11,
+              color: DashboardColors.subtitle,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -361,11 +642,12 @@ class _SearchResults extends StatelessWidget {
 class _ResultTile extends StatelessWidget {
   const _ResultTile({required this.hit, required this.onTap});
 
-  final _SearchHit hit;
+  final SearchSuggestion hit;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final note = hit.note;
     return InkWell(
       onTap: onTap,
       child: Padding(
@@ -379,29 +661,57 @@ class _ResultTile extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(
-                hit.pdf.name,
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: DashboardColors.title,
-                ),
-                overflow: TextOverflow.ellipsis,
+              child: Column(
+                // Start, not centre: the two lines share an edge, and the
+                // second one is shorter than the first on purpose.
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    hit.pdf.name,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: DashboardColors.title,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  // The folder and the reading position, together: the folder
+                  // alone was already the least useful part of the row, and a
+                  // suggestion is only worth its place because of the page.
+                  if (note != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      '${hit.className} · $note',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: DashboardColors.subtitle,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ],
               ),
             ),
-            const SizedBox(width: 8),
-            // Flexible, not fixed: an unbounded folder name would otherwise
-            // widen the row past the panel's cap and overflow it.
-            Flexible(
-              child: Text(
-                hit.className,
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: DashboardColors.subtitle,
+            // A query match keeps the folder on the same line instead, under
+            // the name it belongs to. Flexible, not fixed: an unbounded folder
+            // name would otherwise widen the row past the panel's cap and
+            // overflow it.
+            if (note == null) ...[
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  hit.className,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: DashboardColors.subtitle,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
               ),
-            ),
+            ],
           ],
         ),
       ),

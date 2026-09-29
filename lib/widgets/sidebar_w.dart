@@ -7,6 +7,13 @@ import '../utils/responsive_utils.dart';
 import 'viewer_components/college_collection_widget.dart';
 import 'university_cloud_library_w.dart';
 
+/// Which half of the sidebar explorer is on screen.
+///
+/// The university library and the local folders used to be two stacked
+/// collapsible sections; they are one row of two tabs now, so exactly one of
+/// the two lists is visible at a time.
+enum _ExplorerTab { university, local }
+
 class Sidebar extends StatefulWidget {
   const Sidebar({super.key});
 
@@ -16,8 +23,11 @@ class Sidebar extends StatefulWidget {
 
 class _SidebarState extends State<Sidebar> {
   bool _isAdding = false;
-  bool _showUniversityFolders = true;
-  bool _showLocalFiles = true;
+
+  /// Tap behaviour is plain tabs: tapping the selected word does nothing, so
+  /// the sidebar always has one list showing.
+  _ExplorerTab _tab = _ExplorerTab.university;
+
   final TextEditingController _classController = TextEditingController();
 
   void _handleAddClass(BuildContext context) {
@@ -129,6 +139,11 @@ class _SidebarState extends State<Sidebar> {
         final textMuted = isDarkMode
             ? const Color(0xFF94A3B8)
             : scheme.onSurfaceVariant;
+
+        // The selected explorer tab is white, which is what the dark sidebar
+        // has room for. On the light surface white would vanish, so there it
+        // falls back to the primary text colour.
+        final selectedTabColor = isDarkMode ? Colors.white : scheme.onSurface;
 
         return Container(
           width: sidebarWidth,
@@ -283,41 +298,59 @@ class _SidebarState extends State<Sidebar> {
                       ),
                     ),
 
-                    // "University Library" Header — click to hide/show the folders
-                    InkWell(
-                      onTap: () => setState(
-                        () => _showUniversityFolders = !_showUniversityFolders,
-                      ),
-                      borderRadius: BorderRadius.circular(4),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    // Explorer tabs — the university library and the local
+                    // folders. One row of two words instead of two stacked
+                    // sections, so only the selected list is on screen.
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
                           children: [
-                            const Text(
-                              'المكتبة الجامعية',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF94A3B8), // slate-400
-                                letterSpacing: 1.0,
-                              ),
+                            _buildExplorerTab(
+                              label: 'المكتبة الجامعية',
+                              isSelected: _tab == _ExplorerTab.university,
+                              selectedColor: selectedTabColor,
+                              mutedColor: textMuted,
+                              onTap: () => setState(() {
+                                // Leaving the local tab hides its input, and a
+                                // focused offstage field keeps the mobile
+                                // keyboard open over a list that no longer
+                                // shows it.
+                                FocusManager.instance.primaryFocus?.unfocus();
+                                _tab = _ExplorerTab.university;
+                              }),
                             ),
-                            Icon(
-                              _showUniversityFolders
-                                  ? LucideIcons.chevronUp
-                                  : LucideIcons.chevronDown,
-                              size: 14,
-                              color: const Color(0xFF94A3B8),
+                            const SizedBox(width: 18),
+                            _buildExplorerTab(
+                              label: 'الملفات المحلية',
+                              isSelected: _tab == _ExplorerTab.local,
+                              selectedColor: selectedTabColor,
+                              mutedColor: textMuted,
+                              onTap: () =>
+                                  setState(() => _tab = _ExplorerTab.local),
                             ),
                           ],
                         ),
-                      ),
+                        // Adding a folder is a local-files action, so the
+                        // button only appears on the local tab.
+                        if (_tab == _ExplorerTab.local)
+                          IconButton(
+                            onPressed: () => setState(() => _isAdding = true),
+                            icon: const Icon(
+                              LucideIcons.plus,
+                              size: 16,
+                              color: Color(0xFF94A3B8),
+                            ),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            tooltip: 'إضافة ملف محلي',
+                          ),
+                      ],
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12),
 
                     Visibility(
-                      visible: _showUniversityFolders,
+                      visible: _tab == _ExplorerTab.university,
                       maintainState: true,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -347,64 +380,11 @@ class _SidebarState extends State<Sidebar> {
                       ),
                     ),
 
-                    // "Local Files" Header
-                    const SizedBox(height: 24),
-                    // "Local Files" Header — mirrors the collapsible university
-                    // section above so both halves of the explorer can be
-                    // folded away independently.
-                    InkWell(
-                      onTap: () =>
-                          setState(() => _showLocalFiles = !_showLocalFiles),
-                      borderRadius: BorderRadius.circular(4),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              'الملفات المحلية',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF94A3B8), // slate-400
-                                letterSpacing: 1.0,
-                              ),
-                            ),
-                            Row(
-                              children: [
-                                IconButton(
-                                  onPressed: () =>
-                                      setState(() => _isAdding = true),
-                                  icon: const Icon(
-                                    LucideIcons.plus,
-                                    size: 16,
-                                    color: Color(0xFF94A3B8),
-                                  ),
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
-                                  tooltip: 'إضافة ملف محلي',
-                                ),
-                                const SizedBox(width: 8),
-                                Icon(
-                                  _showLocalFiles
-                                      ? LucideIcons.chevronUp
-                                      : LucideIcons.chevronDown,
-                                  size: 14,
-                                  color: const Color(0xFF94A3B8),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
                     Visibility(
-                      visible: _showLocalFiles,
+                      visible: _tab == _ExplorerTab.local,
                       maintainState: true,
                       child: Column(
                         children: [
-                          const SizedBox(height: 16),
-
                           // Add Class Input
                           if (_isAdding)
                             Padding(
@@ -494,6 +474,21 @@ class _SidebarState extends State<Sidebar> {
                               entry.value,
                               app,
                               entry.key,
+                            ),
+
+                          // The local tree had no empty state while it sat under
+                          // the library; as a tab it needs one, or an empty list
+                          // reads as a broken panel.
+                          if (classes.isEmpty)
+                            Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Text(
+                                'لا توجد أقسام بعد',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  color: textMuted,
+                                ),
+                              ),
                             ),
                         ],
                       ),
@@ -1005,6 +1000,35 @@ class _SidebarState extends State<Sidebar> {
           style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8)),
         ),
       ],
+    );
+  }
+
+  /// One word of the explorer's tab row.
+  ///
+  /// Both words share font and size, which leaves colour as the only thing
+  /// telling the selected tab from the other one, so the caller passes both
+  /// colours in (they depend on the theme, which this method has no access to).
+  Widget _buildExplorerTab({
+    required String label,
+    required bool isSelected,
+    required Color selectedColor,
+    required Color mutedColor,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(4),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: isSelected ? selectedColor : mutedColor,
+          ),
+        ),
+      ),
     );
   }
 

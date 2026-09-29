@@ -203,8 +203,8 @@ class NotificationBellState extends State<NotificationBell> {
     final roomToLeft = rect.right - margin;
     final toRight = roomToRight >= roomToLeft;
     final room = toRight ? roomToRight : roomToLeft;
-    // Downward, not centred on the bell: the panel is a tall list that grows
-    // from just under the navbar, and only the space below the bell limits it.
+    // Downward, not centred on the bell: the panel is a tall list that starts
+    // just under the bell, and only the space below it limits the height.
     final below = screen.height - margin - rect.bottom - gap;
 
     return (
@@ -226,9 +226,16 @@ class NotificationBellState extends State<NotificationBell> {
       overlayChildBuilder: (context) => CompositedTransformFollower(
         link: _link,
         showWhenUnlinked: false,
-        // Matching the same physical edge on both sides keeps the panel inside
-        // the window: it grows towards whichever side the bell has room on.
-        targetAnchor: geometry.toRight ? Alignment.topLeft : Alignment.topRight,
+        // Horizontally the two sides match, which keeps the panel inside the
+        // window: it grows towards whichever side the bell has room on.
+        // Vertically they deliberately do not: the follower keeps the panel's
+        // *top* while the target is the bell's *bottom*, so the panel opens
+        // under the bell instead of 12px below the bell's top — where it used to
+        // cover the bell and the search field beside it. It also agrees with
+        // `_geometry`, which measures the room from `rect.bottom`.
+        targetAnchor: geometry.toRight
+            ? Alignment.bottomLeft
+            : Alignment.bottomRight,
         followerAnchor: geometry.toRight
             ? Alignment.topLeft
             : Alignment.topRight,
@@ -238,8 +245,8 @@ class NotificationBellState extends State<NotificationBell> {
         // constraints straight to its child, so a `maxWidth` below could never
         // shrink anything — the panel came out full-screen. `Align` is what
         // loosens them: it fills the window itself, so the anchors above still
-        // land the panel on the bell, and its empty half is not hit-tested, so a
-        // tap outside the panel still reaches the bell's `TapRegion`.
+        // land the panel under the bell, and its empty half is not hit-tested,
+        // so a tap outside the panel still reaches the bell's `TapRegion`.
         child: Align(
           alignment: geometry.toRight ? Alignment.topLeft : Alignment.topRight,
           child: TapRegion(
