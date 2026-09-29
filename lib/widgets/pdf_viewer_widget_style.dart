@@ -85,6 +85,9 @@ extension _PDFViewerWidgetStateStyle on _PDFViewerWidgetState {
     _activeResizeHandleIndex = handleIndex;
     _isMovingSelectedShape =
         handleIndex == null && visualBounds.contains(docPos);
+    // New value per gesture, so the frames that follow fold into one undo step
+    // and the next drag starts a fresh one.
+    _shapeTransformGesture++;
   }
 
   void _updateShapeTransform(Offset docPos, PdfItem pdf, int pageNumber) {
@@ -124,7 +127,15 @@ extension _PDFViewerWidgetStateStyle on _PDFViewerWidgetState {
       nextBounds,
     );
     final updatedShape = selected.copyWith(path: updatedPath);
-    app.updateHighlight(activePdf.id, selected, updatedShape);
+    app.updateHighlight(
+      activePdf.id,
+      selected,
+      updatedShape,
+      // Identifies this gesture rather than merely "a gesture is open": the
+      // frames that follow fold into one undo step, and a later drag on the same
+      // shape opens its own entry instead of merging with this one.
+      gesture: _shapeTransformGesture,
+    );
   }
 
   void _endShapeTransform() {

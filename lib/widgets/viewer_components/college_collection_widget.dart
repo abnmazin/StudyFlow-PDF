@@ -1101,11 +1101,7 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
                     // theme) and the grey the rest already uses is untouched.
                     color: isCached ? widget.textPrimary : widget.textMuted,
                     fontWeight: isCached ? FontWeight.w600 : FontWeight.w400,
-                    shadows: !(isCached && isDark)
-                        ? null
-                        : const [
-                            Shadow(color: Color(0x66FFFFFF), blurRadius: 8),
-                          ],
+                    
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -1135,13 +1131,7 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
                       decoration: BoxDecoration(
                         color: const Color(0xFF1E293B).withOpacity(0.9),
                         borderRadius: BorderRadius.circular(4),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.3),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
+        
                       ),
                       child: Row(
                         children: [

@@ -4,6 +4,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:studyflow_pdf/models/isar_models.dart';
 import 'package:studyflow_pdf/models/lecture_slot.dart';
+import 'package:studyflow_pdf/services/reading_stats_service.dart';
 import 'package:studyflow_pdf/widgets/dashboard/dashboard_palette.dart';
 import 'package:studyflow_pdf/widgets/dashboard/dashboard_quick_actions.dart';
 import 'package:studyflow_pdf/widgets/dashboard/dashboard_reading_stats.dart';
@@ -86,7 +87,7 @@ void main() {
     expect(find.byKey(const ValueKey('lecture-chip')), findsNothing);
   });
 
-  testWidgets('a long title cannot push the chip off a 200px card', (
+  testWidgets('a long title cannot push the time off a 200px card', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(narrow);
@@ -331,6 +332,84 @@ void main() {
     );
     expect(card, findsNWidgets(4));
   });
+
+  testWidgets('the streak figure keeps the number and its unit apart', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1400, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Directionality(
+          textDirection: TextDirection.rtl,
+          child: Scaffold(
+            body: SizedBox(
+              width: 1200,
+              child: DashboardReadingStats(isWide: true, days: _activeWeek()),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final valueFinder = find.byKey(const ValueKey('streak-value'));
+    final unitFinder = find.byKey(const ValueKey('streak-unit'));
+    expect(valueFinder, findsOneWidget);
+    expect(unitFinder, findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    // The number carries the number and nothing else. This is the assertion that
+    // holds the fix: while the pair was one string, the separation lived in a
+    // space glyph, and a space at a script boundary is the one character there
+    // with no direction of its own — how wide it reads is the font's decision.
+    // Splitting the runs means no font can close the gap.
+    expect(
+      tester.widget<Text>(valueFinder).data,
+      matches(RegExp(r'^\d+$')),
+      reason: 'the value must be digits only, with the unit in its own run',
+    );
+    expect(
+      tester.widget<Text>(unitFinder).data,
+      anyOf('يوم', 'أيام'),
+      reason: 'the unit must be its own run, not glued onto the digits',
+    );
+
+    // A real gap, measured. The number is on the right in RTL, so the distance
+    // is between the number's left edge and the unit's right edge.
+    final valueRect = tester.getRect(valueFinder);
+    final unitRect = tester.getRect(unitFinder);
+    expect(
+      valueRect.left - unitRect.right,
+      greaterThanOrEqualTo(7.5),
+      reason: 'the gap is carried by a box, so it cannot render narrower',
+    );
+
+    // And the two read as one line rather than as two labels at different
+    // heights: the digits sit on the word's baseline.
+    expect(
+      (baselineOf(tester, valueFinder) - baselineOf(tester, unitFinder)).abs(),
+      lessThan(0.5),
+    );
+  });
+}
+
+/// Seven consecutive days ending today, each above the streak threshold.
+///
+/// Relative to `DateTime.now()` on purpose: the streak walks back from today, so
+/// a hard-coded week would only produce a figure on one calendar day of the year.
+List<ReadingDay> _activeWeek() {
+  final today = DateTime.now();
+  return [
+    for (var i = 0; i < 7; i++)
+      ReadingDay()
+        ..dateKey = ReadingStatsService.dateKeyOf(
+          DateTime(today.year, today.month, today.day - i),
+        )
+        ..focusSeconds = 1200
+        ..pagesAdvanced = 10,
+  ];
 }
 
 /// The fill of the `BoxDecoration` on a tile's own `Container`.
@@ -354,8 +433,8 @@ Color _fillOf(WidgetTester tester, Finder tile) {
 /// that exact style.
 ///
 /// Each widget is measured against its own style, which matters because the
-/// title is 14px and the chip's time is 12px: a shared offset would make the
-/// two differ by exactly the amount under test.
+/// title is 14px and the time is 12px: a shared offset would make the two differ
+/// by exactly the amount under test.
 double baselineOf(WidgetTester tester, Finder finder) {
   final paragraph = tester.renderObject<RenderParagraph>(finder);
   final text = tester.widget<Text>(finder);

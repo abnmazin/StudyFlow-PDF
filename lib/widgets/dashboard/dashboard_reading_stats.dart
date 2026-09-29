@@ -349,6 +349,22 @@ class _StreakCard extends StatelessWidget {
 
   final _StreakCardData data;
 
+  /// The figure's style, shared by the number and its unit so the two are one
+  /// line of text rather than two labels side by side.
+  ///
+  /// `height: 1.0` is doing the same job here as in `_StatCard`: without it both
+  /// runs inherit the theme's 1.4 leading, and the three rows of this card stop
+  /// fitting inside its fixed height.
+  static const _figureStyle = TextStyle(
+    fontSize: 26,
+    fontWeight: FontWeight.w800,
+    color: DashboardColors.title,
+    height: 1.0,
+  );
+
+  /// The space between the number and its unit.
+  static const double _unitGap = 8;
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -382,16 +398,37 @@ class _StreakCard extends StatelessWidget {
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: AlignmentDirectional.centerStart,
-            child: Text(
-              '${data.streak} ${data.streak == 1 ? 'يوم' : 'أيام'}',
-              style: const TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.w800,
-                color: DashboardColors.title,
-                // As above: without this the figure inherits the theme's 1.4
-                // leading and the three rows of this card stop fitting in it.
-                height: 1.0,
-              ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              // One baseline for the two runs. The digits and the Arabic word can
+              // be drawn by two different fonts, and those two do not share an
+              // ascent — centring them instead would leave the number floating.
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  '${data.streak}',
+                  key: const ValueKey('streak-value'),
+                  style: _figureStyle,
+                ),
+                // The gap is a box, not a space written into the string. A space
+                // between the two runs is the one character at that seam with no
+                // direction of its own, and how wide it reads depends on the font
+                // that ends up covering it; eight logical pixels are the same in
+                // every font, and are the width the rest of this card already puts
+                // between an icon and its label.
+                //
+                // `Padding` rather than a bare `SizedBox` so the gap is carried by
+                // a box that has a child to take a baseline from.
+                Padding(
+                  padding: const EdgeInsetsDirectional.only(start: _unitGap),
+                  child: Text(
+                    data.streak == 1 ? 'يوم' : 'أيام',
+                    key: const ValueKey('streak-unit'),
+                    style: _figureStyle,
+                  ),
+                ),
+              ],
             ),
           ),
           const Spacer(),

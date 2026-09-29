@@ -187,6 +187,12 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   bool _sessionLocked = false;
   bool _sessionJoinLocked = false;
   List<ActionRecord> _actionHistory = [];
+
+  /// The gesture whose history entry is currently on top, or null when the last
+  /// recorded edit was discrete. Set by [recordUpdate]; it is what lets the
+  /// frames of one drag fold into a single entry without folding into an
+  /// unrelated edit that happened to precede them.
+  int? _coalescingGesture;
   List<ActionRecord> _redoHistory = [];
   StreamSubscription? _kickSub;
   Timer? _userMonitorTimer;
@@ -223,8 +229,12 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   void markPdfDirty(String pdfId) {
     if (pdfId.isEmpty) return;
-    _dirtyPdfIds.add(pdfId);
-    debugPrint('📝 [AppProvider] Marked PDF as dirty: $pdfId');
+    // `Set.add` reports whether the id was new. A shape drag marks its document
+    // dirty on every pointer frame, and the id stays in the set until the flush
+    // clears it, so this logs the start of a burst instead of one line per
+    // frame — which is what buried the console during a drag.
+    final added = _dirtyPdfIds.add(pdfId);
+    if (added) debugPrint('📝 [AppProvider] Marked PDF as dirty: $pdfId');
     _saveTimer?.cancel();
     _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
   }
@@ -283,6 +293,24 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// previous timer, a continuous drag keeps deferring the sync until the
   /// pointer settles, which is exactly the desired coalescing behaviour.
   static const Duration _syncDebounceWindow = Duration(milliseconds: 1200);
+
+  /// When the last annotation edit was applied, or null if none this session.
+  ///
+  /// The debounce keeps *new* syncs away from an active gesture but cannot
+  /// recall one already in flight — started 1.4s ago, or fired by the other
+  /// client's realtime update — which lands mid-drag and rewrites the
+  /// annotation lists under the pointer. That rewrite is what makes a dragged
+  /// shape jump. This stamp is what lets a running sync wait its turn.
+  DateTime? _lastAnnotationEditFrame;
+
+  /// How long a sync defers to an annotation edit, measured from the last edit.
+  /// Converges by construction: a pointer that stops stops refreshing the stamp.
+  /// Long enough to cover the gap between two frames of a slow drag, short
+  /// enough that pausing does not stall the sync.
+  static const Duration _annotationEditGraceWindow = Duration(
+    milliseconds: 600,
+  );
+
   ToolType _currentTool = ToolType.cursor;
   ToolType get currentTool => _currentTool;
 
@@ -387,6 +415,25 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
           'DEBUG: Sync for $sessionCode/$fileHash abandoned: the open file or '
           'its session changed while the checks were running.',
         );
+        return;
+      }
+
+      // An annotation is being edited right now. A pass that starts now would
+      // rewrite the highlights and comments lists between two frames of that
+      // gesture, which is what makes a dragged shape jump — and the remote
+      // copies it injects are older than the frame the pointer just produced.
+      // The debounce cannot prevent this on its own: a pass started 1.4s ago by
+      // the previous frame, or by the other client's realtime update, is already
+      // past it. Re-arming the timer is not a retry loop: the stamp is refreshed
+      // by every frame, so a pointer that stops stops deferring.
+      final lastEdit = _lastAnnotationEditFrame;
+      if (lastEdit != null &&
+          DateTime.now().difference(lastEdit) < _annotationEditGraceWindow) {
+        debugPrint(
+          'DEBUG: Sync for $sessionCode/$fileHash deferred: an annotation is '
+          'being edited right now.',
+        );
+        triggerDebouncedSync();
         return;
       }
 
@@ -608,7 +655,15 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     if (fileHash.isNotEmpty && fileHash != activePdf?.fileHash) {
       return;
     }
-    triggerSync();
+    // Debounced, not immediate. This runs once per pointer frame while a shape
+    // is moved or resized. Syncing immediately put a Firestore round trip and a
+    // full annotation diff between two frames of the same drag, and every pass
+    // rewrote the annotation lists while the pointer was still down on one of
+    // them — which is what made a dragged shape jump and the gesture feel
+    // heavy. Every frame re-arms the timer, so one drag produces one sync,
+    // ~1.2s after the pointer settles. Matches updateComment, which already
+    // debounced.
+    triggerDebouncedSync();
   }
 
   void _notify() {
@@ -743,8 +798,14 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   void updateHighlight(
     String pdfId,
     Highlight oldHighlight,
-    Highlight newHighlight,
-  ) {
+    Highlight newHighlight, {
+    // Identifies the gesture this edit belongs to, or null for a discrete edit.
+    // `_updateShapeTransform` calls this on every pointer frame, so without a
+    // gesture the drag appends a history entry per frame and undo walks back
+    // pixel by pixel instead of undoing the gesture. The caller owns the value,
+    // because it is the only place that knows when a gesture starts and ends.
+    int? gesture,
+  }) {
     for (var cls in _classes) {
       var pdf = cls.pdfs.firstWhere(
         (p) => p.id == pdfId,
@@ -773,6 +834,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
           itemId: oldHighlight.id,
           actionType: ActionTypes.ACTION_UPDATE_HIGHLIGHT,
           notify: false, // PATCH 3: Avoid double notify
+          gesture: gesture,
           oldState: {
             'color': oldHighlight.color.value,
             'strokeWidth': oldHighlight.strokeWidth,
@@ -791,6 +853,10 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
           },
         );
         _notify(); // Single notify here
+        // Stamped before the sync is asked for, so a pass that was already in
+        // flight when the drag started defers instead of overwriting the shape
+        // under the pointer.
+        _lastAnnotationEditFrame = DateTime.now();
         markPdfDirty(pdfId);
         _triggerSync(pdf.fileHash ?? '');
       }
@@ -805,7 +871,48 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     required Map<String, dynamic> oldState,
     required Map<String, dynamic> newState,
     bool notify = true, // PATCH 3
+    // Identifies the gesture this edit belongs to, or null for a discrete edit.
+    // The frames of one gesture fold into a single history entry, which keeps
+    // the entry that opened the gesture and its pre-gesture `oldState`. Appending
+    // every frame turned one drag into hundreds of undo steps while copying the
+    // whole path twice per frame.
+    //
+    // An identity, rather than a boolean, is what makes this correct: a flag
+    // would fold the *first* frame of a new drag into whatever the previous entry
+    // happened to be — a colour change on the same shape, say — and one undo
+    // would then step over two separate operations.
+    int? gesture,
   }) {
+    // `_coalescingGesture` is only ever the gesture whose entry is currently on
+    // top, so a mismatch means this frame opens a new entry rather than
+    // extending an old one. The emptiness check is not redundant: undo can pop
+    // the entry mid-gesture.
+    if (gesture != null &&
+        gesture == _coalescingGesture &&
+        _actionHistory.isNotEmpty) {
+      final last = _actionHistory.last;
+      if (last.pdfId == pdfId &&
+          last.itemId == itemId &&
+          last.actionType == actionType) {
+        _actionHistory[_actionHistory.length - 1] = ActionRecord(
+          pdfId: pdfId,
+          actionType: actionType,
+          itemId: itemId,
+          // The state before the gesture began, not before the last frame.
+          oldState: last.oldState,
+          // The state as of the latest frame.
+          newState: newState,
+        );
+        _redoHistory.clear();
+        _saveTimer?.cancel();
+        _saveTimer = Timer(const Duration(milliseconds: 500), _saveState);
+        if (notify) _notify();
+        return;
+      }
+    }
+    // A discrete edit passes null, which also ends any run: the next gesture must
+    // not fold into it.
+    _coalescingGesture = gesture;
     _actionHistory.add(
       ActionRecord(
         pdfId: pdfId,
@@ -2164,11 +2271,29 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  /// Writes the dirty documents to Isar, then — if an annotation edit is still
+  /// inside the debounce window — pushes it to the server before returning.
+  ///
+  /// The viewer calls this when it is about to go away. Without the push, a
+  /// shape dragged in the last second before quitting reached the disk but not
+  /// the other client: the pending [performBidirectionalSync] was cancelled
+  /// along with the viewer, so the edit only appeared on the next sync this
+  /// device happened to run.
   Future<void> saveStateNow({String? pdfId}) async {
     if (pdfId != null && pdfId.isNotEmpty) {
       markPdfDirty(pdfId);
     }
+    // Read before cancelling: after this the timer is gone and there is no way
+    // to tell whether a sync was still owed.
+    final hadPendingSync = _syncDebounce?.isActive ?? false;
+    cancelDebouncedSync();
     await _saveState();
+    if (!hadPendingSync) return;
+    // The grace window exists to keep a *background* pass out of a live gesture.
+    // A flush on close outranks it, and the pointer is not down any more, so the
+    // stamp is cleared rather than waited out.
+    _lastAnnotationEditFrame = null;
+    await performBidirectionalSync();
   }
 
   // Actions
@@ -3515,6 +3640,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
           newState: updated.toJson(),
         );
         _notify(); // Single notify
+        // Same reason as updateHighlight: text is dragged and retyped across many
+        // frames, and an in-flight sync must not land in the middle of that.
+        _lastAnnotationEditFrame = DateTime.now();
         markPdfDirty(pdfId);
         _markUnsavedChanges();
         triggerDebouncedSync(silent: true);

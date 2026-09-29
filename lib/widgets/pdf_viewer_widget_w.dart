@@ -168,6 +168,12 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
   List<Offset>? _shapeTransformOriginalPath;
   bool _isMovingSelectedShape = false;
   int? _activeResizeHandleIndex;
+
+  /// Bumped for every shape gesture, so the frames of one drag share a value and
+  /// two consecutive drags never do. AppProvider folds a run of history entries
+  /// only while this value is unchanged, which is what keeps one drag one undo
+  /// step without merging it with the edit that preceded it.
+  int _shapeTransformGesture = 0;
   MouseCursor _shapeHoverCursor = SystemMouseCursors.basic;
 
   StreamSubscription? _sessionSub;

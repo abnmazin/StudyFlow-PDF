@@ -1245,9 +1245,9 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
                         file.name,
                         style: TextStyle(
                           fontWeight: isDownloaded
-                              ? FontWeight.w800
+                              ? FontWeight.w600
                               : FontWeight.w500,
-                          fontSize: 14,
+                          fontSize: 15,
                           // Files already on disk read brighter than the ones
                           // that still need fetching, so the ones that open
                           // instantly and work offline are recognisable at a
@@ -1258,14 +1258,7 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
                           // Weight carries the distinction in both themes; the
                           // glow only in dark, where it is visible at all.
                           color: !isDownloaded ? textMuted : textPrimary,
-                          shadows: !(isDownloaded && isDarkMode)
-                              ? null
-                              : const [
-                                  Shadow(
-                                    color: Color(0x66FFFFFF),
-                                    blurRadius: 8,
-                                  ),
-                                ],
+                         
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,

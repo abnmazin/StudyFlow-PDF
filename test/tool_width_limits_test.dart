@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:studyflow_pdf/models/enums.dart';
 import 'package:studyflow_pdf/widgets/viewer_components/tool_width_limits.dart';
@@ -65,6 +66,71 @@ void main() {
         if (tool == ToolType.highlight) continue;
         expect(ToolWidthLimits.maxFor(tool), ToolWidthLimits.strokeMax);
       }
+    });
+  });
+
+  group('the bounds a Slider is handed', () {
+    Future<void> pumpSlider(
+      WidgetTester tester, {
+      required ToolType tool,
+      required double width,
+    }) {
+      return tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: Slider(
+                value: ToolWidthLimits.clampFor(tool, width),
+                min: ToolWidthLimits.min,
+                max: ToolWidthLimits.maxFor(tool),
+                divisions: ToolWidthLimits.divisionsFor(tool),
+                onChanged: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    testWidgets('a width every surface allows builds without asserting', (
+      tester,
+    ) async {
+      // 30 is the width the rail gave a highlighter and the panel refused.
+      for (final tool in ToolType.values) {
+        await pumpSlider(tester, tool: tool, width: 30.0);
+        expect(tester.takeException(), isNull, reason: '$tool at 30');
+      }
+    });
+
+    testWidgets('the bounds the panel used to hard-code do assert', (
+      tester,
+    ) async {
+      // The negative control, and the reason the clamp exists: this is the exact
+      // `Slider` the right panel built for a tool that arrived at 30, and it is
+      // what produced the red screen. Without this test the ones above could
+      // pass on a `Slider` that never asserts at all.
+      //
+      // `throwsAssertionError` rather than `takeException`: `Slider` asserts in
+      // its constructor, so the throw happens while this test is building the
+      // widget — before `pumpWidget` is ever entered, and therefore invisible to
+      // the exception the framework would have caught for it.
+      expect(
+        () => tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: Center(
+                child: Slider(
+                  value: 30.0,
+                  min: 1.0,
+                  max: 20.0,
+                  onChanged: (_) {},
+                ),
+              ),
+            ),
+          ),
+        ),
+        throwsAssertionError,
+      );
     });
   });
 }
