@@ -1258,7 +1258,6 @@ class _FolderDetailScreenState extends State<_FolderDetailScreen> {
                           // Weight carries the distinction in both themes; the
                           // glow only in dark, where it is visible at all.
                           color: !isDownloaded ? textMuted : textPrimary,
-                         
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,

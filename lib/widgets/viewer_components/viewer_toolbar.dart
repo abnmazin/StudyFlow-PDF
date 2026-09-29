@@ -287,6 +287,54 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
     return button;
   }
 
+  /// The way back from a file that was opened out of a university-library
+  /// folder: it closes the file, and the viewer slot falls back to the
+  /// announcements page for the folder that is still selected.
+  ///
+  /// Rendered only while a folder's announcements are the page behind the
+  /// viewer. A file opened from the local tree, or from the search box, has no
+  /// announcements to return to and gets no button.
+  ///
+  /// Colours come from the theme rather than this bar's own local palette,
+  /// because the accent has to read as "this goes somewhere else" next to the
+  /// plain grey tool buttons.
+  Widget _buildAnnouncementsBackButton(AppProvider app, ColorScheme scheme) {
+    final folder = app.announcementsFolder;
+    if (folder == null) return const SizedBox.shrink();
+
+    return Tooltip(
+      message: 'العودة إلى إعلانات «${folder.name}»',
+      child: InkWell(
+        onTap: () => app.closeActivePdf(),
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          height: 38,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: scheme.primary.withOpacity(0.14),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: scheme.primary.withOpacity(0.45)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(LucideIcons.megaphone, size: 16, color: scheme.primary),
+              const SizedBox(width: 6),
+              Text(
+                'العودة للإعلانات',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: scheme.primary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppProvider>();
@@ -347,6 +395,13 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
                       ),
                     if (isMobile || app.isSidebarCollapsed)
                       const SizedBox(width: 8),
+
+                    // Only present while a university folder's announcements
+                    // are the page this file was opened from.
+                    if (app.announcementsFolder != null) ...[
+                      _buildAnnouncementsBackButton(app, scheme),
+                      const SizedBox(width: 8),
+                    ],
 
                     _buildToolButton(
                       icon: LucideIcons.x,

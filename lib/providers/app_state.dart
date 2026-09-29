@@ -20,6 +20,7 @@ import '../models/models.dart';
 import '../models/app_user.dart';
 import '../models/lecture_slot.dart';
 import '../models/timetable_entry.dart';
+import '../models/folder_announcement.dart';
 import '../models/isar_models.dart' hide PdfDocument;
 import 'package:isar/isar.dart';
 import '../models/structure.dart';
@@ -29,6 +30,7 @@ import '../services/sync_service.dart';
 import '../services/pdf_mutation_service.dart';
 import '../services/reading_stats_service.dart';
 import '../services/timetable_service.dart';
+import '../services/folder_announcement_service.dart';
 import '../services/university_service.dart';
 import '../services/library_sync_service.dart';
 import '../services/hardware_service.dart';
@@ -131,6 +133,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     _stopUserMonitor();
     _syncDebounce?.cancel();
     _disposeTimetable();
+    _disposeAnnouncements();
     unawaited(_syncService.dispose());
     for (var timer in _syncTimers.values) {
       timer?.cancel();
@@ -208,6 +211,14 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   bool _isSidebarCollapsed = false;
   bool _isDarkMode = true;
   bool _isSettingsOpen = false;
+
+  /// The university-library folder whose announcements are filling the main
+  /// content area, or null when the dashboard owns it.
+  ///
+  /// A view selection, not a domain fact, so it is deliberately not persisted:
+  /// reopening the app on a folder's announcements with no memory of how the
+  /// reader got there would be a trap.
+  UniversityFolder? _announcementsFolder;
   DrawingSyncStrategy _drawingSyncStrategy = DrawingSyncStrategy.disabled;
   final DevSettings _devSettings = DevSettings();
 
@@ -1005,6 +1016,10 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   bool get isMobileOpen => _isMobileOpen;
   bool get showDevInfo => _showDevInfo;
   bool get isSidebarCollapsed => _isSidebarCollapsed;
+
+  /// Which folder's announcements the main content area is showing, or null
+  /// while the dashboard owns that area.
+  UniversityFolder? get announcementsFolder => _announcementsFolder;
 
   /// On the home page the explorer is the only route to a file: the dashboard
   /// folder grid merely picks a class (`setActiveClass`), it never opens a
@@ -2309,6 +2324,35 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   void toggleSidebar() {
     _isSidebarCollapsed = !_isSidebarCollapsed;
+    _notify();
+  }
+
+  /// Hands the main content area to [folder]'s announcements, replacing the
+  /// dashboard, and opens the live stream for them.
+  ///
+  /// Called from the university-library tree in the sidebar and nowhere else.
+  /// That is what keeps the two halves of the explorer behaving differently:
+  /// the local-files tree never reaches this, so opening one of its folders
+  /// still only expands it.
+  void showFolderAnnouncements(UniversityFolder folder) {
+    if (_announcementsFolder?.id == folder.id) return;
+    _announcementsFolder = folder;
+    // Subscribed here rather than by the page. The page is rebuilt on every
+    // provider notification, and a `snapshots()` call in a build would
+    // re-subscribe on every frame — the same reason the timetable's stream is
+    // owned here.
+    _watchAnnouncements(folder.id);
+    _notify();
+  }
+
+  /// Gives the main content area back to the dashboard and closes the stream.
+  void closeFolderAnnouncements() {
+    if (_announcementsFolder == null) return;
+    _announcementsFolder = null;
+    // The listener is not left running for a folder nobody is looking at: a
+    // university-wide library is many folders, and one open listener per folder
+    // visited in a session is a leak that only shows up as a bill.
+    _disposeAnnouncements();
     _notify();
   }
 
@@ -4832,6 +4876,168 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
     slots.sort((a, b) => a.startsAt.compareTo(b.startsAt));
     return slots;
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // FOLDER ANNOUNCEMENTS (university library)
+  //
+  // The notes a professor posts to one folder under "المكتبة الجامعية".
+  // Firestore path: `university_folders/{folderId}/announcements/{id}`.
+  //
+  // The list is held here and refreshed by a stream rather than queried per
+  // build, for the same reason the timetable is: `watchAnnouncements` is a
+  // `snapshots()` subscription, and calling it inside `build` would
+  // re-subscribe the page on every frame.
+  //
+  // One subscription at a time, owned by whichever folder is open. Opening a
+  // different folder replaces it; closing the announcements page cancels it.
+  // ───────────────────────────────────────────────────────────────────────
+
+  final FolderAnnouncementService _announcementService =
+      FolderAnnouncementService();
+  FolderAnnouncementService get announcementService => _announcementService;
+
+  StreamSubscription<List<FolderAnnouncement>>? _announcementsSubscription;
+  List<FolderAnnouncement> _announcements = const [];
+  List<FolderAnnouncement> get folderAnnouncements => _announcements;
+
+  /// True once a snapshot has arrived. What lets the page tell "this folder has
+  /// no notes" apart from "we have not asked yet".
+  bool _announcementsLoaded = false;
+  bool get isAnnouncementsLoaded => _announcementsLoaded;
+
+  /// True when the live subscription reported an error: a rule that is not
+  /// deployed, a denied read, a dead network.
+  bool _announcementsFailed = false;
+  bool get isAnnouncementsFailed => _announcementsFailed;
+
+  /// True while a publish is in flight, so the composer can disable its button.
+  bool _publishingAnnouncement = false;
+  bool get isPublishingAnnouncement => _publishingAnnouncement;
+
+  /// Whether the signed-in user may post to a folder at all.
+  ///
+  /// The same `AppUser.isLecturer` the Firestore rules check. Read through the
+  /// getter rather than the raw role so `admin` and `developer` are included:
+  /// the note is the professor's, and the admin runs the library.
+  bool get canPublishAnnouncement => _currentUser?.isLecturer ?? false;
+
+  /// Whether the signed-in user may remove a note somebody else wrote.
+  bool get canModerateAnnouncements => _currentUser?.isAdmin ?? false;
+
+  /// Opens the stream for [folderId], replacing whatever was being watched.
+  void _watchAnnouncements(String folderId) {
+    _announcementsSubscription?.cancel();
+    // Cleared before the new subscription: leaving the previous folder's notes
+    // on screen while the next folder's listing comes back is how a note from
+    // physics shows up under mathematics.
+    _announcements = const [];
+    _announcementsLoaded = false;
+    _announcementsFailed = false;
+
+    _announcementsSubscription = _announcementService
+        .watchAnnouncements(folderId)
+        .listen(
+          (items) {
+            _announcements = items;
+            _announcementsLoaded = true;
+            _announcementsFailed = false;
+            _notify();
+          },
+          // Reported rather than swallowed, and it stops the spinner too:
+          // without the flag a refused read would render as an empty folder,
+          // which is a false answer rather than a lesser one.
+          onError: (Object e) {
+            debugPrint('⚠️ [AppProvider] Announcements stream error: $e');
+            _announcementsFailed = true;
+            _announcementsLoaded = true;
+            _notify();
+          },
+        );
+  }
+
+  /// Re-opens the stream for the folder on screen. What the error state's retry
+  /// button calls.
+  void retryFolderAnnouncements() {
+    final folder = _announcementsFolder;
+    if (folder == null) return;
+    _watchAnnouncements(folder.id);
+    _notify();
+  }
+
+  void _disposeAnnouncements() {
+    _announcementsSubscription?.cancel();
+    _announcementsSubscription = null;
+    _announcements = const [];
+    _announcementsLoaded = false;
+    _announcementsFailed = false;
+    _publishingAnnouncement = false;
+  }
+
+  /// Puts this provider's user back into the service immediately before a
+  /// write.
+  ///
+  /// The service holds a *copy* of the user because reaching back into this
+  /// provider would close an import cycle. Re-asserting at the point of use
+  /// means a write can only be refused for a role — never for a handshake that
+  /// another auth path forgot to perform.
+  void _authorAnnouncementWrite() {
+    _announcementService.currentUser = _currentUser;
+  }
+
+  /// Publishes to the folder on screen.
+  ///
+  /// [imageUrl] arrives as a link the composer already produced by uploading to
+  /// Supabase Storage. Nothing is uploaded here: this layer writes documents,
+  /// and a note that reached Firestore with an image that failed to upload
+  /// would be a card promising a photo that does not exist.
+  ///
+  /// No optimistic insert: `snapshots()` echoes a pending write back locally
+  /// with its fields already filled in, so the card is on screen a frame later
+  /// without a second copy for the server's echo to replace.
+  Future<void> publishFolderAnnouncement({
+    required String title,
+    required String body,
+    String? imageUrl,
+  }) async {
+    final folder = _announcementsFolder;
+    if (folder == null) {
+      throw StateError('لا يوجد مجلد مفتوح');
+    }
+    _authorAnnouncementWrite();
+    _publishingAnnouncement = true;
+    _notify();
+    try {
+      await _announcementService.publish(
+        folderId: folder.id,
+        title: title,
+        body: body,
+        imageUrl: imageUrl,
+      );
+    } finally {
+      _publishingAnnouncement = false;
+      _notify();
+    }
+  }
+
+  /// Removes a note, mirroring the removal locally so the card leaves the list
+  /// on the tap rather than after the round trip.
+  Future<void> deleteFolderAnnouncement(String id) async {
+    final folder = _announcementsFolder;
+    if (folder == null || id.isEmpty) return;
+    _authorAnnouncementWrite();
+    final before = _announcements;
+    _announcements = before.where((a) => a.id != id).toList();
+    _notify();
+    try {
+      await _announcementService.delete(folderId: folder.id, id: id);
+    } catch (e) {
+      // Put it back: a refused delete must not leave a card missing here that
+      // every other reader can still see.
+      _announcements = before;
+      _notify();
+      rethrow;
+    }
   }
 }
 

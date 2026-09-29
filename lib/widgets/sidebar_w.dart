@@ -829,6 +829,13 @@ class _SidebarState extends State<Sidebar> {
 
     final child = InkWell(
       onTap: () {
+        // A local file has no announcements page to come back to, so the
+        // university folder the main area was showing is released here and the
+        // viewer stays exactly what it is today. This is the only place that
+        // clears it on the local side: opening a local *folder* deliberately
+        // leaves the announcements alone, because the requirement is that the
+        // local tree never changes what the main area shows.
+        app.closeFolderAnnouncements();
         if (app.isSplitMode && !isActive) {
           app.setSecondaryPdf(pdf.id);
         } else {

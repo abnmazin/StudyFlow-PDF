@@ -181,6 +181,19 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
       // folder opened next, before its own listing has come back.
       _cachedHashes.clear();
     });
+
+    // The main content area follows this tree: opening a folder replaces the
+    // dashboard with that folder's announcements, and collapsing it gives the
+    // dashboard back. Only this widget drives that — the local-files tree is a
+    // different widget and never reaches here, which is what keeps the two
+    // halves of the explorer behaving differently.
+    final app = context.read<AppProvider>();
+    if (nextId == null) {
+      app.closeFolderAnnouncements();
+    } else {
+      app.showFolderAnnouncements(folder);
+    }
+
     _filesSub?.cancel();
     _videosSub?.cancel();
     if (nextId == null) return;
@@ -1101,7 +1114,6 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
                     // theme) and the grey the rest already uses is untouched.
                     color: isCached ? widget.textPrimary : widget.textMuted,
                     fontWeight: isCached ? FontWeight.w600 : FontWeight.w400,
-                    
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -1131,7 +1143,6 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
                       decoration: BoxDecoration(
                         color: const Color(0xFF1E293B).withOpacity(0.9),
                         borderRadius: BorderRadius.circular(4),
-        
                       ),
                       child: Row(
                         children: [

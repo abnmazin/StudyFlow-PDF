@@ -27,6 +27,7 @@ import 'draggable_text_widget.dart';
 import '../services/sync_service.dart';
 import '../utils/responsive_utils.dart';
 import 'dashboard/dashboard_page.dart';
+import 'announcements/folder_announcements_view.dart';
 
 part 'pdf_viewer_widget_dashboard.dart';
 part 'pdf_viewer_widget_actions.dart';
@@ -929,7 +930,7 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
                                       // Always keep the PDF paper/background light
                                       color: const Color(0xFFE2E8F0),
                                       child: pdf == null
-                                          ? _buildNoFilePlaceholder()
+                                          ? _buildNoFilePlaceholder(app)
                                           : isSplitMode && secondaryPdf != null
                                           ? Row(
                                               children: [
@@ -1934,8 +1935,87 @@ class _PDFViewerWidgetState extends State<PDFViewerWidget> {
     );
   }
 
-  Widget _buildNoFilePlaceholder() {
-    return Builder(builder: (ctx) => _buildDashboard(ctx));
+  /// What fills the viewer slot while no PDF is open.
+  ///
+  /// Two pages share this slot, and which one shows is decided by state the
+  /// sidebar sets: a folder opened under "المكتبة الجامعية" puts its
+  /// announcements here, and otherwise the dashboard does. The switcher makes
+  /// the swap a fade rather than a hard cut — the two pages are the same size
+  /// but not the same content, and the cut is abrupt enough to read as a
+  /// flicker.
+  ///
+  /// `layoutBuilder` is spelled out because the default one hands the child
+  /// loose constraints through a centred `Stack`, and a scroll view is happier
+  /// with the expanded ones the slot actually has.
+  ///
+  /// The app is a parameter rather than a `context.select` call in here: this
+  /// method runs inside the enclosing `AnimatedBuilder`'s builder, and provider
+  /// only allows `select` in a widget's own `build`. The enclosing `build`
+  /// already watches the provider and the builder is registered against it, so
+  /// a change still reaches this method.
+  Widget _buildNoFilePlaceholder(AppProvider app) {
+    final announcementsFolder = app.announcementsFolder;
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 180),
+      layoutBuilder: (currentChild, previousChildren) => Stack(
+        fit: StackFit.expand,
+        children: [...previousChildren, ?currentChild],
+      ),
+      child: announcementsFolder == null
+          ? Builder(
+              key: const ValueKey('main-slot-dashboard'),
+              builder: (ctx) => _buildDashboard(ctx),
+            )
+          : FolderAnnouncementsView(
+              // Keyed by folder id so switching straight from one folder's
+              // announcements to another's animates instead of being mistaken
+              // for a rebuild of the same page.
+              key: ValueKey(
+                'main-slot-announcements-${announcementsFolder.id}',
+              ),
+              folder: announcementsFolder,
+              announcements: app.folderAnnouncements,
+              // "Still loading" and "this folder is empty" are different
+              // answers, and the page renders them differently.
+              isLoading: !app.isAnnouncementsLoaded,
+              hasError: app.isAnnouncementsFailed,
+              canPublish: app.canPublishAnnouncement,
+              isPublishing: app.isPublishingAnnouncement,
+              // Per note, because the rule is per note: an admin removes
+              // anything, a lecturer only their own — the same split the
+              // Firestore rules enforce.
+              canDelete: (announcement) =>
+                  app.canModerateAnnouncements ||
+                  announcement.authorUid == app.currentUser?.uid,
+              onBackToDashboard: app.closeFolderAnnouncements,
+              onRetry: app.retryFolderAnnouncements,
+              // The image is uploaded before this is reached — the composer
+              // hands over a URL — so a failed upload can never write a note
+              // that points at nothing.
+              onPublish: (title, body, imageUrl) =>
+                  app.publishFolderAnnouncement(
+                    title: title,
+                    body: body,
+                    imageUrl: imageUrl,
+                  ),
+              onDelete: (id) async {
+                // The list already dropped the card before the write went out,
+                // so a refusal has to say so — otherwise the note reappears a
+                // moment later with no explanation.
+                try {
+                  await app.deleteFolderAnnouncement(id);
+                } catch (e) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context)
+                    ..hideCurrentSnackBar()
+                    ..showSnackBar(
+                      SnackBar(content: Text('تعذّر حذف الإعلان: $e')),
+                    );
+                }
+              },
+            ),
+    );
   }
 }
 

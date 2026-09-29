@@ -36,7 +36,7 @@ class HardwareService {
       return fingerprint;
     } catch (e) {
       debugPrint('❌ [Security] Failed to generate device fingerprint: $e');
-      // Fallback to a less secure but stable ID if possible, 
+      // Fallback to a less secure but stable ID if possible,
       // but the strict policy requires this to succeed.
       rethrow;
     }

@@ -1,3 +1,13 @@
+// Firestore security rules for StudyFlow PDF.
+//
+// Sections are numbered in the order their collections were added, and the
+// numbers are load-bearing: `FolderAnnouncementService` cites section 19 and
+// `TimetableService` cites section 18, so renumbering means updating the
+// comments that point here.
+//
+// The helper functions at the top are shared. `isManager`/`isStaff` were added
+// with section 19 and are used only there — the older sections spell
+// `userRole() == 'admin'` out by hand.
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -23,6 +33,23 @@ service cloud.firestore {
 
     function userName() {
       return getUserData().username;
+    }
+// Staff checks, added with section 19 and used only there.
+    //
+    // The older rules each spell `userRole() == 'admin'` out by hand, and
+    // rewriting them is a separate change with its own blast radius — so these
+    // two exist for the new section rather than as a refactor of the old ones.
+    //
+    // `developer` is included because `AppUser.isAdmin` counts it as an admin,
+    // which is why the client shows a developer the controls an admin gets. A
+    // rule that then refused the write would be the client and the boundary
+    // disagreeing about the same signed-in user.
+    function isManager() {
+      return userRole() == 'admin' || userRole() == 'developer';
+    }
+
+    function isStaff() {
+      return isManager() || userRole() == 'lecturer';
     }
 
     // ================================================================
@@ -340,6 +367,66 @@ service cloud.firestore {
       allow read, list: if isAuthenticated();
       allow create, update: if isAuthenticated() && userRole() == 'admin';
       allow delete: if isAuthenticated() && userRole() == 'admin';
+    }
+    // ================================================================
+    // 19. FOLDER ANNOUNCEMENTS
+    //     - The notes a professor posts to one folder under
+    //       "المكتبة الجامعية":
+    //       university_folders/{folderId}/announcements/{announcementId}
+    //     - Read: any signed-in user, matching section 3's read on the parent
+    //       folders collection, which is already open to every signed-in
+    //       account. Deliberately not gated on `get()` of the parent: closing
+    //       it would turn "an empty folder" into "a permission error" for the
+    //       same reader without hiding a single byte.
+    //     - Create: staff only, matching
+    //       `FolderAnnouncementService._assertCanPublish`. The note is the
+    //       professor's, so a lecturer writes it; an admin runs the library.
+    //     - The author fields are pinned on create, so a note cannot be
+    //       attributed to somebody who did not write it.
+    //     - Delete: a manager removes anything, a lecturer only their own —
+    //       the same split `AppProvider.canModerateAnnouncements` renders.
+    //     - Update stays closed. `FolderAnnouncement` has no update path and
+    //       the service exposes only publish and delete, so opening it would
+    //       widen the boundary for a screen that does not exist.
+    // ================================================================
+    match /university_folders/{folderId}/announcements/{announcementId} {
+      allow read, list: if isAuthenticated();
+
+      // The shape of a valid note, mirroring
+      // `FolderAnnouncement.validationMessage` field for field and bound for
+      // bound, because the composer's check is a convenience and this is the
+      // boundary. The client writes every key — empty strings included — so the
+      // `is string` tests can rely on them being present.
+      //
+      // A note needs a headline, a paragraph, or a photo; what it may not be is
+      // empty. Nothing renders from an empty document — it would exist only for
+      // the database and this file to see.
+      allow create: if isAuthenticated()
+        && isStaff()
+        && request.resource.data.authorUid == request.auth.uid
+        && request.resource.data.title is string
+        && request.resource.data.body is string
+        && request.resource.data.title.size()
+            <= 120   // FolderAnnouncement.maxTitleLength
+        && request.resource.data.body.size()
+            <= 2000  // FolderAnnouncement.maxBodyLength
+        && (request.resource.data.title.size() > 0
+            || request.resource.data.body.size() > 0
+            || request.resource.data.imageUrl != null)
+        // A URL, not a payload: without the ceiling a 1 MiB base64 blob would
+        // sit in a document field meant to hold a link.
+        && (!request.resource.data.keys().hasAny(['imageUrl'])
+            || request.resource.data.imageUrl == null
+            || (request.resource.data.imageUrl is string
+                && request.resource.data.imageUrl.size()
+                    <= 512)); // FolderAnnouncement.maxImageUrlLength
+
+      allow update: if false;
+
+      allow delete: if isAuthenticated()
+        && (isManager()
+            || (userRole() == 'lecturer'
+                && resource.data.authorUid == request.auth.uid));
     }
   }
 }
