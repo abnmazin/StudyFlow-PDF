@@ -47,8 +47,19 @@ class DashboardSearch extends StatefulWidget {
 }
 
 /// The slice of the app state the search reads, in one read rather than four.
-typedef SearchLibrary =
-    ({List<ClassItem> classes, String? activeClassId, String? activePdfId});
+typedef SearchLibrary = ({
+  List<ClassItem> classes,
+  String? activeClassId,
+  String? activePdfId,
+});
+
+/// Identifies the panel's own box.
+///
+/// A test measures *this* to know where the panel opens. Measuring the first
+/// row of text instead is not the same fact: the panel draws a header above that
+/// row, so a panel hung off the field's top edge still pushes its first row below
+/// the field's bottom, and the mistake reads as a pass.
+const Key searchPanelKey = ValueKey('dashboardSearchPanel');
 
 class _DashboardSearchState extends State<DashboardSearch> {
   final TextEditingController _controller = TextEditingController();
@@ -170,10 +181,7 @@ class _DashboardSearchState extends State<DashboardSearch> {
     );
   }
 
-  static List<SearchSuggestion> _search(
-    String query,
-    List<ClassItem> classes,
-  ) {
+  static List<SearchSuggestion> _search(String query, List<ClassItem> classes) {
     final needle = query.trim().toLowerCase();
     if (needle.isEmpty) return const [];
     final hits = <SearchSuggestion>[];
@@ -268,6 +276,7 @@ class _DashboardSearchState extends State<DashboardSearch> {
             // the panel only, not the full-window `Align` around it.
             groupId: _tapGroup,
             child: ConstrainedBox(
+              key: searchPanelKey,
               // Never wider or taller than the room measured beside the field,
               // so the panel cannot run past the window edge.
               constraints: BoxConstraints(

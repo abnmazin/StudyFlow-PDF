@@ -20,6 +20,7 @@ import 'widgets/pdf_viewer_widget_w.dart';
 import 'widgets/developer_modal_w.dart';
 import 'widgets/global_settings_modal.dart'; // NEW
 import 'widgets/version_check_gate.dart';
+import 'widgets/dashboard/dashboard_palette.dart';
 import 'screens/auth/login_screen.dart';
 import 'models/app_user.dart';
 import 'firebase_options.dart';
@@ -279,11 +280,21 @@ class MyApp extends StatelessWidget {
                 ), // Off-white clean background
                 cardColor: Colors.white,
               ),
+              // The sidebar's palette is the app's dark base: slate-900 behind
+              // everything, slate-800 for the panels that sit on it, slate-100
+              // and slate-400 for the copy. The light theme above is untouched,
+              // and the sidebar and the dashboard keep this same dark palette in
+              // both themes because they are the app's primary colour.
               darkTheme: ThemeData.dark().copyWith(
                 colorScheme: ThemeData.dark().colorScheme.copyWith(
                   primary: Colors.blueAccent,
+                  surface: DashboardColors.background,
+                  onSurface: DashboardColors.title,
+                  surfaceContainerHighest: DashboardColors.surface,
+                  onSurfaceVariant: DashboardColors.subtitle,
+                  outlineVariant: DashboardColors.separator,
                 ),
-                scaffoldBackgroundColor: const Color(0xFF121212),
+                scaffoldBackgroundColor: DashboardColors.background,
               ),
               home: const RootWrapper(),
             ),

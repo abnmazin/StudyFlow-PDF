@@ -134,7 +134,7 @@ class _Greeting extends StatelessWidget {
         Text(
           _greetingFor(user),
           style: const TextStyle(
-            fontSize: 24,
+            fontSize: 20,
             fontWeight: FontWeight.w700,
             color: DashboardColors.title,
           ),

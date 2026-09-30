@@ -1,22 +1,26 @@
 import 'package:flutter/material.dart';
 
-/// The dashboard's palette.
+/// The app's dark palette.
 ///
-/// The dashboard is deliberately dark-only: it is a dark surface in a window
-/// that is otherwise themed by the app, and the reading figures sit better on a
-/// single, unchanging background than on one that flips with the app theme.
-/// Everything else in the app still follows `AppProvider.isDarkMode`.
+/// The sidebar's colours are the primary ones: the slate background, the
+/// slate-800 panels and the blue accents below are the left sidebar's own
+/// colours, promoted here so the dashboard, its panels and the rest of the app
+/// are painted from one place instead of each carrying a private copy. The
+/// dashboard stays dark-only — it is a dark surface in a window that is
+/// otherwise themed by the app, and the reading figures sit better on a single,
+/// unchanging background than on one that flips with the app theme.
 ///
-/// Values are the brief's: page background, card surface, slate-700 borders,
-/// white headings, grey-400 secondary text.
+/// Values are the sidebar's: slate-900 page background, slate-800 card surface,
+/// slate-700 borders, slate-100 headings, slate-400 secondary text.
 class DashboardColors {
   const DashboardColors._();
 
-  /// Page background behind the cards.
-  static const background = Color(0xFF0F141E);
+  /// Page background behind the cards, and the sidebar's own fill, slate-900.
+  static const background = Color(0xFF0F172A);
 
-  /// Card and panel surface. Also the app's own sidebar colour.
-  static const surface = Color(0xFF151B2B);
+  /// Card and panel surface. Also the sidebar's control and input fill,
+  /// slate-800.
+  static const surface = Color(0xFF1E293B);
 
   /// Card and panel outline, slate-700.
   static const border = Color(0xFF334155);
@@ -24,17 +28,33 @@ class DashboardColors {
   /// Hairlines and the navbar's bottom rule, slate-800.
   static const divider = Color(0xFF1E293B);
 
-  /// Hover and pressed fill, the brief's accent surface.
-  static const hover = Color(0xFF1E2638);
+  /// The sidebar's 1px rules: white at 10%.
+  static const separator = Color(0x1AFFFFFF);
 
-  /// Headings and figures.
-  static const title = Colors.white;
+  /// Hover and pressed fill, blue-900. The sidebar's folder rows use it, and
+  /// the dashboard's tiles and rows follow so a hover is one colour app-wide.
+  static const hover = Color(0xFF1E3A8A);
 
-  /// Secondary copy, grey-400.
-  static const subtitle = Color(0xFF9CA3AF);
+  /// The drop-target wash on the sidebar's PDF rows, blue-500 at 13%.
+  static const hoverWash = Color(0x223B82F6);
 
-  /// The first quick-action tile, blue-600.
-  static const accent = Color(0xFF2563EB);
+  /// Headings and figures, slate-100.
+  static const title = Color(0xFFF1F5F9);
+
+  /// Secondary copy, slate-400.
+  static const subtitle = Color(0xFF94A3B8);
+
+  /// The first quick-action tile and the drop-target outline, blue-500.
+  static const accent = Color(0xFF3B82F6);
+
+  /// Icons and active labels, blue-400.
+  static const accentSoft = Color(0xFF60A5FA);
+
+  /// The label of the entry selected in the sidebar tree, blue-200.
+  static const selectedText = Color(0xFFBFDBFE);
+
+  /// The label of the entry open in the second pane, slate-300.
+  static const secondaryText = Color(0xFFCBD5E1);
 
   /// Filled "has reading" marker in the streak strip.
   static const streak = Color(0xFFF59E0B);
@@ -68,7 +88,7 @@ const double kDashboardSectionGap = 40;
 /// tall as the streak card that holds a 130px strip, and the navbar is measured
 /// against the 80px the design calls for.
 const double kStatCardHeight = 130;
-const double kDashboardNavBarHeight = 80;
+const double kDashboardNavBarHeight = 64;
 
 /// The width of one of the four reading-stat cards, which is also the width the
 /// notification and search panels use.

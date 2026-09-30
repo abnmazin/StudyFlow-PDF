@@ -6,6 +6,7 @@ import '../models/models.dart';
 import '../utils/responsive_utils.dart';
 import 'viewer_components/college_collection_widget.dart';
 import 'university_cloud_library_w.dart';
+import 'dashboard/dashboard_palette.dart';
 
 /// Which half of the sidebar explorer is on screen.
 ///
@@ -120,7 +121,6 @@ class _SidebarState extends State<Sidebar> {
       ),
       builder: (context, data, _) {
         final app = context.read<AppProvider>();
-        final isDarkMode = data.isDarkMode;
         final classes = data.classes;
         final isCollapsed = data.isCollapsed;
         final isCollapseLocked = data.isCollapseLocked;
@@ -128,22 +128,14 @@ class _SidebarState extends State<Sidebar> {
         final screenWidth = MediaQuery.sizeOf(context).width;
         final isMobile = ResponsiveBreakpoints.isMobile(screenWidth);
         final sidebarWidth = ResponsiveBreakpoints.sidebarWidth(screenWidth);
-        final scheme = Theme.of(context).colorScheme;
-        final sidebarBg = isDarkMode ? const Color(0xFF0F172A) : scheme.surface;
-        final separatorColor = isDarkMode
-            ? Colors.white.withOpacity(0.1)
-            : Colors.black.withOpacity(0.05);
-        final textPrimary = isDarkMode
-            ? const Color(0xFFF1F5F9)
-            : scheme.onSurface;
-        final textMuted = isDarkMode
-            ? const Color(0xFF94A3B8)
-            : scheme.onSurfaceVariant;
-
-        // The selected explorer tab is white, which is what the dark sidebar
-        // has room for. On the light surface white would vanish, so there it
-        // falls back to the primary text colour.
-        final selectedTabColor = isDarkMode ? Colors.white : scheme.onSurface;
+        // The sidebar carries the app's primary colour, so it is painted from
+        // the shared palette instead of from the theme: in light mode the
+        // theme's surface is white, and a white sidebar is not this app.
+        final sidebarBg = DashboardColors.background;
+        final separatorColor = DashboardColors.separator;
+        final textPrimary = DashboardColors.title;
+        final textMuted = DashboardColors.subtitle;
+        final selectedTabColor = DashboardColors.title;
 
         return Container(
           width: sidebarWidth,
@@ -169,12 +161,6 @@ class _SidebarState extends State<Sidebar> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(
-                            LucideIcons.book,
-                            color: Color(0xFF60A5FA),
-                            size: 24,
-                          ),
-                          const SizedBox(width: 8),
                           Flexible(
                             child: Text(
                               'StudyFlow PDF',
@@ -186,6 +172,12 @@ class _SidebarState extends State<Sidebar> {
                                 color: textPrimary,
                               ),
                             ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Icon(
+                            LucideIcons.book,
+                            color: DashboardColors.accentSoft,
+                            size: 24,
                           ),
                         ],
                       ),
@@ -232,13 +224,13 @@ class _SidebarState extends State<Sidebar> {
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                           colors: [
-                            Color(0xFF1E293B),
-                            Color(0xFF0F172A),
+                            DashboardColors.surface,
+                            DashboardColors.background,
                           ], // slate-800 to slate-900
                         ),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: const Color(0xFF334155),
+                          color: DashboardColors.border,
                         ), // slate-700
                         boxShadow: [
                           BoxShadow(
@@ -256,7 +248,7 @@ class _SidebarState extends State<Sidebar> {
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
-                              color: Color(0xFF94A3B8), // slate-400
+                              color: DashboardColors.subtitle, // slate-400
                               letterSpacing: 1.5,
                             ),
                           ),
@@ -268,12 +260,12 @@ class _SidebarState extends State<Sidebar> {
                                 LucideIcons.fileText,
                                 app.totalPdfs.toString(),
                                 'ملفات',
-                                const Color(0xFF60A5FA),
+                                DashboardColors.accentSoft,
                               ),
                               Container(
                                 width: 1,
                                 height: 30,
-                                color: const Color(0xFF334155),
+                                color: DashboardColors.border,
                               ),
                               _buildStatItem(
                                 LucideIcons.highlighter,
@@ -284,7 +276,7 @@ class _SidebarState extends State<Sidebar> {
                               Container(
                                 width: 1,
                                 height: 30,
-                                color: const Color(0xFF334155),
+                                color: DashboardColors.border,
                               ),
                               _buildStatItem(
                                 LucideIcons.messageSquare,
@@ -339,7 +331,7 @@ class _SidebarState extends State<Sidebar> {
                             icon: const Icon(
                               LucideIcons.plus,
                               size: 16,
-                              color: Color(0xFF94A3B8),
+                              color: DashboardColors.subtitle,
                             ),
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(),
@@ -356,12 +348,12 @@ class _SidebarState extends State<Sidebar> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           CollegeCollectionWidget(
-                            isDarkMode: isDarkMode,
+                            // The collection is a pane of the always-dark
+                            // sidebar, so it is dark in both themes too.
+                            isDarkMode: true,
                             panelBg: sidebarBg,
                             panelBorder: separatorColor,
-                            surfaceAlt: isDarkMode
-                                ? const Color(0xFF1E293B)
-                                : scheme.surfaceContainerHighest,
+                            surfaceAlt: DashboardColors.surface,
                             textPrimary: textPrimary,
                             textMuted: textMuted,
                             folderStyle: true,
@@ -394,15 +386,8 @@ class _SidebarState extends State<Sidebar> {
                                   Expanded(
                                     child: Builder(
                                       builder: (ctx) {
-                                        final scheme = Theme.of(
-                                          ctx,
-                                        ).colorScheme;
-                                        final inputBg = isDarkMode
-                                            ? const Color(0xFF1E293B)
-                                            : scheme.surfaceContainerHigh;
-                                        final inputText = isDarkMode
-                                            ? Colors.white
-                                            : scheme.onSurface;
+                                        final inputBg = DashboardColors.surface;
+                                        final inputText = DashboardColors.title;
                                         return TextField(
                                           controller: _classController,
                                           autofocus: true,
@@ -412,13 +397,8 @@ class _SidebarState extends State<Sidebar> {
                                           ),
                                           decoration: InputDecoration(
                                             hintText: 'اسم القسم...',
-                                            hintStyle: TextStyle(
-                                              color: isDarkMode
-                                                  ? Colors.white.withOpacity(
-                                                      0.5,
-                                                    )
-                                                  : scheme.onSurfaceVariant
-                                                        .withOpacity(0.6),
+                                            hintStyle: const TextStyle(
+                                              color: DashboardColors.subtitle,
                                             ),
                                             filled: true,
                                             fillColor: inputBg,
@@ -514,9 +494,7 @@ class _SidebarState extends State<Sidebar> {
                         child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 10),
                           decoration: BoxDecoration(
-                            color: isDarkMode
-                                ? const Color(0xFF1E293B)
-                                : scheme.surfaceContainerHighest,
+                            color: DashboardColors.surface,
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(color: separatorColor),
                           ),
@@ -524,12 +502,10 @@ class _SidebarState extends State<Sidebar> {
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(
+                                const Icon(
                                   LucideIcons.info,
                                   size: 16,
-                                  color: isDarkMode
-                                      ? const Color(0xFF60A5FA)
-                                      : scheme.primary,
+                                  color: DashboardColors.accentSoft,
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
@@ -554,9 +530,7 @@ class _SidebarState extends State<Sidebar> {
                         child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 10),
                           decoration: BoxDecoration(
-                            color: isDarkMode
-                                ? const Color(0xFF1E293B)
-                                : scheme.surfaceContainerHighest,
+                            color: DashboardColors.surface,
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(color: separatorColor),
                           ),
@@ -564,12 +538,10 @@ class _SidebarState extends State<Sidebar> {
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(
+                                const Icon(
                                   LucideIcons.settings,
                                   size: 16,
-                                  color: isDarkMode
-                                      ? const Color(0xFF60A5FA)
-                                      : scheme.primary,
+                                  color: DashboardColors.accentSoft,
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
@@ -603,16 +575,9 @@ class _SidebarState extends State<Sidebar> {
     int classIndex,
   ) {
     final isActive = app.activeClassId == cls.id;
-    final scheme = Theme.of(context).colorScheme;
-    final textMuted = app.isDarkMode
-        ? const Color(0xFF94A3B8)
-        : scheme.onSurfaceVariant;
-    final textPrimary = app.isDarkMode
-        ? const Color(0xFFF1F5F9)
-        : scheme.onSurface;
-    final hoverBg = app.isDarkMode
-        ? const Color(0xFF1E3A8A)
-        : scheme.surfaceContainerHighest;
+    final textMuted = DashboardColors.subtitle;
+    final textPrimary = DashboardColors.title;
+    final hoverBg = DashboardColors.hover;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -663,9 +628,7 @@ class _SidebarState extends State<Sidebar> {
                   color: isHovering
                       ? hoverBg
                       : (isActive
-                            ? (app.isDarkMode
-                                  ? const Color(0xFF1E293B)
-                                  : scheme.surfaceContainerHigh)
+                            ? DashboardColors.surface
                             : Colors.transparent),
                   borderRadius: BorderRadius.circular(4),
                 ),
@@ -677,7 +640,7 @@ class _SidebarState extends State<Sidebar> {
                         cls.name,
                         style: TextStyle(
                           color: isActive
-                              ? const Color(0xFF60A5FA)
+                              ? DashboardColors.accentSoft
                               : textPrimary,
                           fontWeight: FontWeight.w500,
                         ),
@@ -711,7 +674,7 @@ class _SidebarState extends State<Sidebar> {
                             vertical: 6,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF1E293B).withOpacity(0.9),
+                            color: DashboardColors.surface.withOpacity(0.9),
                             borderRadius: BorderRadius.circular(4),
                             boxShadow: [
                               BoxShadow(
@@ -726,7 +689,7 @@ class _SidebarState extends State<Sidebar> {
                               const Icon(
                                 LucideIcons.folder,
                                 size: 14,
-                                color: Color(0xFF94A3B8),
+                                color: DashboardColors.subtitle,
                               ),
                               const SizedBox(width: 8),
                               Expanded(
@@ -734,7 +697,7 @@ class _SidebarState extends State<Sidebar> {
                                   cls.name,
                                   style: const TextStyle(
                                     fontSize: 14,
-                                    color: Color(0xFFF1F5F9),
+                                    color: DashboardColors.title,
                                     decoration: TextDecoration.none,
                                   ),
                                   overflow: TextOverflow.ellipsis,
@@ -792,12 +755,7 @@ class _SidebarState extends State<Sidebar> {
             child: Container(
               decoration: BoxDecoration(
                 border: Border(
-                  left: BorderSide(
-                    color: app.isDarkMode
-                        ? const Color(0xFF1E293B)
-                        : scheme.outlineVariant,
-                    width: 2,
-                  ),
+                  left: BorderSide(color: DashboardColors.divider, width: 2),
                 ),
               ),
               padding: const EdgeInsets.only(left: 8),
@@ -843,11 +801,16 @@ class _SidebarState extends State<Sidebar> {
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(
           color: isActive
-              ? const Color(0x4D1E3A8A)
-              : (isSecondary ? const Color(0x2694A3B8) : Colors.transparent),
+              ? DashboardColors.hover.withOpacity(0.3)
+              : (isSecondary
+                    ? DashboardColors.subtitle.withOpacity(0.15)
+                    : Colors.transparent),
           borderRadius: BorderRadius.circular(4),
           border: isSecondary
-              ? Border.all(color: const Color(0x3394A3B8), width: 1)
+              ? Border.all(
+                  color: DashboardColors.subtitle.withOpacity(0.2),
+                  width: 1,
+                )
               : null,
         ),
         child: Row(
@@ -856,10 +819,10 @@ class _SidebarState extends State<Sidebar> {
               LucideIcons.fileText,
               size: 14,
               color: isActive
-                  ? const Color(0xFFBFDBFE)
+                  ? DashboardColors.selectedText
                   : (isSecondary
-                        ? const Color(0xFFCBD5E1)
-                        : const Color(0xFF94A3B8)),
+                        ? DashboardColors.secondaryText
+                        : DashboardColors.subtitle),
             ),
             const SizedBox(width: 8),
             Expanded(
@@ -868,10 +831,10 @@ class _SidebarState extends State<Sidebar> {
                 style: TextStyle(
                   fontSize: 14,
                   color: isActive
-                      ? const Color(0xFFBFDBFE)
+                      ? DashboardColors.selectedText
                       : (isSecondary
-                            ? const Color(0xFFCBD5E1)
-                            : const Color(0xFF94A3B8)),
+                            ? DashboardColors.secondaryText
+                            : DashboardColors.subtitle),
                 ),
                 overflow: TextOverflow.ellipsis,
               ),
@@ -920,9 +883,9 @@ class _SidebarState extends State<Sidebar> {
           duration: const Duration(milliseconds: 120),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(4),
-            color: isHovering ? const Color(0x223B82F6) : Colors.transparent,
+            color: isHovering ? DashboardColors.hoverWash : Colors.transparent,
             border: isHovering
-                ? Border.all(color: const Color(0xFF3B82F6), width: 1)
+                ? Border.all(color: DashboardColors.accent, width: 1)
                 : null,
           ),
           child: child,
@@ -936,7 +899,7 @@ class _SidebarState extends State<Sidebar> {
               width: 220,
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               decoration: BoxDecoration(
-                color: const Color(0xFF1E293B).withOpacity(0.9),
+                color: DashboardColors.surface.withOpacity(0.9),
                 borderRadius: BorderRadius.circular(4),
                 boxShadow: [
                   BoxShadow(
@@ -951,7 +914,7 @@ class _SidebarState extends State<Sidebar> {
                   const Icon(
                     LucideIcons.fileText,
                     size: 14,
-                    color: Color(0xFF94A3B8),
+                    color: DashboardColors.subtitle,
                   ),
                   const SizedBox(width: 8),
                   Expanded(
@@ -959,7 +922,7 @@ class _SidebarState extends State<Sidebar> {
                       pdf.name,
                       style: const TextStyle(
                         fontSize: 14,
-                        color: Color(0xFFF1F5F9),
+                        color: DashboardColors.title,
                         decoration: TextDecoration.none,
                       ),
                       overflow: TextOverflow.ellipsis,
@@ -997,7 +960,7 @@ class _SidebarState extends State<Sidebar> {
         const SizedBox(height: 2),
         Text(
           label,
-          style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8)),
+          style: const TextStyle(fontSize: 10, color: DashboardColors.subtitle),
         ),
       ],
     );
@@ -1049,7 +1012,7 @@ class _SidebarState extends State<Sidebar> {
                 appBar: AppBar(
                   title: const Text('المكتبة الجامعية'),
                   backgroundColor: isDarkMode
-                      ? const Color(0xFF0F172A)
+                      ? DashboardColors.background
                       : Colors.white,
                 ),
                 body: UniversityCloudLibraryWidget(
@@ -1063,8 +1026,8 @@ class _SidebarState extends State<Sidebar> {
         icon: const Icon(LucideIcons.library, size: 16),
         label: const Text('فتح المكتبة', style: TextStyle(fontSize: 12)),
         style: OutlinedButton.styleFrom(
-          foregroundColor: const Color(0xFF60A5FA),
-          side: const BorderSide(color: Color(0xFF334155)),
+          foregroundColor: DashboardColors.accentSoft,
+          side: const BorderSide(color: DashboardColors.border),
           padding: const EdgeInsets.symmetric(vertical: 10),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
