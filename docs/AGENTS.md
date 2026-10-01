@@ -1,5 +1,9 @@
 # AGENTS.md — StudyFlow PDF
 
+> The rules live in the repository root `AGENTS.md` and in `.clinerules/` — those
+> are the files an agent loads automatically. This document is the deep handbook
+> they point to: build, boot, services, schema and gotchas. It is not read for you.
+
 ## What This Is
 
 Flutter desktop-first (Windows) PDF study app. Arabic RTL primary locale. PDF viewer with annotation, real-time sync (lecturer→student), university multi-tenant cloud library, and floating mini-app windows.
@@ -28,16 +32,28 @@ Never use `npx` or Node.js for Dart codegen. The generated file is `lib/models/i
 ## Verify
 
 ```bash
-flutter analyze        # zero errors expected; ~169 info-level lints are pre-existing
+flutter analyze --no-pub     # zero errors expected; ~220 info-level lints pre-existing (2026-09-30)
+flutter test                 # 6 files, 85 tests, all green (2026-09-30)
+flutter test test/<one>_test.dart   # one file is far cheaper while iterating
 ```
 
-There are **no tests** (`test/widget_test.dart` is empty). Do not attempt to run `flutter test` expecting coverage.
+Tests exist and they matter. `.clinerules/testing.md` says what they cover, how
+they are written here, and the one case where the answer is the user's eye instead
+of a test — a colour, a size or a font is checked by looking, not by asserting, so
+that tokens are not spent proving something only the user can judge.
+
+The claim that used to sit in this section — that there are no tests and that
+`flutter test` should not be run — was true once and has been false for a while. It
+is exactly the kind of stale sentence that costs a project its verification: do not
+restore it.
 
 ## Architecture (Read Before Coding)
 
-**Mandatory pre-read** (per `.cursorrules`):
+**Mandatory pre-read** before writing code:
 - `docs/architecture_map.md` — high-level structure, services, Firestore schema, role system
 - `docs/changelog.md` — what changed, what failed, current state
+- `.clinerules/*.md` — the working rules (graph, routine, tests, style, memory files).
+  These are the files that are actually loaded for an agent; keep rules there, not here.
 
 ### Entry Point
 
@@ -97,7 +113,10 @@ Limits (verified): Dart uses a **regex** extractor (not tree-sitter) → `part` 
 - **Glassmorphism**: Floating windows, overlays, panels use `BackdropFilter` + `ImageFilter.blur`
 - **RTL**: Arabic primary. Math/code UI stays LTR via explicit `Directionality` wrapping
 - **Desktop robustness**: `_studyflow_` temp PDF copies avoid `errno=32` file locks; single-instance forwarding
-- **No comments in code** unless explicitly requested
+- **Comments**: the house style is a comment that explains *why* — which other file
+  depends on a value, which failure produced a rule. Match the density of the
+  neighbours you are editing. (This file used to say "no comments unless
+  explicitly requested"; that was stale and contradicted every file in `lib/`.)
 - **LaTeX widgets**: Always constrain with `FittedBox` or `maxHeight` to prevent layout explosions
 
 ## Gotchas
@@ -121,3 +140,10 @@ Limits (verified): Dart uses a **regex** extractor (not tree-sitter) → `part` 
 | `docs/performance_and_ram.md` | RAM usage research |
 | `docs/gesture_conflict.md` | pdfrx vs overlay gesture conflict (known blocker) |
 | `docs/deploy_guide.md` | GitHub Pages deployment |
+| `docs/PRINT_ISSUE_REPORT.md` | The printing investigation (36 KB — the deep record for its own problem) |
+| `docs/TEXT_INPUT_KEYBOARD_CONFLICT_REPORT.md` | Text-input vs keyboard focus investigation |
+| `docs/CHAT_SHORTCUT_CONFLICT_REPORT.md` | Chat panel shortcut conflicts |
+| `docs/MATH_ENGINE_EXAMPLES.dart` | Runnable MathEngine examples (a Dart sample, not prose) |
+
+Investigation reports are the deep record for the problem they name. Link them from
+the architecture map instead of paraphrasing them into it.

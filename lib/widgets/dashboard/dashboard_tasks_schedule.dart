@@ -22,6 +22,13 @@ import 'dashboard_schedule_editor.dart';
 /// `BoxConstraints forces an infinite height`. `IntrinsicHeight` measures the
 /// children instead of asking the parent for a size, which is the only option
 /// that works in a scrollable.
+///
+/// One condition comes with that choice: the two headings inside those cards are
+/// built with `shrinkToFit: false`. `IntrinsicHeight` measures a card *without
+/// laying it out*, and a measuring heading is a `LayoutBuilder`, which cannot
+/// answer such a question — the section then fails to lay out and the schedule
+/// card vanishes with it. Each of the two headings is one short word, so neither
+/// ever reached the shrink it gives up.
 class DashboardTasksAndSchedule extends StatelessWidget {
   const DashboardTasksAndSchedule({super.key, required this.isWide});
 
@@ -65,6 +72,9 @@ class TodayTasksCard extends StatelessWidget {
         children: [
           DashboardSectionTitle(
             'مهام اليوم',
+            // This card is measured by the row's `IntrinsicHeight`, so its
+            // heading may not measure itself. See `shrinkToFit`.
+            shrinkToFit: false,
             trailing: IconButton(
               onPressed: () => _showTaskDialog(context),
               icon: const Icon(Icons.add_circle_outline, size: 18),
@@ -137,8 +147,6 @@ class _TaskRowState extends State<_TaskRow> {
   /// The brief's menu: 128 wide, 8px radius, below the icon it belongs to.
   static const double _menuWidth = 128;
 
-  final GlobalKey _menuButtonKey = GlobalKey();
-  final LayerLink _link = LayerLink();
   final OverlayPortalController _portal = OverlayPortalController();
 
   StudyTask get _task => widget.task;
@@ -183,13 +191,21 @@ class _TaskRowState extends State<_TaskRow> {
             ),
           ),
           const SizedBox(width: 8),
-          CompositedTransformTarget(
-            link: _link,
+          // The 3-dots button *is* the portal's child, so the menu is placed
+          // from the button's own box during layout instead of from a
+          // `CompositedTransformFollower`. `overlay.dart` forbids a follower
+          // between an `OverlayPortal` and its `Overlay`; the notification bell
+          // already crashed on it through a `Tooltip`, and a `Tooltip` is one
+          // line away from being added to this button too.
+          _TaskMenu(
+            controller: _portal,
+            tapGroup: _tapGroup,
+            onEdit: () => _showTaskDialog(context, task: _task),
+            onDelete: () => app.deleteTask(_task.uuid),
             child: TapRegion(
               groupId: _tapGroup,
               onTapOutside: (_) => _portal.hide(),
               child: IconButton(
-                key: _menuButtonKey,
                 icon: const Icon(Icons.more_horiz, size: 18),
                 onPressed: _toggleMenu,
                 color: DashboardColors.subtitle,
@@ -198,14 +214,6 @@ class _TaskRowState extends State<_TaskRow> {
                 tooltip: 'خيارات المهمة',
               ),
             ),
-          ),
-          _TaskMenu(
-            controller: _portal,
-            link: _link,
-            anchorKey: _menuButtonKey,
-            tapGroup: _tapGroup,
-            onEdit: () => _showTaskDialog(context, task: _task),
-            onDelete: () => app.deleteTask(_task.uuid),
           ),
         ],
       ),
@@ -249,43 +257,58 @@ class _TaskCheckbox extends StatelessWidget {
   }
 }
 
-/// The 3-dots popup, following its button.
+/// The 3-dots popup, placed under the button it belongs to.
+///
+/// The button is handed in as `child` and the menu is placed from the button's
+/// own box inside `overlayChildLayoutBuilder`. A `CompositedTransformFollower`
+/// would be the obvious way to do that, and is exactly what the SDK forbids
+/// between an `OverlayPortal` and its `Overlay` (`overlay.dart` asserts on it):
+/// any `Tooltip`, `MenuAnchor` or `Autocomplete` inside the menu would then
+/// build a nested portal under the follower and crash, which is how the
+/// notification bell broke. `Positioned` from the layout info replaces it.
 class _TaskMenu extends StatelessWidget {
   const _TaskMenu({
     required this.controller,
-    required this.link,
-    required this.anchorKey,
     required this.tapGroup,
     required this.onEdit,
     required this.onDelete,
+    required this.child,
   });
 
   final OverlayPortalController controller;
-  final LayerLink link;
-  final GlobalKey anchorKey;
   final String tapGroup;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
+  /// The button the menu hangs off, and the box the placement measures.
+  final Widget child;
+
   @override
   Widget build(BuildContext context) {
-    return OverlayPortal(
+    return OverlayPortal.overlayChildLayoutBuilder(
       controller: controller,
-      overlayChildBuilder: (context) => CompositedTransformFollower(
-        link: link,
-        showWhenUnlinked: false,
-        // Physical anchors, because `CompositedTransformFollower` takes
-        // physical `Alignment`. Matching the same edge on both sides keeps the
-        // menu on the button's own side of the window.
-        targetAnchor: Alignment.topRight,
-        followerAnchor: Alignment.topRight,
-        offset: const Offset(0, 4),
-        // The Overlay hands every entry tight screen constraints and the follower
-        // passes them through, so a `maxWidth` below is inert without this. The
-        // `Align`'s empty half is not hit-tested, so a tap outside still reaches
-        // the button's `TapRegion`.
-        child: Align(
-          alignment: Alignment.topRight,
+      overlayChildBuilder: (context, info) {
+        // Physical edges: `Positioned` uses window sides, not reading-order
+        // sides, so `right` here is literally the window's right edge.
+        const margin = 12.0;
+        const gap = 4.0;
+        final overlay = info.overlaySize;
+        final origin = MatrixUtils.transformPoint(
+          info.childPaintTransform,
+          Offset.zero,
+        );
+        final rect = origin & info.childSize;
+
+        // Right-aligned to the button and grown leftwards, which is the side a
+        // three-dots menu has room on beside the run of controls. When that
+        // would push the menu past the window's left edge, pin it to the margin
+        // instead — the brief does not describe a menu that can be clipped.
+        final roomToLeft = rect.right - margin;
+        final fits = roomToLeft >= _TaskRowState._menuWidth;
+        return Positioned(
+          top: rect.bottom + gap,
+          left: fits ? null : margin,
+          right: fits ? overlay.width - rect.right : null,
           child: TapRegion(
             groupId: tapGroup,
             child: ConstrainedBox(
@@ -323,11 +346,9 @@ class _TaskMenu extends StatelessWidget {
               ),
             ),
           ),
-        ),
-      ),
-      // Nothing to place: the follower's child carries the size, and the portal
-      // only needs a widget in the page tree to own the controller.
-      child: const SizedBox.shrink(),
+        );
+      },
+      child: child,
     );
   }
 }
@@ -387,6 +408,9 @@ class ScheduleCard extends StatelessWidget {
         children: [
           const DashboardSectionTitle(
             'الجدول',
+            // Same reason as the tasks card above: this card is inside the row's
+            // `IntrinsicHeight`, which measures it without laying it out.
+            shrinkToFit: false,
             // The admin's `+`. Renders as nothing at all for a student, so the
             // card reads identically for both roles.
             trailing: ScheduleAdminButton(),

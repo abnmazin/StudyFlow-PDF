@@ -32,6 +32,26 @@ class _DashboardPageState extends State<DashboardPage> {
   final GlobalKey<NotificationBellState> _bellKey =
       GlobalKey<NotificationBellState>();
 
+  /// One controller for both the scroll view and its `Scrollbar`.
+  ///
+  /// They must share it. A `Scrollbar` with no controller falls back to the
+  /// route's `PrimaryScrollController` (injected per route, see
+  /// `routes.dart`), while a `CustomScrollView` with no controller takes the
+  /// primary only on the platforms `PrimaryScrollController.shouldInherit`
+  /// allows — Windows is not one of them, so it made its own internal
+  /// controller instead. The bar then watched a controller with no position
+  /// attached and threw "has no ScrollPosition attached" on the first drag,
+  /// and its thumb never painted. Passing the same controller to both is the
+  /// fix, and it is deliberately explicit rather than relying on the
+  /// inheritance rule that caused this.
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
@@ -64,7 +84,10 @@ class _DashboardPageState extends State<DashboardPage> {
               // `interactive` because this is a desktop target and the wheel is
               // the input.
               interactive: true,
+              // The same controller the scroll view below uses; see its field.
+              controller: _scrollController,
               child: CustomScrollView(
+                controller: _scrollController,
                 slivers: [
                   SliverPersistentHeader(
                     // The header's height comes from its delegate's extents; the

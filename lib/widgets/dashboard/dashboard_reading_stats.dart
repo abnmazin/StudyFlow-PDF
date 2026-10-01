@@ -13,9 +13,10 @@ import 'dashboard_palette.dart';
 /// placeholder, because a fake number on a real dashboard is worse than a blank
 /// one.
 ///
-/// Layout: a heading with the period selector, then four equal cards. Side by
-/// side when [isWide], stacked two-up below that so a narrow window never
-/// squeezes a figure to a column of ellipsis.
+/// Layout: a heading with the period selector, then four equal cards in a grid —
+/// four across when [isWide], two-up below that. Two rather than one because a
+/// column of four fixed-height cards is a screen of scrolling for four figures,
+/// and the figures are read together or not at all.
 class DashboardReadingStats extends StatefulWidget {
   const DashboardReadingStats({super.key, required this.isWide, this.days});
 
@@ -54,9 +55,13 @@ class _DashboardReadingStatsState extends State<DashboardReadingStats> {
       builder: (context, constraints) => StreamBuilder<List<ReadingDay>>(
         stream: _days,
         builder: (context, snapshot) {
+          // Four across on a desktop width, two below it — never one. This is
+          // the grid the section's own layout note describes; the row below is
+          // what makes it true.
+          final perRow = widget.isWide ? 4 : 2;
           final cardWidth = statCardWidth(
             constraints.maxWidth,
-            isWide: widget.isWide,
+            perRow: perRow,
           );
           final days = snapshot.data ?? const <ReadingDay>[];
           final inPeriod = _daysInPeriod(days);
@@ -103,31 +108,33 @@ class _DashboardReadingStatsState extends State<DashboardReadingStats> {
                 ),
               ),
               const SizedBox(height: 20),
-              if (widget.isWide)
-                // `SizedBox` with the shared card width rather than `Expanded`:
-                // the header's notification and search panels are sized from the
-                // same function, and `Expanded` would let the two drift apart
-                // whenever the gap or the card count changed.
+              // `IntrinsicHeight` per row rather than one over all four: each row
+              // equalises its own pair. The cards carry a fixed height, so this is
+              // belt-and-braces today — but it is the row that has no bounded
+              // height inside a sliver to divide, and the pair is what the design
+              // means by four equal cards.
+              for (var start = 0; start < cards.length; start += perRow) ...[
+                if (start > 0) const SizedBox(height: kStatCardGap),
                 IntrinsicHeight(
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      for (var i = 0; i < cards.length; i++) ...[
-                        if (i > 0) const SizedBox(width: 16),
+                      for (
+                        var i = start;
+                        i < start + perRow && i < cards.length;
+                        i++
+                      ) ...[
+                        if (i > start) const SizedBox(width: kStatCardGap),
+                        // `SizedBox` with the shared card width rather than
+                        // `Expanded`: `Expanded` divides whatever width the row
+                        // happened to get, and the streak card's strip is sized
+                        // from the number this function returns.
                         SizedBox(width: cardWidth, child: _buildCard(cards[i])),
                       ],
                     ],
                   ),
-                )
-              else
-                Column(
-                  children: [
-                    for (var i = 0; i < cards.length; i++) ...[
-                      if (i > 0) const SizedBox(height: 12),
-                      _buildCard(cards[i]),
-                    ],
-                  ],
                 ),
+              ],
             ],
           );
         },
@@ -437,12 +444,24 @@ class _StreakCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
+              // `Flexible` + `FittedBox` around the chip rather than the chip on
+              // its own: seven 20px circles are 140px of hard width, and a card
+              // in a two-up row can have less than that inside its padding. At a
+              // desk width the `Flexible` is inert — the chip keeps its 20px and
+              // `spaceBetween` spreads the row exactly as before — and on a
+              // narrow one the circles scale instead of overflowing a card whose
+              // height is fixed.
               for (final day in data.days)
-                _StreakDayChip(
-                  date: day,
-                  seconds:
-                      data.secondsByDate[ReadingStatsService.dateKeyOf(day)] ??
-                      0,
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: _StreakDayChip(
+                      date: day,
+                      seconds: data.secondsByDate[
+                              ReadingStatsService.dateKeyOf(day)] ??
+                          0,
+                    ),
+                  ),
                 ),
             ],
           ),

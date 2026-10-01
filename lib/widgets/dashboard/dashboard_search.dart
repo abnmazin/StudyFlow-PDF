@@ -64,12 +64,7 @@ const Key searchPanelKey = ValueKey('dashboardSearchPanel');
 class _DashboardSearchState extends State<DashboardSearch> {
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
-  final LayerLink _link = LayerLink();
   final OverlayPortalController _portal = OverlayPortalController();
-
-  /// Used to find where the field sits on screen, which decides which way the
-  /// results panel opens.
-  final GlobalKey _fieldKey = GlobalKey();
 
   String _query = '';
 
@@ -94,33 +89,42 @@ class _DashboardSearchState extends State<DashboardSearch> {
   /// beside the field cannot hold it. The height grows downwards, limited by the
   /// space below the field.
   ///
-  /// Deliberately a pure function of the current frame rather than stored state:
-  /// it is read from `build`, and a `setState` from inside a build is an error.
-  /// The overlay child closes over the result of the last build, which is the
-  /// frame the panel was opened on.
-  ({bool toRight, double width, double height}) _geometry() {
-    final screen = MediaQuery.sizeOf(context);
+  /// The measurement comes from [OverlayChildLayoutInfo] — the field's box, its
+  /// paint transform into the overlay, and the overlay's size — instead of from
+  /// a `GlobalKey` + `localToGlobal` + `MediaQuery` trio. Same three facts, one
+  /// layer lower, and no `CompositedTransformFollower` in the portal's ancestry:
+  /// `overlay.dart` forbids that combination, and `Tooltip` (built on
+  /// `OverlayPortal.overlayChildLayoutBuilder` too) is what trips it.
+  ///
+  /// Deliberately a pure function of the layout that just ran rather than
+  /// stored state: it is called from inside layout, where `setState` is an
+  /// error.
+  ({double top, double? left, double? right, double width, double height})
+  _geometry(OverlayChildLayoutInfo info) {
+    final screen = info.overlaySize;
     const margin = 12.0;
     const gap = 8.0;
 
-    final box = _fieldKey.currentContext?.findRenderObject();
-    if (box is! RenderBox || !box.hasSize) {
-      return (
-        toRight: true,
-        width: fieldWidth.clamp(0.0, screen.width - 2 * margin),
-        height: (screen.height - 2 * margin).clamp(0.0, _maxPanelHeight),
-      );
-    }
+    // Physical, because `Positioned` is: `left`/`right` are window sides, not
+    // reading-order sides.
+    final origin = MatrixUtils.transformPoint(
+      info.childPaintTransform,
+      Offset.zero,
+    );
+    final rect = origin & info.childSize;
 
-    final rect = box.localToGlobal(Offset.zero) & box.size;
     final roomToRight = screen.width - margin - rect.left;
     final roomToLeft = rect.right - margin;
     final toRight = roomToRight >= roomToLeft;
     final room = toRight ? roomToRight : roomToLeft;
     final below = screen.height - margin - rect.bottom - gap;
 
+    // Hung off the field's *bottom*, not its top, so the panel cannot cover the
+    // field or the bar's other controls.
     return (
-      toRight: toRight,
+      top: rect.bottom + gap,
+      left: toRight ? rect.left : null,
+      right: toRight ? null : screen.width - rect.right,
       width: (fieldWidth < room ? fieldWidth : room).clamp(
         0.0,
         screen.width - 2 * margin,
@@ -220,7 +224,6 @@ class _DashboardSearchState extends State<DashboardSearch> {
 
   @override
   Widget build(BuildContext context) {
-    final geometry = _geometry();
     final library = _library();
     // One list or the other, decided here rather than inside the panel: an
     // empty query means the suggestions, and typing means the matches.
@@ -237,51 +240,41 @@ class _DashboardSearchState extends State<DashboardSearch> {
             max: _maxResults,
           );
     final totalFiles = hasQuery ? 0 : _totalFiles(library.classes);
-    return OverlayPortal(
+    return OverlayPortal.overlayChildLayoutBuilder(
       controller: _portal,
       // Floats over the page instead of pushing the sections below it down, and
       // is clipped to the window rather than to the dashboard's scroll view.
-      overlayChildBuilder: (context) => CompositedTransformFollower(
-        link: _link,
-        showWhenUnlinked: false,
-        // The follower takes physical `Alignment`. Horizontally the two sides
-        // match, which is what keeps the panel inside the window: it grows
-        // towards whichever side the field has room on, sized to that room.
-        // Vertically they deliberately do not: the follower keeps the panel's
-        // *top* while the target is the field's *bottom*, so the panel opens
-        // under the field instead of 8px below the field's top — where it used
-        // to cover the field itself and the rest of the bar's controls. It also
-        // agrees with `_geometry`, which measures the room from `rect.bottom`.
-        targetAnchor: geometry.toRight
-            ? Alignment.bottomLeft
-            : Alignment.bottomRight,
-        followerAnchor: geometry.toRight
-            ? Alignment.topLeft
-            : Alignment.topRight,
-        offset: const Offset(0, 8),
-        // The Overlay lays every entry out tight to the whole window
-        // (`BoxConstraints.tight(size)`), and a follower hands those tight
-        // constraints straight to its child, so a `maxWidth` below could never
-        // shrink anything — the panel came out full-screen. `Align` is what
-        // loosens them: it fills the window itself, so the anchors above still
-        // land the panel under the field, and its empty half is not hit-tested,
-        // so a tap outside the panel still reaches the field's `TapRegion`.
-        child: Align(
-          alignment: geometry.toRight ? Alignment.topLeft : Alignment.topRight,
+      //
+      // Placed with `Positioned` from `_geometry(info)` rather than with a
+      // `CompositedTransformFollower`: `overlay.dart` forbids a follower between
+      // an `OverlayPortal` and its `Overlay` (it asserts in debug, "may result in
+      // an incorrect child paint transform"). That combination already crashed
+      // the notifications panel through a `Tooltip`, and `Tooltip` itself is an
+      // `OverlayPortal.overlayChildLayoutBuilder` — the panel's footer and the
+      // clear button are exactly the kind of place one gets added next.
+      overlayChildBuilder: (context, info) {
+        final placement = _geometry(info);
+        // Physical edges: `left`/`right` are window sides. The panel's `top` is
+        // the field's bottom plus the gap, so it opens under the field instead
+        // of over it and the bar's other controls.
+        return Positioned(
+          top: placement.top,
+          left: placement.left,
+          right: placement.right,
           child: TapRegion(
             // The results live in the Overlay, so they are not descendants of
             // the field's `TapRegion` below. Without a shared group the tap that
             // dismisses the field fires on pointer-down, before the tapped
             // result's own handler, and picking a file does nothing. It wraps
-            // the panel only, not the full-window `Align` around it.
+            // the panel only, not the empty space around it.
             groupId: _tapGroup,
             child: ConstrainedBox(
               key: searchPanelKey,
               // Never wider or taller than the room measured beside the field,
               // so the panel cannot run past the window edge.
               constraints: BoxConstraints(
-                maxWidth: geometry.width,
-                maxHeight: geometry.height,
+                maxWidth: placement.width,
+                maxHeight: placement.height,
               ),
               child: _SearchResults(
                 matches: matches,
@@ -293,71 +286,66 @@ class _DashboardSearchState extends State<DashboardSearch> {
               ),
             ),
           ),
-        ),
-      ),
-      child: CompositedTransformTarget(
-        link: _link,
-        child: TapRegion(
-          groupId: _tapGroup,
-          onTapOutside: (_) {
-            _focusNode.unfocus();
-            _portal.hide();
-          },
-          child: SizedBox(
-            key: _fieldKey,
-            height: fieldHeight,
-            width: widget.isWide ? fieldWidth : 260,
-            child: TextField(
-              controller: _controller,
-              focusNode: _focusNode,
-              onChanged: _onChanged,
-              textInputAction: TextInputAction.search,
-              style: const TextStyle(
+        );
+      },
+      // The field itself: the portal's own `child`, and the box `_geometry`
+      // measures off the layout info. No `CompositedTransformTarget` here.
+      child: TapRegion(
+        groupId: _tapGroup,
+        onTapOutside: (_) {
+          _focusNode.unfocus();
+          _portal.hide();
+        },
+        child: SizedBox(
+          height: fieldHeight,
+          width: widget.isWide ? fieldWidth : 260,
+          child: TextField(
+            controller: _controller,
+            focusNode: _focusNode,
+            onChanged: _onChanged,
+            textInputAction: TextInputAction.search,
+            style: const TextStyle(fontSize: 13, color: DashboardColors.title),
+            decoration: InputDecoration(
+              hintText: 'ابحث في ملفاتك…',
+              hintStyle: const TextStyle(
                 fontSize: 13,
-                color: DashboardColors.title,
+                color: DashboardColors.subtitle,
               ),
-              decoration: InputDecoration(
-                hintText: 'ابحث في ملفاتك…',
-                hintStyle: const TextStyle(
-                  fontSize: 13,
-                  color: DashboardColors.subtitle,
-                ),
-                prefixIcon: const Icon(
-                  Icons.search,
-                  size: 18,
-                  color: DashboardColors.subtitle,
-                ),
-                suffixIcon: _query.isEmpty
-                    ? null
-                    : IconButton(
-                        onPressed: _clear,
-                        icon: const Icon(
-                          Icons.close,
-                          size: 16,
-                          color: DashboardColors.subtitle,
-                        ),
-                        tooltip: 'مسح',
+              prefixIcon: const Icon(
+                Icons.search,
+                size: 18,
+                color: DashboardColors.subtitle,
+              ),
+              suffixIcon: _query.isEmpty
+                  ? null
+                  : IconButton(
+                      onPressed: _clear,
+                      icon: const Icon(
+                        Icons.close,
+                        size: 16,
+                        color: DashboardColors.subtitle,
                       ),
-                isDense: true,
-                filled: true,
-                fillColor: DashboardColors.surface,
-                contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                border: OutlineInputBorder(
-                  // Pill, per the brief: half the field's height, so the two
-                  // halves meet and the radius never shows a corner.
-                  borderRadius: BorderRadius.circular(999),
-                  borderSide: const BorderSide(color: DashboardColors.border),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(999),
-                  borderSide: const BorderSide(color: DashboardColors.border),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(999),
-                  borderSide: const BorderSide(
-                    color: DashboardColors.accent,
-                    width: 1.5,
-                  ),
+                      tooltip: 'مسح',
+                    ),
+              isDense: true,
+              filled: true,
+              fillColor: DashboardColors.surface,
+              contentPadding: const EdgeInsets.symmetric(vertical: 12),
+              border: OutlineInputBorder(
+                // Pill, per the brief: half the field's height, so the two
+                // halves meet and the radius never shows a corner.
+                borderRadius: BorderRadius.circular(999),
+                borderSide: const BorderSide(color: DashboardColors.border),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(999),
+                borderSide: const BorderSide(color: DashboardColors.border),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(999),
+                borderSide: const BorderSide(
+                  color: DashboardColors.accent,
+                  width: 1.5,
                 ),
               ),
             ),

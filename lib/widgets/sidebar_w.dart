@@ -155,12 +155,29 @@ class _SidebarState extends State<Sidebar> {
                   ),
                 ),
                 child: Row(
+                  // Laid out left-to-right on purpose, against the app's RTL
+                  // context: the brand leads the row and the collapse/close
+                  // control trails it. Inheriting the ambient direction put the
+                  // brand on the right of the row instead, which is not the
+                  // arrangement this header is drawn for.
+                  textDirection: TextDirection.ltr,
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Expanded(
                       child: Row(
+                        // Same reason as the row above: without this the inner
+                        // row takes the ambient RTL and puts the icon after the
+                        // title. `Flex.textDirection` is local to the flex, it
+                        // does not hand a direction down to its children.
+                        textDirection: TextDirection.ltr,
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          const Icon(
+                            LucideIcons.book,
+                            color: DashboardColors.accentSoft,
+                            size: 24,
+                          ),
+                          const SizedBox(width: 8),
                           Flexible(
                             child: Text(
                               'StudyFlow PDF',
@@ -172,12 +189,6 @@ class _SidebarState extends State<Sidebar> {
                                 color: textPrimary,
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          const Icon(
-                            LucideIcons.book,
-                            color: DashboardColors.accentSoft,
-                            size: 24,
                           ),
                         ],
                       ),

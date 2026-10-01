@@ -1,81 +1,96 @@
 # AGENTS.md — StudyFlow PDF
 
-Local code knowledge graph at `graphify-out/graph.json` (roughly 2.5k nodes,
-~100 communities — a snapshot, not a contract; it drifts on every code change,
-so never quote these numbers as current).
-Built with `graphify extract . --code-only`: no API key, no embeddings, every edge `EXTRACTED`.
-Full protocol and coverage limits: `.clinerules/graphify.md` — read it before trusting the graph.
+Flutter desktop-first (Windows) PDF study app for one technical college: a reader
+with annotation and sync, a university cloud library, and floating mini-apps.
+Arabic is the primary locale, so the widget tree runs right-to-left.
 
-## Query the graph before reading files one by one
+This file is the law, and it is kept short on purpose. The detail lives in
+`.clinerules/` (one topic per file, loaded automatically) and in `docs/AGENTS.md`
+— the deep handbook for build, boot, services and gotchas, which is **not**
+loaded automatically, so read it when a task touches those.
 
-Before reading more than two files to answer an architecture, dependency, or
-"what touches what" question, query the graph. It is one process against a
-local JSON and returns a scoped subgraph, which is far cheaper than grepping
-or reading files until the answer appears.
+## The four rules that matter most
 
-Run these from the repo root (PowerShell 5.1 — no `&&` separators):
+1. **Ask when the intent is not certain.** A wrong guess costs the user a review
+   cycle and costs more tokens than the question. In this app "the header", "the
+   bar" and "the main colour" each mean several things; ask once, with concrete
+   options, before editing. Example — for "match the main colour": *"Do you mean
+   the sidebar's own dark background (the panel that holds the files and
+   folders), the blue on the first quick-action tile, or the blue used for icons
+   and active labels?"*
+2. **Evidence, never assertion.** Every number reported comes from a command's
+   real output. Nothing counts as verified unless it was run, and "I did not
+   verify this" is a correct answer, not a failure.
+3. **Spend tokens like they are scarce.** No test run, no rebuild and no scratch
+   file unless it can catch a real defect. For a purely visual change — colour,
+   size, spacing, font, shape — write no test and do not launch the app: ask the
+   user to look at it, because their eye is the only instrument that can judge it.
+4. **Report short, in Arabic, in human words.** A few plain sentences: what
+   changed, why it was wrong, what proves it, what is left. No code, no diffs, no
+   identifiers the user does not need in order to find something.
 
-```powershell
-& "C:\Users\Asus\.local\bin\graphify.exe" query "who writes reading progress to Firestore"
-& "C:\Users\Asus\.local\bin\graphify.exe" path "app_state.dart::AppProvider" "file_manager_service.dart::FileManagerService" --undirected
-& "C:\Users\Asus\.local\bin\graphify.exe" explain "lib/services/university_service.dart::UniversityService"
-& "C:\Users\Asus\.local\bin\graphify.exe" affected "SyncService" --depth 2
-& "C:\Users\Asus\.local\bin\graphify.exe" god-nodes --top 12
-```
+## Never
 
-The absolute path is deliberate: `graphify` only resolves after a terminal
-refresh, so do not rely on the bare name.
+- Never touch uncommitted work. Run `git status` first and leave the user's
+  in-flight edits exactly as they are.
+- Never `npx` or Node for Dart code generation. Only
+  `dart run build_runner build --delete-conflicting-outputs`.
+- Never introduce BLoC, Riverpod or GetX. Provider only (`ChangeNotifier`,
+  `context.select`, `Selector` for granular rebuilds).
+- Never invent a colour, a height or a width: the shared palette and the layout
+  constants already exist. See `.clinerules/style.md`.
+- Never claim a check you did not run, and never "simulate" the analyzer.
 
-Practical notes earned by using it:
-
-- `query` is a BFS and goes noisy fast. Pass `--budget 1500` and narrow the
-  wording, or use `explain` / `affected` for a single symbol.
-- Qualify symbols as `<path>::<Symbol>` for `explain` and `path`. Bare names
-  repeat: `UniversityService` matches 7 distinct nodes. `affected` is the
-  exception — it rejects the qualified form and wants the bare name.
-- `path` is direction-biased. Add `--undirected` when "no directed path found"
-  looks like a wrong answer.
-- The graph is for navigation, never for proof. Every finding gets confirmed
-  in the file before it is reported or acted on.
-
-## Keep it current
-
-```powershell
-& "C:\Users\Asus\.local\bin\graphify.exe" update .
-```
-
-Run after `git pull` or a batch of refactors. A stale graph gives confident
-wrong answers. Add `--force` after a refactor that deletes code, since the
-rebuild otherwise refuses to shrink the node count.
-
-To read the real counts instead of trusting the figure in this file:
+## Commands (PowerShell 5.1 — `;` separates, `&&` is a syntax error)
 
 ```powershell
-$j = Get-Content 'graphify-out\graph.json' -Raw | ConvertFrom-Json
-"nodes=$($j.nodes.Count) communities=$(($j.nodes | Group-Object community).Count)"
+git status                                     # before everything
+flutter analyze --no-pub                       # 0 errors expected; ~220 known infos
+flutter test test/tool_width_limits_test.dart  # one file while working
+flutter test                                   # full suite; 85 tests, green 2026-09-30
+flutter run -d windows                         # only when the user asks for it
 ```
 
-Do not use `query "anything" --budget 1` for this — "anything" matches no
-node, so the command prints "No matching nodes found" and no count at all.
-Communities are only recomputed on extract, so `update` can also print a
-"community set changed since labeling" notice — that is informational, not a
-failure.
+A command here is killed at 30 seconds, so `analyze` and `test` are started as
+background processes with their output redirected to a file, then polled — never
+re-run after a kill. Details and the reporting shape: `.clinerules/workflow.md`.
 
-## Coverage limits (verified on this repo, not assumed)
+## Where the rest lives
 
-- **Dart is parsed by a regex extractor, not tree-sitter.** `imports`,
-  `references`, `inherits`, `defines` are extracted, but partial and mixin
-  structure is not understood.
-- **Import edges into a `part` owner are unreliable.**
-  `pdf_viewer_widget_w.dart:34` imports `university_hub.dart`, yet the graph
-  shows `UniversityHub` with no incoming edge. For any symbol living in or
-  referenced from `pdf_viewer_widget_w.dart` and its 6 parts, check the file.
-- `pubspec.yaml` is not a recognised manifest, so Flutter dependency edges are
-  absent. Use `dart pub deps` for those.
-- `firestore.rules` is not parsed. Firestore schema, roles, and the current
-  deployed rules are documented in `docs/architecture_map.md` instead.
-- Excluded on purpose via `.graphifyignore`: `lib/models/isar_models.g.dart`
-  (generated), `android/ ios/ macos/ linux/ windows/ web/`, `assets/`,
-  `installer.iss`, binaries. Zero nodes for each — that is intended.
-- Docs are skipped by `--code-only`. Making them graph nodes needs a semantic
-  pass (`graphify extract ./docs --backend gemini`) and spends API credits.
+| Topic | File | Loaded automatically |
+|---|---|---|
+| Graph-first retrieval, coverage limits | `.clinerules/graphify.md` | yes |
+| Routine, when to ask, token rules, reporting shape | `.clinerules/workflow.md` | yes |
+| How tests are written here, when not to write one | `.clinerules/testing.md` | yes |
+| Comments, palette, shared constants, RTL | `.clinerules/style.md` | yes |
+| When the memory files get updated | `.clinerules/docs.md` | yes |
+| Build, boot, services, Firestore, gotchas | `docs/AGENTS.md` | no — read it |
+| Architecture and phase history | `docs/architecture_map.md` | no |
+| What changed, what failed | `docs/changelog.md` | no |
+
+## Orientation, so the architecture is not re-derived every task
+
+- Boot: `lib/main.dart` → single instance on port 45678 → `.env` → Supabase →
+  Firebase → `FileManagerService.init()` → `runApp`. A boot failure renders a
+  diagnostic screen instead of crashing.
+- State: one hub, `AppProvider` in `lib/providers/app_state.dart`.
+- Storage: Isar locally (folders, PDFs, snapshots, trash, tasks), Firestore in
+  the cloud (users, sessions, universities), Supabase for library files.
+- Identity: a file's SHA-256 hash is the cross-device id — never a local random
+  one. Reading progress is stored per (file hash + user).
+- Colours and layout constants: `lib/widgets/dashboard/dashboard_palette.dart`.
+- `lib/widgets/pdf_viewer_widget_w.dart` is a part file with six parts; a viewer
+  edit often belongs in the right part, not the owner.
+
+## The graph
+
+A local, deterministic code graph lives at `graphify-out/graph.json`
+(`graphify extract . --code-only`: no API key, no embeddings, every edge
+`EXTRACTED`). Query it before reading more than two files for an architecture or
+dependency question; confirm the finding in the file before acting on it.
+
+Commands, the absolute path to the CLI, and the coverage limits that were earned
+by testing on this repo: `.clinerules/graphify.md`. Keep it fresh with
+`update .` after a pull. Never quote a node or community count as current — read
+the JSON if a number is actually needed.
+

@@ -86,22 +86,40 @@ const double kDashboardSectionGap = 40;
 /// The reading-stat card height, and the navbar's own height. Stated once each
 /// because both are contracts rather than preferences: the four cards must be as
 /// tall as the streak card that holds a 130px strip, and the navbar is measured
-/// against the 80px the design calls for.
+/// against the height the design calls for.
+///
+/// The navbar half is read by the dashboard's pinned header. The sidebar header
+/// and the viewer toolbar carry their own `64` literal, so the three bands — the
+/// dashboard's, the sidebar's and the viewer's — share one line only for as long
+/// as all three numbers agree.
 const double kStatCardHeight = 130;
 const double kDashboardNavBarHeight = 64;
 
-/// The width of one of the four reading-stat cards, which is also the width the
-/// notification and search panels use.
+/// The gap between two cards of the reading-stat grid. Named rather than written
+/// twice because the row that lays the cards out and [statCardWidth], which
+/// divides the same content width into columns, must subtract the same number —
+/// disagree by one gap and the last card in the row overflows.
+const double kStatCardGap = 16;
+
+/// The dashboard section heading: the brief's 18px, and the floor it shrinks to
+/// when the card gets too narrow to hold the whole title.
 ///
-/// Single source of truth on purpose: the panels are anchored in the header and
-/// the streak card sits further down the page, and "the same width as the
-/// streak card" is only true for as long as both sides compute it the same way.
-/// Four across on a wide layout, full width when the cards stack.
-double statCardWidth(double contentWidth, {required bool isWide}) {
-  if (!isWide) return contentWidth;
-  const gap = 16.0;
-  return (contentWidth - gap * 3) / 4;
-}
+/// The floor is a limit on the heading's *identity* rather than on legibility:
+/// below it the Noto Naskh face stops carrying the weight that tells a heading
+/// apart from the body copy under it, and the section reads as one more line of
+/// text. Past the floor the title truncates instead.
+const double kSectionTitleFontSize = 18;
+const double kSectionTitleMinFontSize = 12;
+
+/// The width of one reading-stat card when [perRow] of them share
+/// [contentWidth].
+///
+/// The row does not divide the width itself: it asks for the same number the
+/// cards are built with, so the last card cannot end a gap past the row's edge.
+/// Four across on a desktop width, two below it, and never one — a column of
+/// four fixed-height cards is half a screen of scrolling for four figures.
+double statCardWidth(double contentWidth, {required int perRow}) =>
+    (contentWidth - kStatCardGap * (perRow - 1)) / perRow;
 
 /// `2س 45د` / `45د` / `0د`, the format the brief asks for. Read by
 /// [formatClock] rather than by hand so the stat cards, the focus badge and the
@@ -138,31 +156,118 @@ const List<String> arabicWeekdayInitials = [
 /// and the language version here predates null-aware elements, so every
 /// spelling of that check draws a hint this version cannot satisfy. A
 /// zero-width box in a `spaceBetween` row is invisible.
+///
+/// The heading stays on one line at every width — the card narrows with the
+/// window, and a section title is the last thing that should reflow into a
+/// second line. The title gives ground instead: it shrinks toward
+/// [kSectionTitleMinFontSize] and ellipsizes past that, while the trailing
+/// control keeps its own size, because the control is the interactive part and
+/// a squashed dropdown is a worse bug than a clipped word.
+///
+/// The one exception is [shrinkToFit]: a heading that an ancestor
+/// `IntrinsicHeight` will measure takes the plain ellipsised path instead,
+/// because a heading that measures cannot be measured.
 class DashboardSectionTitle extends StatelessWidget {
   const DashboardSectionTitle(
     this.text, {
     super.key,
     this.trailing = const SizedBox.shrink(),
+    this.shrinkToFit = true,
   });
 
   final String text;
   final Widget trailing;
 
+  /// Whether the title may measure the room the row gave it and shrink to fit.
+  ///
+  /// False wherever an ancestor `IntrinsicHeight` asks this heading for its
+  /// height without laying it out: `IntrinsicHeight` equalises a row of cards by
+  /// measuring the tallest, and a `LayoutBuilder` refuses that question
+  /// ("LayoutBuilder does not support returning intrinsic dimensions") — the
+  /// pump fails there, and everything below the row fails with it. The two cards
+  /// in `DashboardTasksAndSchedule` are that case, and their headings are one
+  /// short word each, so the shrink they give up was never reached anyway.
+  final bool shrinkToFit;
+
   @override
   Widget build(BuildContext context) {
+    const style = TextStyle(
+      fontSize: kSectionTitleFontSize,
+      fontWeight: FontWeight.w700,
+      color: DashboardColors.title,
+    );
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          text,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: DashboardColors.title,
-          ),
+        // `Flexible`, not a bare `Text`: a non-flex child of a `Row` is laid
+        // out with unbounded width, so the title claims its full intrinsic
+        // width and the trailing control ends up outside the card instead of
+        // beside the title. `Flexible` hands the title the leftover width and
+        // leaves `spaceBetween` to do its job on the wide layouts, where the
+        // title is shorter than the space it is given.
+        Flexible(
+          child: shrinkToFit
+              ? _shrinkingTitle(context, style)
+              : Text(
+                  text,
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.ellipsis,
+                  style: style,
+                ),
         ),
+        // A fixed gap, because the ellipsis would otherwise end flush against
+        // the control, where a clipped word reads as a rendering fault rather
+        // than as a truncation.
+        const SizedBox(width: 8),
         trailing,
       ],
+    );
+  }
+
+  /// The title at [kSectionTitleFontSize], scaled down to fit the width the row
+  /// gave it and never below [kSectionTitleMinFontSize].
+  ///
+  /// Measured rather than left to a `FittedBox`: a `FittedBox` scales by whatever
+  /// factor is needed, so a long title would shrink past the floor instead of
+  /// stopping at it, and it lays its child out unbounded, so `overflow: ellipsis`
+  /// would never fire. One `TextPainter` per build, for a heading that builds
+  /// when the layout changes, is the cheaper of the two.
+  ///
+  /// The measurement is what needs a `LayoutBuilder`, and a `LayoutBuilder`
+  /// cannot answer an intrinsic-dimension query — which is why this is a method
+  /// of its own: [shrinkToFit] lets a caller under an `IntrinsicHeight` take the
+  /// plain path and never reach here.
+  Widget _shrinkingTitle(BuildContext context, TextStyle style) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final painter = TextPainter(
+          text: TextSpan(text: text, style: style),
+          textDirection: Directionality.of(context),
+          textScaler: MediaQuery.textScalerOf(context),
+          maxLines: 1,
+        )..layout();
+        // An unbounded constraint is the answer to "this row is not in a
+        // bounded box", not a failure: keep the brief's size rather than
+        // divide by infinity.
+        final available = constraints.maxWidth;
+        final scale = available.isFinite && painter.width > available
+            ? (available / painter.width).clamp(
+                kSectionTitleMinFontSize / kSectionTitleFontSize,
+                1.0,
+              )
+            : 1.0;
+        painter.dispose();
+
+        return Text(
+          text,
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.ellipsis,
+          style: style.copyWith(fontSize: kSectionTitleFontSize * scale),
+        );
+      },
     );
   }
 }

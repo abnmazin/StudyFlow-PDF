@@ -1,78 +1,17 @@
-# Role & Objective
-You are an elite Senior Flutter Developer, Cloud Architect, and UI/UX Expert. Your objective is to produce highly optimized, production-ready Dart code for "StudyFlow", an advanced PDF Workspace and Engineering Super-App.
+# Rules moved — do not keep rules in this file
 
-# Project Context (StudyFlow)
-- The app is a heavily interactive PDF reader with an Overlay-based architecture.
-- It features an "In-App Floating Window Manager" (Mini-Apps like calculators, translators) overlaid on top of the PDF viewer using `Stack` and `Positioned`.
-- The app relies on `flutter_math_fork` for LaTeX rendering. Always constrain Math widgets properly (using `FittedBox` or strict `maxHeight`) to prevent layout explosions.
+This project's rules now live in the files the agents actually load:
 
-# Architecture & Code Quality
-- Follow pragmatic modular architecture (lib/widgets, lib/providers, lib/models, lib/services).
-- Strictly adhere to SOLID principles and DRY.
-- Use strong typing in Dart exclusively. Never use `dynamic` unless absolutely mandatory for external APIs.
-- Keep widgets small, single-purpose, and favor composition over inheritance.
+- `AGENTS.md` (root) — the law: ask when unsure, evidence never assertion, spend
+  tokens sparingly, report short and in Arabic. Commands included.
+- `.clinerules/graphify.md` — query the local code graph before reading many files.
+- `.clinerules/workflow.md` — the routine around an edit, and the reporting shape.
+- `.clinerules/testing.md` — what the tests cover, and when a test is the wrong answer.
+- `.clinerules/style.md` — comments, the shared palette, layout constants, RTL traps.
+- `.clinerules/docs.md` — when the memory files get updated.
+- `docs/AGENTS.md` — the deep handbook: build, boot, services, Firestore, gotchas.
 
-# State Management (CRITICAL)
-- The app uses `Provider` (`ChangeNotifier`, `context.read()`, `context.watch()`, `context.select()`) for global and feature-level state management (e.g., `AppProvider`).
-- DO NOT suggest or rewrite code using BLoC, Riverpod, GetX, or any other state management solution. Stick strictly to `Provider`.
-
-# UI/UX & Design Language
-- Prioritize modern, high-end, and premium UI designs.
-- Implement robust Dark Mode (Acrobat/Royal dark themes) by default.
-- Utilize Glassmorphism (frosted glass effects using `BackdropFilter` and `ImageFilter.blur`) for floating windows, overlays, and panels.
-- Completely separate UI layout code from business logic.
-- **RTL Awareness:** The app supports Arabic. Always use direction-agnostic padding/margins (e.g., `SizedBox` between items in a `Row`) or explicitly wrap text in `Directionality` when dealing with LTR math/code.
-
-# Database & Cloud Sync
-- Local DB: `Isar`. Cloud DB: `Firebase Firestore`.
-- We use a "Soft Delete & JSON Snapshot" architecture for the Trash/Recycle Bin (Deleted annotations are saved as JSON strings).
-- Optimize Firestore queries to minimize document reads. Always handle sync edge cases.
-
-# Code Generation (CRITICAL RULE)
-- We use `Isar` and code generation. 
-- NEVER suggest or use `npx` or any Node.js commands for generating Dart code.
-- ALWAYS and STRICTLY use the following exact native command to generate code:
-  `dart run build_runner build --delete-conflicting-outputs`
-
-# Input Handling & Navigation
-- Be careful with `Focus` and `onKeyEvent`. Avoid hijacking arrow keys unless explicitly needed. Use `Shortcuts` and `Intents` for clean keyboard event handling without blocking text fields.
-- Avoid full-page rebuilds. Use localized state builders (`Selector`, `Consumer`) to target specific widget updates.
-
-# === AI AGENT MEMORY & VERIFICATION PROTOCOL ===
-
-# 1. Post-Execution Validation (Zero-Error Tolerance)
-- After creating or modifying ANY file, you MUST internally verify it for syntax errors, missing imports, and broken dependencies.
-- If possible in the environment, run a simulated `dart analyze` in your head for the touched files before finalizing your response. Fix errors proactively.
-
-# 2. External Memory Maintenance (The 2 Core Files)
-You must create and continuously update two mandatory markdown files in the root directory (e.g., in a `/docs` folder):
-  A. `architecture_map.md`: A high-level map of the project. Do NOT list every single function (to save context window). List the core directories, main classes, state providers (`AppProvider`), database schemas (`Isar` models), and the relationships between them.
-  B. `changelog.md`: A strict log of changes. Record the Date, Task, What was added/modified, and CRITICALLY: "Failed Attempts" (what didn't work and why) so you do not repeat the same mistakes in future prompts.
-
-# 3. Mandatory Context Retrieval
-- ALWAYS read `architecture_map.md` and `changelog.md` silently BEFORE writing any new code or executing a user prompt. 
-- Rely strictly on these files to ensure your new features align with the existing architecture and past lessons learned. Do not guess the structure; read the map.
-
-# 4. End of Task Routine
-At the very end of EVERY successful interaction or code modification, you must explicitly state: "Updating architecture map and changelog..." and proceed to update those two files in the background.
-
-# 5. Patching & Syntax Safety (ANTI-HALLUCINATION PROTOCOL)
-- NEVER insert UI code, loops (`for`, `if`), or widget properties (like `border: Border.all`) directly into the class body. All executable logic and UI MUST be inside a method (e.g., `build()`, `initState()`, or a custom widget builder).
-- When applying patches, DOUBLE-CHECK the block scope ({ }). Do not break the Dart syntax tree by pasting code in the wrong indentation level.
-- If the terminal/linter outputs syntax errors (e.g., "Expected a function body"), YOU MUST NOT IGNORE THEM. Read the exact terminal output, admit the mistake, and fix the scope before finishing your response. DO NOT fake or hallucinate a successful error check.
-
-# === GRAPHIFY KNOWLEDGE GRAPH ===
-
-# 6. Graph-First Context Retrieval
-- A local knowledge graph of this codebase exists at `graphify-out/graph.json`, built with
-  `graphify extract . --code-only` (no API key, no embeddings, every edge `EXTRACTED`).
-- Full rules and known coverage limits: `.clinerules/graphify.md` (read it before relying on the graph).
-- BEFORE reading more than two files to answer an architecture/dependency question, query the graph:
-  - MCP tools: `query_graph`, `get_node`, `get_neighbors`, `shortest_path`
-  - CLI: `graphify query "..."` · `graphify path "A" "B" --undirected` · `graphify explain "path::Symbol"`
-- Ambiguity is expected (e.g. `UniversityService` matches 7 nodes) — always qualify with `<path>::<Symbol>`.
-- Trust `EXTRACTED` edges; verify `INFERRED`/`AMBIGUOUS` against the source file.
-- Dart here is parsed by a regex extractor (not tree-sitter): double-check `part`/`part of` files,
-  mixins and extensions manually. `pubspec.yaml` and `firestore.rules` are NOT in the graph.
-- Keep the graph fresh: `graphify update .` after `git pull`; `graphify extract . --code-only` after large edits.
-  A stale graph produces confident wrong answers.
+This stub exists only so an editor that reads `.cursorrules` lands somewhere
+useful. It is intentionally empty of rules: rules in two places drift, and that is
+exactly how this project's navbar height and sidebar height ended up disagreeing.
+Put new rules in the files above instead.

@@ -217,6 +217,25 @@ void main() {
       expect(panel.top, lessThanOrEqualTo(field.bottom + 20));
     });
 
+    testWidgets('stays inside the window, whichever side has the room', (
+      tester,
+    ) async {
+      // The field is centred, so it has equal room on both sides; the panel is
+      // placed by `Positioned` from `info.childPaintTransform` now, not by a
+      // `CompositedTransformFollower`. A wrong physical edge (reading-order left
+      // read as window left, say) would push the panel past a window edge, which
+      // is exactly what the eye cannot judge from a passing widget-field assert.
+      await openField(tester, library: twoFolders());
+
+      final field = tester.getRect(find.byType(TextField));
+      final panel = tester.getRect(find.byKey(searchPanelKey));
+
+      expect(panel.left, greaterThanOrEqualTo(0));
+      expect(panel.right, lessThanOrEqualTo(surface.width));
+      // Never wider than the field it belongs to: the two read as one control.
+      expect(panel.width, lessThanOrEqualTo(field.width));
+    });
+
     testWidgets('an untouched field lists the files worth resuming', (
       tester,
     ) async {

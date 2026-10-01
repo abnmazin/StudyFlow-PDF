@@ -61,10 +61,6 @@ class NotificationBellState extends State<NotificationBell> {
   /// Ties the bell and its panel into one tap area.
   static const String _tapGroup = 'dashboard-notifications';
 
-  /// The bell's own box, to find which side of the window it is on.
-  final GlobalKey _bellKey = GlobalKey();
-
-  final LayerLink _link = LayerLink();
   final OverlayPortalController _portal = OverlayPortalController();
 
   /// The panel, not the bell: the panel is what the page hands to the shared
@@ -180,25 +176,30 @@ class NotificationBellState extends State<NotificationBell> {
   /// towards whichever side has more room, and is never wider or taller than
   /// that room, so it cannot run past the window edge.
   ///
-  /// Deliberately a pure function of the current frame rather than stored state:
-  /// it is read from `build`, and a `setState` from inside a build is an error.
-  /// The overlay child closes over the result of the last build, which is the
-  /// frame the panel was opened on.
-  ({bool toRight, double width, double height}) _geometry() {
-    final screen = MediaQuery.sizeOf(context);
+  /// The three facts come from [OverlayChildLayoutInfo] rather than from a
+  /// `GlobalKey` + `localToGlobal` + `MediaQuery` trio: the portal's own layout
+  /// pass hands over the bell's box, its paint transform into the overlay, and
+  /// the overlay's size. It is the same measurement taken one layer lower — and
+  /// taking it there is what lets this panel hold a `Tooltip` at all (see the
+  /// note in `build`).
+  ///
+  /// Deliberately a pure function of the layout that just ran rather than
+  /// stored state: it is called from inside layout, where `setState` is an
+  /// error.
+  ({double top, double? left, double? right, double width, double height})
+  _geometry(OverlayChildLayoutInfo info) {
+    final screen = info.overlaySize;
     const margin = 12.0;
     const gap = 12.0;
 
-    final box = _bellKey.currentContext?.findRenderObject();
-    if (box is! RenderBox || !box.hasSize) {
-      return (
-        toRight: true,
-        width: panelWidth.clamp(0.0, screen.width - 2 * margin),
-        height: (screen.height - 2 * margin).clamp(0.0, _maxPanelHeight),
-      );
-    }
+    // Physical, because `Positioned` is: `left`/`right` are window sides, not
+    // reading-order sides.
+    final origin = MatrixUtils.transformPoint(
+      info.childPaintTransform,
+      Offset.zero,
+    );
+    final rect = origin & info.childSize;
 
-    final rect = box.localToGlobal(Offset.zero) & box.size;
     final roomToRight = screen.width - margin - rect.left;
     final roomToLeft = rect.right - margin;
     final toRight = roomToRight >= roomToLeft;
@@ -207,8 +208,13 @@ class NotificationBellState extends State<NotificationBell> {
     // just under the bell, and only the space below it limits the height.
     final below = screen.height - margin - rect.bottom - gap;
 
+    // Hung off the bell's *bottom*, not its top, so the panel cannot cover the
+    // bell or the search field beside it. Horizontally it grows towards
+    // whichever side has the room, which is what keeps it inside the window.
     return (
-      toRight: toRight,
+      top: rect.bottom + gap,
+      left: toRight ? rect.left : null,
+      right: toRight ? null : screen.width - rect.right,
       width: (panelWidth < room ? panelWidth : room).clamp(
         0.0,
         screen.width - 2 * margin,
@@ -219,48 +225,43 @@ class NotificationBellState extends State<NotificationBell> {
 
   @override
   Widget build(BuildContext context) {
-    final geometry = _geometry();
-
-    return OverlayPortal(
+    return OverlayPortal.overlayChildLayoutBuilder(
       controller: _portal,
-      overlayChildBuilder: (context) => CompositedTransformFollower(
-        link: _link,
-        showWhenUnlinked: false,
-        // Horizontally the two sides match, which keeps the panel inside the
-        // window: it grows towards whichever side the bell has room on.
-        // Vertically they deliberately do not: the follower keeps the panel's
-        // *top* while the target is the bell's *bottom*, so the panel opens
-        // under the bell instead of 12px below the bell's top — where it used to
-        // cover the bell and the search field beside it. It also agrees with
-        // `_geometry`, which measures the room from `rect.bottom`.
-        targetAnchor: geometry.toRight
-            ? Alignment.bottomLeft
-            : Alignment.bottomRight,
-        followerAnchor: geometry.toRight
-            ? Alignment.topLeft
-            : Alignment.topRight,
-        offset: const Offset(0, 12),
-        // The Overlay lays every entry out tight to the whole window
-        // (`BoxConstraints.tight(size)`), and a follower hands those tight
-        // constraints straight to its child, so a `maxWidth` below could never
-        // shrink anything — the panel came out full-screen. `Align` is what
-        // loosens them: it fills the window itself, so the anchors above still
-        // land the panel under the bell, and its empty half is not hit-tested,
-        // so a tap outside the panel still reaches the bell's `TapRegion`.
-        child: Align(
-          alignment: geometry.toRight ? Alignment.topLeft : Alignment.topRight,
+      // No `CompositedTransformFollower` anywhere near this portal — that is a
+      // rule, not a preference. `overlay.dart` states that putting one between
+      // an `OverlayPortal` and its `Overlay` "may result in an incorrect child
+      // paint transform" and asserts in debug. It bit this panel because the
+      // panel's own header carries a `Tooltip`, and `Tooltip` is built on
+      // `OverlayPortal.overlayChildLayoutBuilder` as well (`raw_tooltip.dart`):
+      // hovering the publish button built a portal underneath that follower and
+      // threw, which is the red screen that appeared for as long as the tooltip
+      // was up.
+      //
+      // Building the panel from the layout callback is the SDK's own remedy, and
+      // the follower's job — turning the bell's position into the panel's — is
+      // done by `_geometry` out of `info` instead.
+      overlayChildBuilder: (context, info) {
+        final placement = _geometry(info);
+        // The portal's layout pass also runs the `Stack` layout algorithm, which
+        // is the documented reason a `Positioned` is the way to place an overlay
+        // child. Physical edges: `left`/`right` are window sides, not
+        // reading-order sides.
+        return Positioned(
+          top: placement.top,
+          left: placement.left,
+          right: placement.right,
           child: TapRegion(
             // The panel is in the Overlay, not a descendant of the bell's
             // `TapRegion` below, so without a shared group a tap on the composer
             // or a list row counts as "outside" and dismisses the panel on
             // pointer-down — before the control under the finger ever sees it.
-            // It wraps the panel only, not the full-window `Align` around it.
+            // It wraps the panel only, not the empty space around it.
             groupId: _tapGroup,
             child: ConstrainedBox(
               constraints: BoxConstraints(
-                // Never wider or taller than the room measured beside the bell.
-                maxWidth: geometry.width,
-                maxHeight: geometry.height,
+                // Never wider or taller than the room measured under the bell.
+                maxWidth: placement.width,
+                maxHeight: placement.height,
               ),
               child: Material(
                 color: Colors.transparent,
@@ -286,48 +287,46 @@ class NotificationBellState extends State<NotificationBell> {
               ),
             ),
           ),
-        ),
-      ),
-      child: CompositedTransformTarget(
-        link: _link,
-        child: TapRegion(
-          groupId: _tapGroup,
-          onTapOutside: (_) => _portal.hide(),
-          child: Tooltip(
-            message: 'الإشعارات',
-            child: InkWell(
-              key: _bellKey,
-              onTap: _toggle,
-              borderRadius: BorderRadius.circular(999),
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: DashboardColors.surface,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: DashboardColors.border),
-                    ),
-                    child: const Icon(
-                      LucideIcons.bell,
-                      size: 18,
-                      color: Colors.white,
-                    ),
+        );
+      },
+      // The bell itself: the portal's own `child`, and the box `_geometry`
+      // measures. No `CompositedTransformTarget` here — see the note above.
+      child: TapRegion(
+        groupId: _tapGroup,
+        onTapOutside: (_) => _portal.hide(),
+        child: Tooltip(
+          message: 'الإشعارات',
+          child: InkWell(
+            onTap: _toggle,
+            borderRadius: BorderRadius.circular(999),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: DashboardColors.surface,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: DashboardColors.border),
                   ),
-                  if (_unread > 0)
-                    PositionedDirectional(
-                      // The brief's -4/-4 with a 2px ring in the navbar's own
-                      // colour, which is what makes the badge look cut out of the
-                      // circle instead of stuck on top of it.
-                      top: -4,
-                      end: -4,
-                      child: _UnreadBadge(count: _unread),
-                    ),
-                ],
-              ),
+                  child: const Icon(
+                    LucideIcons.bell,
+                    size: 18,
+                    color: Colors.white,
+                  ),
+                ),
+                if (_unread > 0)
+                  PositionedDirectional(
+                    // The brief's -4/-4 with a 2px ring in the navbar's own
+                    // colour, which is what makes the badge look cut out of the
+                    // circle instead of stuck on top of it.
+                    top: -4,
+                    end: -4,
+                    child: _UnreadBadge(count: _unread),
+                  ),
+              ],
             ),
           ),
         ),

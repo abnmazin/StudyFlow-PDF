@@ -1,5 +1,106 @@
 # Changelog
 
+## [2026-10-01] Fixed: dashboard panels crashed — `CompositedTransformFollower` under an `OverlayPortal`
+
+### Bug
+Two red screens, both from the same structural mistake in the three floating
+dashboard panels (notifications, search, task menu), each of which opened its
+content through an `OverlayPortal`:
+
+1. **Notifications panel + `Tooltip`.** Hovering the panel's publish button threw
+   an assertion. `Tooltip` is itself built on
+   `OverlayPortal.overlayChildLayoutBuilder` (`raw_tooltip.dart:866`), so the
+   tooltip built a second portal *underneath* the panel's
+   `CompositedTransformFollower`. `overlay.dart` forbids exactly that — a follower
+   between an `OverlayPortal` and its `Overlay` "may result in an incorrect child
+   paint transform" — and asserts in debug (`overlay.dart:2753`, checked at
+   `1848-1852`). The search panel and the task menu had the same latent trap; any
+   `Tooltip`, `MenuAnchor` or `Autocomplete` added inside them would have done it.
+
+2. **Scrollbar crash on the dashboard.** `routes.dart:1202` gives every route a
+   `PrimaryScrollController`, and on Windows `ScrollView.shouldInherit` is false
+   (`scroll_view.dart:492`), so the `CustomScrollView` created its own controller
+   while the sibling `Scrollbar` watched the route's — two different positions,
+   asserted at `scrollbar.dart:1495` ("has no ScrollPosition attached"). Side
+   effect: the thumb never painted.
+
+### Fix
+- All three panels now use `OverlayPortal.overlayChildLayoutBuilder` and return a
+  `Positioned` computed from `OverlayChildLayoutInfo`. The follower's job —
+  turning the anchor's position into the panel's — is done by a pure `_geometry`
+  helper out of `info.childPaintTransform` / `info.childSize` / `info.overlaySize`.
+  `_geometry` runs during layout, so it must not `setState`; every panel opens
+  post-layout (tap or focus), so this holds.
+- `CompositedTransformTarget`/`Follower`, the `LayerLink`s and the anchor
+  `GlobalKey`s (`_link`, `_fieldKey`, `_bellKey`, `_menuButtonKey`, `anchorKey`)
+  are gone. The anchor widget is now the portal's own `child`.
+- `_TaskMenu` takes the button as `child` and adds a left-edge clamp (margin 12)
+  the follower did not have — a behaviour change, flagged below.
+- `dashboard_page.dart`: one `ScrollController` shared by the `Scrollbar` and the
+  `CustomScrollView`, disposed in `dispose()`.
+
+### Behavior change worth knowing
+The task menu right-aligns to its button and grows leftwards; when that would
+push it past the window's left edge, it is now pinned to a 12px margin instead of
+being clipped. The old follower always right-aligned and could clip.
+
+### Do not repeat
+**Never put a `CompositedTransformFollower` between an `OverlayPortal` and its
+`Overlay`.** The SDK asserts on it, and the crash surfaces from whatever nested
+portal is added later — a `Tooltip` on a button, a `MenuAnchor` in a menu — not
+from the follower itself, so it reads as a bug in the innocent widget. Use
+`overlayChildLayoutBuilder` + `Positioned`.
+
+### Evidence
+`flutter analyze --no-pub`: **0 errors**, 0 findings in the four touched files (175
+pre-existing findings elsewhere). `flutter test`: **86 passed** (one guard added to
+`test/dashboard_search_test.dart`: the panel stays inside the window and no wider
+than its field, via `tester.getRect`). Not verified by test: the notifications and
+task panels themselves — `AppProvider` opens Isar/Firebase in its constructor, so
+they are not cheaply testable; the user checks those by eye.
+
+## [2026-10-01] Fixed: the schedule card vanished (LayoutBuilder under IntrinsicHeight)
+
+### Bug
+`DashboardSectionTitle` measured itself with a `LayoutBuilder` so a long title
+could shrink toward 12px. Two of its callers sit inside
+`DashboardTasksAndSchedule`, which equalises its cards with `IntrinsicHeight` —
+and that asks a card for its height *without laying it out*. A `LayoutBuilder`
+refuses that question ("LayoutBuilder does not support returning intrinsic
+dimensions"), which killed the layout of the whole sliver: the schedule card never
+got a size, the dashboard's third section fell off the page, and the failure
+cascaded into `RenderBox was not laid out` and null-operator errors in the gesture
+handling.
+
+### Fix
+- `DashboardSectionTitle` gained `shrinkToFit` (default `true`). The two headings
+  inside that row pass `false` and take a plain ellipsised `Text`, which answers
+  intrinsics. Nothing is visible: both headings are one short word, so neither
+  ever reached the shrink it gives up.
+- `statCardWidth` now takes `perRow` rather than `isWide`, and the reading-stat
+  grid is four across on a desktop width and **two-up** below it. It used to stack
+  one card per row, contradicting the section's own layout note.
+- The seven-day strip is wrapped in `Flexible` + `FittedBox`: seven 20px circles
+  are 140px of hard width, and a half-width card can have less than that inside
+  its padding.
+- `kStatCardGap` is new — the 16px gap was a bare literal in two places that had
+  to agree.
+- Card height stays 130, and `kStatCardHeight`'s comment no longer claims the
+  navbar is "the 80px the design calls for" (it has been 64 since 2026-09-30).
+
+### Do not repeat
+**Never put a `LayoutBuilder` under an `IntrinsicHeight` / `IntrinsicWidth`.** The
+widget that measures cannot itself be measured. If a shared widget needs a
+measurement to lay itself out, give it a flag so a caller in an intrinsic context
+can take a path that does not measure.
+
+### Evidence
+`flutter analyze --no-pub`: 0 errors, 0 findings in the four touched files (175
+pre-existing findings elsewhere). `flutter test`: **86 passed**, up from 85. The
+guard was checked both ways — with `shrinkToFit: true` in the row's fixture the new
+assertion fails with the app's own message at `test/dashboard_layout_test.dart:198`,
+and with `false` it passes.
+
 ## [2026-09-27] Graphify Knowledge Graph (Local-First Code Graph)
 
 ### Feature

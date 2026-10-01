@@ -1,10 +1,27 @@
 # Architecture Map
 
+## Dashboard Floating Panels (2026-10-01)
+- The three floating panels on the dashboard — the notification bell's panel
+  (`dashboard_notifications.dart`), the search results (`dashboard_search.dart`)
+  and the task row's 3-dots menu (`dashboard_tasks_schedule.dart`) — all open
+  through `OverlayPortal.overlayChildLayoutBuilder` and place themselves with a
+  `Positioned` computed from `OverlayChildLayoutInfo`. There is **no
+  `CompositedTransformTarget`/`Follower` anywhere in the dashboard**: the SDK
+  forbids a follower between an `OverlayPortal` and its `Overlay`, and that is what
+  crashed the bell's panel through a `Tooltip`. Each panel keeps a private
+  `_geometry(info)` helper (pure, no `setState`) — the single place its placement
+  rule lives.
+- The dashboard page (`dashboard_page.dart`) owns one `ScrollController` shared by
+  its `Scrollbar` and its `CustomScrollView`. They must share it: a `Scrollbar`
+  with no controller takes the route's `PrimaryScrollController` while a
+  `CustomScrollView` on Windows (`shouldInherit == false`) takes its own, and two
+  different positions is the "has no `ScrollPosition` attached" assert.
+
 ## Knowledge Graph Tooling (2026-09-27)
 - **Graphify** (`graphifyy` v0.9.69) builds a local, deterministic code graph at `graphify-out/graph.json` — no vector DB, no embeddings, no API key for the code path. Snapshot: **2309 nodes / 3021 edges / 86 communities, 100% `EXTRACTED`**, built from commit `001b0cd0` in 13.7s.
 - Edge vocabulary present in this repo: `defines` (1963), `references` (442), `imports` (439), `inherits` (93), `contains` (41), `configures` (11), `exports` (9), `extends` (8), `imports_from` (6), `mixes_in` (4), `reads_from` (2), `implements` (1).
 - Community hubs (navigation entry points): `app_state.dart` (242 nodes), `pdf_viewer_widget_w.dart` (112), `viewer_right_panel.dart` (108), `isar_models.dart` (89), `file_manager_service.dart` (65), `sync_service.dart` (62).
-- Cline integration: `graphify` MCP server (stdio) exposing `query_graph`, `get_node`, `get_neighbors`, `shortest_path`; agent protocol in `.clinerules/graphify.md` (+ section #6 in `.cursorrules`).
+- Cline integration: `graphify` MCP server (stdio) exposing 10 tools (`query_graph`, `get_node`, `get_neighbors`, `get_community`, `god_nodes`, `graph_stats`, `shortest_path` auto-approved; `list_prs`, `get_pr_impact`, `triage_prs` not); agent protocol in `.clinerules/graphify.md`, which is loaded automatically, plus the root `AGENTS.md`.
 - A graph-derived finding worth noting: `explain` shows `UniversityService` still referenced by `university_hub.dart` (L38) even though that file is documented here as deprecated — the widget is still wired into the app.
 - Coverage caveats: Dart extraction is **regex-based**, not tree-sitter, so `part`/`part of` relationships (the 6 viewer parts) and mixin/extension edges are partial; `pubspec.yaml` and `firestore.rules` are outside the graph — treat the tables below as the source of truth for Firestore/RLS.
 

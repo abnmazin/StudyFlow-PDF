@@ -19,6 +19,24 @@ question, query the graph instead:
   - `graphify explain "lib/services/university_service.dart::UniversityService"`
 - Human-readable audit: `graphify-out/GRAPH_REPORT.md`, visual: `graphify-out/graph.html`
 
+The CLI needs its absolute path on this machine — `graphify` only resolves after
+a terminal refresh, so the bare name is not reliable:
+
+```powershell
+& "C:\Users\Asus\.local\bin\graphify.exe" query "who writes reading progress to Firestore"
+& "C:\Users\Asus\.local\bin\graphify.exe" explain "lib/services/university_service.dart::UniversityService"
+& "C:\Users\Asus\.local\bin\graphify.exe" affected "SyncService" --depth 2
+& "C:\Users\Asus\.local\bin\graphify.exe" update .
+```
+
+Notes earned by using it: `query` is a BFS and goes noisy fast, so pass
+`--budget 1500` or narrow the wording instead; `affected` is the one command that
+rejects the qualified `<path>::<Symbol>` form and wants the bare name; run the
+`update` above after a pull, and `update . --force` after a refactor that deletes
+code, since the rebuild otherwise refuses to shrink the node count. For a real
+count, parse `graphify-out/graph.json` directly — `query "anything" --budget 1`
+prints no count at all, because "anything" matches no node.
+
 ## Rules
 
 1. Trust `EXTRACTED` edges as facts from source; treat `INFERRED` / `AMBIGUOUS`

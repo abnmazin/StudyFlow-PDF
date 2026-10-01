@@ -201,9 +201,26 @@ void main() {
                     children: [
                       Expanded(child: LectureRow(lecture: LectureFixture.long)),
                       const SizedBox(width: 32),
-                      // Stand-in for the tasks card, which needs an AppProvider
-                      // this test has no reason to build.
-                      const Expanded(child: SizedBox()),
+                      // Stands in for the tasks card. The card itself needs an
+                      // `AppProvider` this test has no reason to build, but the
+                      // heading inside it is the real one — and the heading is
+                      // what the row measures. Built the way `TodayTasksCard`
+                      // builds it, so a heading that goes back to measuring by
+                      // default fails here rather than in the app.
+                      const Expanded(
+                        child: Padding(
+                          padding: EdgeInsets.all(20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              DashboardSectionTitle(
+                                'مهام اليوم',
+                                shrinkToFit: false,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -218,6 +235,17 @@ void main() {
     // showed as a red rendering block, so `null` here is the whole test.
     expect(tester.takeException(), isNull);
     expect(find.byKey(const ValueKey('lecture-time')), findsOneWidget);
+
+    // And the heading took the measuring-free path: the brief's 18, not a
+    // scaled run. A measuring heading is a `LayoutBuilder`, which is the thing
+    // this row cannot ask for.
+    final heading = tester.widget<Text>(
+      find.descendant(
+        of: find.byType(DashboardSectionTitle),
+        matching: find.byType(Text),
+      ),
+    );
+    expect(heading.style?.fontSize, kSectionTitleFontSize);
   });
 
   testWidgets('the five service tiles share one row and one height', (
@@ -391,6 +419,155 @@ void main() {
     expect(
       (baselineOf(tester, valueFinder) - baselineOf(tester, unitFinder)).abs(),
       lessThan(0.5),
+    );
+  });
+
+  // The narrow window used to lay the four figures out one card per row — a
+  // screen of scrolling for four numbers, and the one place where this section's
+  // own layout note ("two-up below that") was not what the code did.
+  testWidgets('the stats grid is two-up on a narrow window, never one', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1400, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Directionality(
+          textDirection: TextDirection.rtl,
+          child: Scaffold(
+            body: SizedBox(
+              width: 700,
+              child: DashboardReadingStats(isWide: false, days: _activeWeek()),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+
+    final cards = find.byWidgetPredicate(
+      (w) => w is Container && w.constraints?.maxHeight == kStatCardHeight,
+    );
+    expect(cards, findsNWidgets(4));
+
+    // Asserted on the render tree rather than on the widget list: an `expect` on
+    // the children passes while the row still stacks one per line.
+    final rects = [for (var i = 0; i < 4; i++) tester.getRect(cards.at(i))];
+    expect(
+      rects.map((r) => r.top).toSet().length,
+      2,
+      reason: 'four cards in two rows, not four',
+    );
+    expect(rects[0].top, rects[1].top, reason: 'the first two share a row');
+    expect(rects[2].top, rects[3].top, reason: 'the last two share a row');
+    expect(rects[0].left, rects[2].left, reason: 'and the rows share columns');
+    expect(rects[0].width, rects[1].width);
+  });
+
+  // A section heading is the one row in the dashboard that must not reflow: the
+  // card narrows with the window, and a title that shrinks and truncates on one
+  // line is the intended behaviour. A bare `Text` in the `Row` took its full
+  // intrinsic width instead — a non-flex child is laid out unbounded — so the
+  // trailing control landed outside the card.
+  testWidgets('a narrow card keeps the section title and its control on one row', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(narrow);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    const title = 'إحصائيات ونشاط القراءة';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Directionality(
+          textDirection: TextDirection.rtl,
+          child: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 200,
+                child: DashboardSectionTitle(
+                  title,
+                  // Stands in for the period dropdown, which is the widest thing
+                  // that ever trails this heading.
+                  trailing: Container(
+                    key: const ValueKey('section-trailing'),
+                    width: 140,
+                    height: 32,
+                    color: DashboardColors.surface,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    // The framework's report is the assertion that matters: an overflowing
+    // `RenderFlex` throws during the pump. Taken before the geometry below for
+    // the reason the lecture test gives — an `expect` on the exception alone
+    // prints "Expected: null" without saying which flex failed.
+    final overflow = tester.takeException();
+    if (overflow != null) {
+      final flexes = tester.allRenderObjects
+          .whereType<RenderFlex>()
+          .map((f) {
+            final kids = <RenderBox>[];
+            f.visitChildren((c) {
+              if (c is RenderBox) kids.add(c);
+            });
+            final widths = kids
+                .map((k) => k.size.width.toStringAsFixed(1))
+                .join(',');
+            return '${f.runtimeType} width=${f.size.width} dir=${f.direction} '
+                'children=[$widths]';
+          })
+          .join(' | ');
+      fail('Layout overflowed: $overflow — $flexes');
+    }
+
+    final trailingFinder = find.byKey(const ValueKey('section-trailing'));
+    final trailingRect = tester.getRect(trailingFinder);
+    final cardRight = tester.getRect(find.byType(DashboardSectionTitle)).right;
+
+    // The control is still inside the card. This is the `Flexible` half of the
+    // rule: without it the title claims the row's full width and the control
+    // lands outside.
+    expect(
+      trailingRect.right,
+      lessThanOrEqualTo(cardRight + 0.5),
+      reason: 'the trailing control must stay on the card it belongs to',
+    );
+
+    // And it kept its own size rather than being squeezed to make room: the
+    // title is the part that gives ground.
+    expect(trailingRect.width, 140);
+
+    // One line, at whatever size it settled on. A wrapped title is the failure
+    // that reads as "the heading became a column", and its height is what gives
+    // it away — two lines at 18px are taller than any single line the shrink can
+    // produce.
+    final titleFinder = find.text(title);
+    expect(
+      tester.getSize(titleFinder).height,
+      lessThan(kSectionTitleFontSize * 2),
+      reason: 'the title wrapped instead of shrinking',
+    );
+
+    // The shrink is bounded: past the floor the title truncates, so the size
+    // stops falling instead of chasing the width all the way down.
+    final rendered = tester.widget<Text>(titleFinder).style!.fontSize!;
+    expect(
+      rendered,
+      inInclusiveRange(kSectionTitleMinFontSize, kSectionTitleFontSize),
+      reason: 'the title scaled past the floor, or grew past the brief',
+    );
+    expect(
+      rendered,
+      lessThan(kSectionTitleFontSize),
+      reason: '200px cannot hold this title at 18px, so it must have shrunk',
     );
   });
 }
