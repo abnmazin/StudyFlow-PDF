@@ -1,0 +1,54 @@
+00:00 +0: loading E:/Programing/flutter/app/test/dashboard_layout_test.dart
+00:00 +0: E:/Programing/flutter/app/test/dashboard_layout_test.dart: the time sits on the title baseline, with no box around it
+00:00 +1: E:/Programing/flutter/app/test/dashboard_layout_test.dart: the time sits on the title baseline, with no box around it
+00:00 +2: E:/Programing/flutter/app/test/dashboard_layout_test.dart: the time sits on the title baseline, with no box around it
+00:00 +3: E:/Programing/flutter/app/test/dashboard_layout_test.dart: the time sits on the title baseline, with no box around it
+00:00 +4: E:/Programing/flutter/app/test/dashboard_layout_test.dart: the time sits on the title baseline, with no box around it
+00:00 +5: E:/Programing/flutter/app/test/dashboard_layout_test.dart: the time sits on the title baseline, with no box around it
+00:00 +6: E:/Programing/flutter/app/test/dashboard_layout_test.dart: the time sits on the title baseline, with no box around it
+00:00 +7: E:/Programing/flutter/app/test/dashboard_layout_test.dart: the time sits on the title baseline, with no box around it
+00:01 +8: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:01 +9: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:01 +10: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:01 +11: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:01 +12: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:01 +13: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:01 +14: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:01 +15: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:01 +16: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:01 +17: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:01 +18: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:01 +19: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:01 +20: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:01 +21: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:01 +22: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:01 +23: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:01 +24: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:01 +25: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:01 +26: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:01 +27: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:01 +28: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:01 +29: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:01 +30: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:02 +31: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:02 +32: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:02 +33: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:02 +34: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:02 +35: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:02 +36: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:02 +37: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:02 +38: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:02 +39: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:02 +40: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:02 +41: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:02 +42: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:02 +43: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:02 +44: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:02 +45: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:02 +46: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:02 +47: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:02 +48: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:03 +49: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:03 +50: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:03 +51: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:03 +52: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it

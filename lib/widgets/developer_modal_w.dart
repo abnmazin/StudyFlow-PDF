@@ -251,7 +251,7 @@ class _DeveloperModalState extends State<DeveloperModal>
                 mainAxisSize: MainAxisSize.min,
                 children: const [
                   Text(
-                    'تطبيق مصمم خصيصاً لطلبة الكلية التقنية الهندسية',
+                    'تطبيق مصمم خصيصاً للبيت',
                     style: TextStyle(
                       fontSize: 12,
                       color: Color(0xFFE2E8F0),
