@@ -52,3 +52,38 @@
 00:03 +50: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
 00:03 +51: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
 00:03 +52: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:03 +53: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:03 +54: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:03 +55: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel opens under the field, never over it
+00:03 +56: E:/Programing/flutter/app/test/tool_width_limits_test.dart: the bounds a Slider is handed a width every surface allows builds without asserting
+00:03 +57: E:/Programing/flutter/app/test/tool_width_limits_test.dart: the bounds a Slider is handed a width every surface allows builds without asserting
+00:03 +58: E:/Programing/flutter/app/test/tool_width_limits_test.dart: the bounds a Slider is handed a width every surface allows builds without asserting
+00:03 +59: E:/Programing/flutter/app/test/tool_width_limits_test.dart: the bounds a Slider is handed a width every surface allows builds without asserting
+00:03 +60: E:/Programing/flutter/app/test/tool_width_limits_test.dart: the bounds a Slider is handed a width every surface allows builds without asserting
+00:03 +61: E:/Programing/flutter/app/test/tool_width_limits_test.dart: the bounds a Slider is handed a width every surface allows builds without asserting
+00:03 +62: E:/Programing/flutter/app/test/tool_width_limits_test.dart: the bounds a Slider is handed a width every surface allows builds without asserting
+00:03 +63: E:/Programing/flutter/app/test/tool_width_limits_test.dart: the bounds a Slider is handed a width every surface allows builds without asserting
+00:03 +64: E:/Programing/flutter/app/test/tool_width_limits_test.dart: the bounds a Slider is handed a width every surface allows builds without asserting
+00:04 +65: E:/Programing/flutter/app/test/tool_width_limits_test.dart: the bounds a Slider is handed a width every surface allows builds without asserting
+00:04 +66: E:/Programing/flutter/app/test/tool_width_limits_test.dart: the bounds a Slider is handed a width every surface allows builds without asserting
+00:04 +67: E:/Programing/flutter/app/test/tool_width_limits_test.dart: the bounds a Slider is handed a width every surface allows builds without asserting
+00:04 +68: E:/Programing/flutter/app/test/tool_width_limits_test.dart: the bounds a Slider is handed a width every surface allows builds without asserting
+00:04 +69: E:/Programing/flutter/app/test/tool_width_limits_test.dart: the bounds a Slider is handed a width every surface allows builds without asserting
+00:04 +70: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel typing replaces the suggestions with the matches
+00:04 +71: E:/Programing/flutter/app/test/dashboard_search_test.dart: the panel typing replaces the suggestions with the matches
+00:04 +72: E:/Programing/flutter/app/test/folder_announcements_test.dart: FolderAnnouncementsView deleting asks first, and only reports on confirm
+00:04 +73: E:/Programing/flutter/app/test/folder_announcements_test.dart: FolderAnnouncementsView deleting asks first, and only reports on confirm
+00:04 +74: E:/Programing/flutter/app/test/folder_announcements_test.dart: FolderAnnouncementsView the way back to the dashboard is optional
+00:04 +75: E:/Programing/flutter/app/test/folder_announcements_test.dart: FolderAnnouncementsView a note with a picture draws it under its text
+00:04 +76: E:/Programing/flutter/app/test/folder_announcements_test.dart: FolderAnnouncementsView a note without a picture draws no image at all
+00:04 +77: E:/Programing/flutter/app/test/folder_announcements_test.dart: FolderAnnouncementsView a picture-only note is named, not printed as «»
+00:04 +78: E:/Programing/flutter/app/test/folder_announcements_test.dart: AnnouncementComposer starts as a bar and opens on tap
+00:05 +79: E:/Programing/flutter/app/test/folder_announcements_test.dart: AnnouncementComposer an empty draft is refused with the model wording
+00:05 +80: E:/Programing/flutter/app/test/folder_announcements_test.dart: AnnouncementComposer publishing sends the trimmed draft and resets the bar
+00:05 +81: E:/Programing/flutter/app/test/folder_announcements_test.dart: AnnouncementComposer a failed publish keeps the draft and reports the reason
+00:06 +82: E:/Programing/flutter/app/test/folder_announcements_test.dart: AnnouncementComposer a note may be the picture alone
+00:06 +83: E:/Programing/flutter/app/test/folder_announcements_test.dart: AnnouncementComposer an attached picture is previewed, and can be removed
+00:06 +84: E:/Programing/flutter/app/test/folder_announcements_test.dart: AnnouncementComposer a dismissed picker changes nothing
+00:06 +85: E:/Programing/flutter/app/test/folder_announcements_test.dart: AnnouncementComposer a failed upload is reported and keeps the draft
+00:06 +86: E:/Programing/flutter/app/test/folder_announcements_test.dart: AnnouncementComposer while an upload runs the bar says so and refuses more
+00:06 +87: All tests passed!
