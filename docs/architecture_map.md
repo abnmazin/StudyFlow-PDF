@@ -1,5 +1,36 @@
 # Architecture Map
 
+## Standalone Downloader (2026-10-03)
+- **A separate application, not a page of this one.** `E:\Programing\flutter\downloader`
+  is a standalone C# WinForms project, 104 KB as a single portable `.exe`, with no
+  installer and no runtime to fetch. It signs in, reads one Firestore document,
+  downloads, verifies and starts Setup. Its own repository — this one keeps a
+  single Dart package, and a nested `pubspec.yaml` confuses the tooling.
+- **It does not read GitHub.** `app_config/installer` is the only place the
+  installer link exists, and the downloader takes it from there. That indirection is
+  the whole point: moving the file behind a private bucket later is a Firestore
+  edit, not a rebuild — nobody who already has the `.exe` needs a new one.
+- **The link is public today, and the map says so.** `url` currently holds the
+  `browser_download_url` of a release in the public `abnmazin/StudyFlow-PDF`, so
+  anyone can fetch the installer without an account. The `path` field is the
+  switch: filled in, it makes `InstallerLink.FetchAsync` mint a 10-minute signed URL
+  from a private bucket and ignore `url`. That branch ships unverified, because the
+  bucket does not exist yet.
+- **Identity is Firebase, and the derivation is copied, not re-invented.**
+  `Account.EmailForUsername` is a verbatim port of `AuthService.emailForUsername`
+  (`lib/services/auth_service.dart:41`). It now has three copies — that Dart
+  function, `emailLocalPart` in `tools/provision_auth.mjs`, and the C# one — and
+  they must stay identical or login looks for an address nobody created.
+- **The publisher is one command.** `tools/publish_release.ps1` now ends by calling
+  `tools/publish_installer_doc.mjs`, which finds the service account key itself and
+  raises `app_config/version.latest_version` only when the version is genuinely
+  higher. `-SkipDoc` exists and is documented; without the document, a release is
+  invisible rather than broken.
+- **Built with `csc.exe`, deliberately.** No `dotnet`, no `MSBuild.exe`, no .NET
+  Framework 4.8 reference assemblies on this machine (checked 2026-10-02), so
+  `build.ps1` calls the compiler Windows ships — C# 5, hence no `$"..."` and no
+  `?.` in `src/`.
+
 ## In-App Update Flow (2026-10-02)
 - **Two halves, one number.** `VersionCheckService.check()`
   (`lib/services/version_check_service.dart`) still owns `min_version` from
@@ -10,15 +41,41 @@
   an update nobody can install. The comparison lives once, in `lib/utils/semver.dart`
   (`compareVersions` / `isVersionLessThan`) — the gate and the updater ask the same
   question.
-- **The updater is a `Stack` overlay, not a dialog.** `VersionCheckGate`
-  (`lib/widgets/version_check_gate.dart`) sits *above* `MaterialApp` in
-  `main.dart`, so `showDialog` from there finds no `Navigator` and no
-  `MaterialLocalizations` above it — which is why the old soft-update offer's
-  «تحديث الآن» button was dead. The gate renders `UpdateScreen`
-  (`lib/widgets/update_screen.dart`) over the running app instead, which also
-  leaves a reader's open PDF in place. Forced update replaces the app with
-  `DeveloperModal` and opens the updater with no `onClose`, so a new version is the
-  only way out.
+- **The update is one page, and that page is the developer modal.**
+  `VersionCheckGate` (`lib/widgets/version_check_gate.dart`) sits *above*
+  `MaterialApp` in `main.dart`, so `showDialog` from there finds no `Navigator`
+  and no `MaterialLocalizations` above it — which is why the old soft-update
+  offer's «تحديث الآن» button was dead. `DeveloperModal`
+  (`lib/widgets/developer_modal_w.dart`) now carries the update itself: given an
+  `UpdateService` it shows the banner, the «تحديث الآن» button, and the
+  download / verify / install progress **in place of that button**. A forced launch
+  replaces the app with that modal and passes no `onClose`, so a new version is
+  the only way out; the optional update puts the same modal over the running app,
+  so a reader with an open PDF keeps it. `service == null` is `main.dart`'s
+  developer panel — information, with no update UI at all.
+  `lib/widgets/update_screen.dart` was deleted on 2026-10-02: the overlay it
+  provided was the second of the two pages a forced launch showed.
+- **Forced and optional are the same page with two temperaments.** Forced
+  replaces the app and passes no `onClose`, so nothing on it can be dismissed —
+  the exit is a new version. Optional lays the same modal over the running app
+  and passes `onClose`, which is what draws the «تخطّي الآن» button. «تخطّي الآن»
+  means *not right now*: no version number is stored, and the gate's
+  `_autoOpened` already limits the offer to once per launch. A skip that hid a
+  version permanently would need that number written down, and nothing asked
+  for it.
+- **The page says what the release changed, before anything is pressed.**
+  `_buildReleaseDetails` shows the new version, the download size, and the
+  GitHub release body as Markdown (`flutter_markdown`, already in `pubspec.yaml`
+  and imported nowhere until this). The style sheet is built field by field
+  rather than with `MarkdownStyleSheet.fromTheme`, which asserts on a theme —
+  and this panel renders above `MaterialApp`. The modal adopts the `release` the
+  gate hands it in `initState`; the field existed but was never read, which spent
+  a second GitHub call and kept the notes off the screen until after the press.
+- **Nothing installs itself.** `UpdateScreen.autoInstall` went with it, and
+  `_startUpdate` is the only path into a download — it runs from the reader's
+  press. The forced launch used to schedule that download one frame after the
+  screen appeared, so a reader who wanted nothing got 52 MB arriving anyway and
+  a launch that lost its network had no button left to press.
 - **`UpdateService`** (`lib/services/update_service.dart`) reads
   `api.github.com/repos/<owner>/<repo>/releases/latest`, picks the `.exe` asset,
   downloads it to `getTemporaryDirectory()` as `StudyFlowPDF_Setup_<version>.exe`
@@ -161,6 +218,7 @@
 | `sync_sessions/{sessionCode}` | Live sync sessions | Authenticated (existing) |
 | `timetable_entries/{entryId}` | Shared weekly timetable: one row per recurring lecture | Any signed-in user reads; admins write (delete allowed, see note) |
 | `pdfs/{fileHash}/mutations` | Live page mutations | Authenticated + university check |
+| `app_config/installer` | Where the installer is, and the hash it must be: `version`, `url`, `path`, `pageUrl`, `sha256`, `size`, `notes`, `updatedAt`. Written by `tools/publish_installer_doc.mjs`, read by the standalone downloader (`E:\Programing\flutter\downloader`). `path` empty means the link is the public GitHub asset | Rules section 13 — any signed-in user reads, admins write |
 
 ### Required Firestore Composite Indices
 | Collection | Fields | Purpose |

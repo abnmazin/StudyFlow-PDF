@@ -42,6 +42,13 @@
     Upload what is already in `build\installer` instead of building again: for
     re-uploading after a failed upload, without paying for a second build.
 
+.PARAMETER SkipDoc
+    Publish the release but leave `app_config/installer` alone. Almost never what
+    is wanted — the document is what the standalone downloader reads, and a
+    release nobody is offered is invisible rather than broken. It exists for the
+    case where the same version is being re-uploaded and the document already
+    names it.
+
 .EXAMPLE
     $env:GITHUB_TOKEN = 'ghp_...'
     .\tools\publish_release.ps1 -Notes '<the Arabic note the reader will see>'
@@ -50,12 +57,18 @@
     `abnmazin/StudyFlow-PDF` is the source repository itself, and it is public: the
     app reads `releases/latest` from it with no token, and a token shipped inside a
     client is a token given away.
+
+    The last step therefore also writes the Firestore document `app_config/installer`
+    through tools\publish_installer_doc.mjs, which finds the service account key on
+    its own. It needs `node` and, for the Firestore write, that key — the same one
+    tools\create_admin.mjs takes with --key.
 #>
 [CmdletBinding()]
 param(
     [string]$Version,
     [string]$Notes = '',
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [switch]$SkipDoc
 )
 
 $ErrorActionPreference = 'Stop'
@@ -197,4 +210,78 @@ if ($asset.digest -and $asset.digest -ne "sha256:$sha") {
     Write-Warning 'GitHub reports a different digest than the local hash.'
 }
 Write-Host 'The app checks that digest, so there is no second field to update.'
+
+# -- the download document ---------------------------------------------------
+# The standalone downloader does not read GitHub at all: it reads the Firestore
+# document `app_config/installer` and takes the link from there. A release
+# published without that document is a version no reader is offered, which is the
+# exact trap recorded in docs/changelog.md under 2026-10-02 - `latest_version`
+# and the link have to move together, in the same command.
+#
+# The node script finds the service account key by itself, so nothing has to be
+# passed here that the caller would have to remember.
+
+if ($SkipDoc) {
+    Write-Host ''
+    Write-Host '-SkipDoc: app_config/installer was not written.' -ForegroundColor Yellow
+    return
+}
+
+$docScript = Join-Path $root 'tools\publish_installer_doc.mjs'
+$notesFile = $null
+
+# Computed before the try, because the catch block prints it as the command to run
+# by hand — and a hint with an empty `--url` in it is no hint at all.
+#
+# `browser_download_url` is what GitHub reports for the asset just uploaded; the
+# constructed form is the fallback for the day that field is missing.
+$downloadUrl = $asset.browser_download_url
+if (-not $downloadUrl) {
+    $downloadUrl = "https://github.com/$owner/$repo/releases/download/$tag/$assetName"
+}
+
+try {
+    Write-Host ''
+    Write-Host 'Writing app_config/installer...' -ForegroundColor Cyan
+
+    # A file, not an argument: the notes are Arabic, and PowerShell 5.1 hands a
+    # command-line argument to node.exe as ANSI. Same reasoning as the release
+    # payload above, and the same encoding.
+    if ($Notes) {
+        $notesFile = New-TemporaryFile
+        [System.IO.File]::WriteAllText($notesFile.FullName, $Notes,
+            (New-Object System.Text.UTF8Encoding($false)))
+    }
+
+    $docArgs = @(
+        $docScript,
+        '--version', $Version,
+        '--url', $downloadUrl,
+        '--page-url', $release.html_url,
+        '--sha256', $sha,
+        '--size', "$size"
+    )
+    if ($notesFile) { $docArgs += @('--notes-file', $notesFile.FullName) }
+
+    & node @docArgs
+    if ($LASTEXITCODE -ne 0) { throw "publish_installer_doc.mjs exited $LASTEXITCODE" }
+} catch {
+    # The release is already public by this point, so failing the whole script
+    # would throw away a successful publish. The warning carries the command that
+    # fixes it, because "the app offers an old version" is otherwise invisible.
+    Write-Host ''
+    Write-Warning @"
+app_config/installer was not written. The release is published, but the
+downloader and the in-app updater still point at the previous version.
+Run this by hand:
+
+  node tools\publish_installer_doc.mjs --version $Version `
+    --url $downloadUrl --sha256 $sha --size $size
+
+  $($_.Exception.Message)
+"@
+} finally {
+    if ($notesFile) { Remove-Item $notesFile.FullName -Force -ErrorAction SilentlyContinue }
+}
+
 

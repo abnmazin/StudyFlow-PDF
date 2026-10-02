@@ -67,6 +67,7 @@ re-run after a kill. Details and the reporting shape: `.clinerules/workflow.md`.
 | Build, boot, services, Firestore, gotchas | `docs/AGENTS.md` | no — read it |
 | Architecture and phase history | `docs/architecture_map.md` | no |
 | What changed, what failed | `docs/changelog.md` | no |
+| How to publish an update, forced or optional | `docs/RELEASING.md` | no |
 
 ## Orientation, so the architecture is not re-derived every task
 

@@ -1,5 +1,155 @@
 # Changelog
 
+## [2026-10-03] Added: a separate 104 KB downloader, and the link moved into Firestore
+
+### The decision
+The installer is published in its own tiny application, and the application reads
+the download link from Firestore after sign-in instead of from GitHub. The link is
+in one document so that the hosting can change later without rebuilding anything.
+
+### Why the link is in Firestore at all, given it is public today
+Because it is not public *because* of Firestore — it is public because the asset
+sits in `abnmazin/StudyFlow-PDF`, which is a public repository. A separate
+document does not hide a link that anyone can reach by browsing a releases page.
+What it buys is the switch: the document carries `path` beside `url`, and when
+`path` is filled in the downloader stops using `url` and mints a 10-minute signed
+URL from a private bucket. That day the change is one Firestore edit — no rebuild,
+and nobody who was already handed the downloader downloads it again. Writing the
+indirection now, while the link is still public, is what makes that edit cheap
+later.
+
+### A private GitHub repository would not have done it
+Worth recording, because the first attempt at this split assumed it would. A private
+repository's releases cannot be read by a client without a token, so the choice is
+between a downloader that downloads nothing and a token shipped inside the
+executable — and `strings` on that executable is the whole attack. This is the same
+premise that commit `a0862f5` was built on and that `559a056` had to walk back.
+This is the second time that assumption has cost a rebuild; the check that settles
+it is one unauthenticated `GET /repos/<owner>/<repo>`, which prints
+`"private": false`.
+
+### Added
+- **`E:\Programing\flutter\downloader`** — a standalone C# WinForms project, own
+  repository. One portable `.exe`, **106,496 bytes** built 2026-10-02, no installer
+  and no runtime to fetch. Sign in → `users/{uid}` checked for `isBanned` /
+  `isActive` → `app_config/installer` → download with progress → size and SHA-256 →
+  Setup with the same five switches the in-app updater uses → the downloader
+  deletes itself.
+- **`tools/publish_installer_doc.mjs`** — writes `app_config/installer` through
+  `firebase-admin`, finding the service account key in the repo root by itself. It
+  refuses a `--sha256` that is not 64 hex characters rather than warning about it,
+  and raises `app_config/version.latest_version` only when the version is genuinely
+  higher — the `min_version` trap this changelog already records once, where a
+  release nobody is offered looks exactly like a working updater.
+- **`tools/publish_release.ps1`** now ends with that script, and gained `-SkipDoc`.
+  The step warns rather than throws, because the release is already public by then
+  and failing the script would throw away a successful publish.
+
+### Unchanged on purpose
+- **`lib/` is untouched.** The in-app updater still reads `releases/latest` from
+  GitHub. Switching it is a separate decision, and while the asset is public it
+  would change nothing about the leak.
+- **`firestore.rules` is untouched.** Section 13 already reads `app_config` for any
+  authenticated request, which is exactly what a signed-in downloader needs.
+
+### Verified
+- `build.ps1` → compiles clean, 106,496 bytes.
+- The window opens and stays open (`Start-Process`, 4 s, no exit).
+- The email derivation is right: `accounts:signInWithPassword` with
+  `abnmazin@users.studyflow.app` and a deliberately wrong password answers
+  `INVALID_LOGIN_CREDENTIALS`, not `EMAIL_NOT_FOUND` — so the address is well formed
+  and the account exists. `EMAIL_NOT_FOUND` would have meant the derivation drifted
+  from `provision_auth.mjs`.
+- Firestore answers `403 PERMISSION_DENIED` on `app_config/installer` without a
+  token, which is the rule working.
+- `integerValue` is an int64 **string** in the REST representation (Google's
+  `Value` reference), which is why `Account.ReadLongField` parses text.
+
+### Still open
+- **Nobody has run the happy path.** A real account has not signed in to this
+  downloader, so the sign-in response shape, the download progress and the hand-off
+  to Setup are unproven end to end.
+- **The Supabase signing branch is dead and unverified.** No bucket named
+  `app-installers` exists and no `select` policy on `storage.objects` is deployed,
+  so `path` can never be non-empty today. It is written and shipped disabled so the
+  switch is a document edit; it has never executed.
+- **The downloader is not in git.** `E:\Programing\flutter\downloader` has a
+  `.gitignore` and a README but no repository, and no release on GitHub.
+- **`docs/architecture_map.md:233` and `docs/AGENTS.md:87` both call the
+  `university-pdfs` bucket private.** It is `public: true`
+  (`supabase_setup.sql:11`) and read with `getPublicUrl()`, so every PDF in it is
+  downloadable by anyone who knows the path. That is a separate, larger leak than
+  the installer, and it was left alone because nobody asked for it to change.
+
+## [2026-10-02] Fixed: a forced launch showed two pages and installed itself
+
+### The decision
+A forced update is **one page**, and nothing on it happens until the reader
+presses «تحديث الآن». That press then turns the button into the download
+progress where it stood, and the run ends in Setup exactly as before.
+
+### Changed
+- **Deleted `lib/widgets/update_screen.dart`.** `DeveloperModal` took over its
+  stages (`ready` / `loading` / `downloading` / `verifying` / `installing` /
+  `failed`), its release-page link, its retry, and its byte formatting. The
+  overlay it provided *was* the second page; two updaters would only have
+  restored it.
+- `DeveloperModal` takes `service`, `release`, `quit` and `latestVersion` in
+  place of `onUpdate`. `service == null` is `main.dart`'s developer panel —
+  information, and no update UI at all.
+- `VersionCheckGate` no longer opens an updater on `forceUpdate`: the blocking
+  screen *is* the modal, so `_isForcedUpdate` and `_openUpdater` went with it.
+  The optional update puts the same modal over the running app, which keeps a
+  reader's open PDF in place — and keeps waiting for its button.
+- `autoInstall` deleted. `_startUpdate` is now the only path into a download and
+  runs from the press alone. The forced path used to schedule it one frame after
+  the screen appeared, so a reader who wanted nothing got 52 MB arriving anyway,
+  and a launch that lost its network at that moment had no button left to press.
+- The three contact rows (two Telegram, one WhatsApp) are gone from the modal,
+  with `_buildElegantRow` and `_launchUrl`. `url_launcher` stays for the
+  release-page button.
+- **The two updates are one page and two temperaments.** Forced replaces the app
+  and shows the modal with no `onClose` at all, so nothing on it can be
+  dismissed: no «تخطّي الآن», no `Close`, no backdrop tap — the exit is a new
+  version. Optional lays the same modal over the running app *with* `onClose`,
+  which is what draws the «تخطّي الآن» button. The old `Close` is hidden when
+  `service != null`, because two buttons that both dismiss the same screen is
+  how a reader ends up unsure which one is meant.
+- **What the release changed is on the page before anything is pressed.**
+  `DeveloperModal._buildReleaseDetails` shows the new version, the download
+  size, and the GitHub release body rendered as Markdown
+  (`flutter_markdown`, which was already in `pubspec.yaml` and imported nowhere).
+  The sheet is built field by field rather than with `MarkdownStyleSheet
+  .fromTheme`, which asserts on a theme — and this panel renders above
+  `MaterialApp`, where there is no app theme to read. The body is the only copy
+  of the notes that exists: no release means the panel says nothing rather than
+  inventing a changelog.
+- `DeveloperModal` adopts `release` in `initState` and in `didUpdateWidget`
+  (ready stage only, so a release cannot swap mid-download). The gate hands over
+  what the launch check already fetched; before this the field existed and was
+  never read, which cost a second GitHub call and hid the notes until after the
+  press.
+- **«تخطّي الآن» means *not right now*, and nothing is stored.** No version
+  number is saved: the offer returns on the next launch, and the gate's
+  `_autoOpened` already limits it to once per session. A skip that hid a version
+  permanently would need that number written down, and nothing asked for it.
+
+### Removed
+- **«مسح البلوك (للمطورين)»** is gone from the forced screen, along with
+  `_clearForceUpdateCache` and this file's only use of
+  `shared_preferences`. It cleared the cached `force_update_*` keys, which
+  unblocked the launch **only while the network was down** — with a network the
+  check writes them again on the next launch, so it was never a way out. What it
+  *was* is a button labelled «للمطورين» shipped to every reader, sitting on the
+  one page a blocked reader cannot leave. The forced screen now has exactly one
+  exit: the new version.
+
+### Still open
+- `test/update_flow_test.dart` drives every stage through the modal now, so the
+  end-to-end path is covered by tests only. The real one still needs an
+  installed older build and `min_version` raised in Firestore.
+- `v1.2.0` is already published, so a corrected build needs a new tag (`1.2.1+1`).
+
 ## [2026-10-02] Fixed: the updater pointed at a repository that does not exist
 
 ### The failed attempt worth not repeating

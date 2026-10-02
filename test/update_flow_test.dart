@@ -9,7 +9,7 @@ import 'package:path/path.dart' as p;
 import 'package:studyflow_pdf/services/update_service.dart';
 import 'package:studyflow_pdf/services/version_check_service.dart';
 import 'package:studyflow_pdf/utils/semver.dart';
-import 'package:studyflow_pdf/widgets/update_screen.dart';
+import 'package:studyflow_pdf/widgets/developer_modal_w.dart';
 import 'package:studyflow_pdf/widgets/version_check_gate.dart';
 
 /// Fixtures, so the tests read as behaviour rather than as data.
@@ -232,10 +232,12 @@ void main() {
     });
   });
 
-  group('a forced update installs without being asked', () {
-    // The failure this group exists to prevent: the forced screen offered a
-    // button, the reader pressed nothing, and nothing happened. The update has
-    // to start on its own, reach Setup, and end the app so Setup can replace it.
+  group('the forced screen is the only page', () {
+    // The failure this group exists to prevent: a forced launch put two pages in
+    // front of the reader — the developer modal, and an update panel laid over
+    // it — and the panel started downloading on its own. The screen must now be
+    // one page, idle until it is pressed, and it must still reach Setup and end
+    // the app so Setup can replace it.
     late Directory temp;
 
     setUp(() async {
@@ -255,21 +257,25 @@ void main() {
       }
     });
 
+    /// The blocking launch screen, exactly as `VersionCheckGate` builds it.
+    ///
+    /// No `onClose`: a forced screen has no way out, which is what makes this
+    /// test read the launch path rather than a dialog.
     Future<void> pumpScreen(
       WidgetTester tester,
       UpdateRelease? release, {
       UpdateService? service,
       required void Function() onQuit,
-      bool autoInstall = true,
     }) async {
       await tester.pumpWidget(
         MaterialApp(
-          home: UpdateScreen(
+          home: DeveloperModal(
+            isVisible: true,
+            isForceUpdate: true,
+            currentVersion: '1.1.0',
+            requiredVersion: '1.2.0',
             service: service ?? UpdateService(),
             release: release,
-            autoInstall: autoInstall,
-            // No `onClose`: the forced screen has no way out, which is what makes
-            // this test read the launch path rather than a dialog.
             quit: onQuit,
           ),
         ),
@@ -295,7 +301,44 @@ void main() {
       await tester.pump();
     }
 
-    testWidgets('the download starts by itself and hands over to Setup', (
+    testWidgets('it waits on the button, and carries no contact details', (
+      tester,
+    ) async {
+      // The rule, stated as a pause: a launch that cannot use the app must still
+      // not install anything behind the reader's back, and the page they are
+      // stuck on must be the only one there is.
+      final release = releaseOf(releaseJson())!;
+      final service = _RecordingService(
+        release: release,
+        bytes: const [1, 2, 3],
+        directory: temp,
+        onStart: (_) {},
+      );
+
+      await pumpScreen(tester, release, service: service, onQuit: () {});
+      // Long enough for anything automatic to have happened several times over.
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(service.downloads, 0, reason: 'only the button starts an update');
+      expect(find.text('تحديث الآن'), findsOneWidget);
+      expect(find.text('جارٍ تنزيل التحديث'), findsNothing);
+
+      // The contact rows are gone from this page, not merely below the fold.
+      expect(find.textContaining('@FFFF_6'), findsNothing);
+      expect(find.textContaining('07710529693'), findsNothing);
+      // And so is every way out: the point of a forced update is that pressing
+      // nothing leaves the reader here, with a new version as the only exit.
+      expect(find.text('تخطّي الآن'), findsNothing);
+      expect(find.text('Close'), findsNothing);
+      expect(find.text('إغلاق'), findsNothing);
+      // The «مسح البلوك (للمطورين)» button used to sit here. It cleared the
+      // cached block, which unblocked the launch only while the network was
+      // down, and it shipped to every reader a button labelled "for developers"
+      // on the one screen they cannot leave. Removed on 2026-10-02.
+      expect(find.text('مسح البلوك (للمطورين)'), findsNothing);
+    });
+
+    testWidgets('one press downloads, verifies, and hands over to Setup', (
       tester,
     ) async {
       // The bytes and the file they are checked against, so verification passes
@@ -321,10 +364,12 @@ void main() {
         service: service,
         onQuit: () => quitCalled = true,
       );
+      await tester.pump();
 
-      // No tap anywhere in this test: everything below happens because the
-      // screen drove itself. The first pump enters the post-frame callback that
-      // starts the install.
+      // The one deliberate press. Everything below happens because of it, and
+      // the press count is the whole point: an update the reader never agreed to
+      // is the defect this file was rewritten for.
+      await tester.tap(find.text('تحديث الآن'));
       await tester.pump();
       for (var i = 0; i < 20 && !quitCalled; i++) {
         await drain(
@@ -346,11 +391,12 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     });
 
-    testWidgets('a failed install is reported and is not retried in a loop', (
+    testWidgets('a failed press says so, and offers the page instead of a way out', (
       tester,
     ) async {
       // A network that is down is not fixed by trying again, and the reader has
-      // to be able to read what went wrong.
+      // to be able to read what went wrong — while still being unable to leave a
+      // screen they were never allowed to leave in the first place.
       final release = releaseOf(releaseJson(size: 9, digest: null))!;
       var quitCalled = false;
       final service = _RecordingService(
@@ -368,6 +414,8 @@ void main() {
         onQuit: () => quitCalled = true,
       );
       await tester.pump();
+      await tester.tap(find.text('تحديث الآن'));
+      await tester.pump();
       for (var i = 0; i < 20 && service.downloads == 0; i++) {
         await drain(
           tester,
@@ -384,18 +432,27 @@ void main() {
       }
 
       expect(quitCalled, isFalse, reason: 'nothing was installed');
-      expect(
-        service.downloads,
-        1,
-        reason: 'the automatic attempt happens once',
-      );
+      expect(service.downloads, 1, reason: 'one press, one attempt');
       expect(find.textContaining('تعذّر'), findsWidgets);
+      // The way out for a reader who cannot use the app is the release page, not
+      // a button that drops them back into the build they just failed to update.
+      expect(find.text('صفحة الإصدارات'), findsOneWidget);
+      expect(find.text('إغلاق'), findsNothing);
+      expect(
+        tester.takeException(),
+        isNull,
+        reason: 'the failure has to fit the screen it is reported on',
+      );
     });
 
-    testWidgets('a soft update waits for the button', (tester) async {
-      // The other half of the rule: without `autoInstall` nothing may start on
-      // its own, or the offer becomes an install nobody agreed to.
+    testWidgets('the optional offer is dismissible and installs nothing by itself', (
+      tester,
+    ) async {
+      // The same page, but the case where the reader may walk away from it — and
+      // where an update that began on its own would be an install nobody agreed
+      // to. It also has to read as an offer, not as a block.
       final release = releaseOf(releaseJson())!;
+      var closed = false;
       var quitCalled = false;
       final service = _RecordingService(
         release: release,
@@ -404,28 +461,40 @@ void main() {
         onStart: (_) {},
       );
 
-      await pumpScreen(
-        tester,
-        release,
-        service: service,
-        onQuit: () => quitCalled = true,
-        autoInstall: false,
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DeveloperModal(
+            isVisible: true,
+            currentVersion: '1.1.0',
+            latestVersion: '1.2.0',
+            service: service,
+            release: release,
+            quit: () => quitCalled = true,
+            onClose: () => closed = true,
+          ),
+        ),
       );
       await tester.pump(const Duration(seconds: 1));
 
       expect(service.downloads, 0, reason: 'nothing starts without a button');
       expect(quitCalled, isFalse);
+      expect(find.text('يتوفر تحديث جديد'), findsOneWidget);
+      expect(find.text('يجب تحديث التطبيق للمتابعة'), findsNothing);
 
-      await tester.tap(find.text('تنزيل التحديث وتثبيته'));
+      // The notes are on screen *before* anything is pressed — otherwise the
+      // reader is asked to install a version whose changes they were never shown.
+      expect(find.text('الإصدار الجديد: 1.2.0'), findsOneWidget);
+      expect(find.textContaining('إصلاح لوحة الإشعارات'), findsWidgets);
+
+      // One way out, and it is the skip — not a second `Close` beside it.
+      expect(find.text('تخطّي الآن'), findsOneWidget);
+      expect(find.text('Close'), findsNothing);
+
+      await tester.tap(find.text('تخطّي الآن'));
+      // The close is animated, so the callback lands after the reverse finishes.
       await tester.pump();
-      for (var i = 0; i < 20 && service.downloads == 0; i++) {
-        await drain(
-          tester,
-          () => Future<void>.delayed(const Duration(milliseconds: 30)),
-        );
-      }
-
-      expect(service.downloads, 1, reason: 'the button is what starts it');
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(closed, isTrue, reason: 'an offer the reader may decline');
     });
   });
 
@@ -435,8 +504,8 @@ void main() {
     // `setState() or markNeedsBuild() called during build` on the launch frame —
     // every reader whose version was below the minimum saw a broken launch.
     //
-    // These build the real `VersionCheckGate`, not a standalone `UpdateScreen`,
-    // because the defect lived in the gate's own build phase: the updater's tests
+    // These build the real `VersionCheckGate`, not the screen on its own,
+    // because the defect lived in the gate's own build phase: the screen's tests
     // above passed while this was broken.
     late Directory temp;
 
@@ -515,7 +584,7 @@ void main() {
       expect(find.text('الإصدار المطلوب: 2.0.0'), findsOneWidget);
     });
 
-    testWidgets('a forced launch opens the updater without being asked', (
+    testWidgets('a forced launch shows that screen and opens nothing over it', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -528,34 +597,22 @@ void main() {
           ),
         ),
       );
+      // Two frames and then a long one: the first is the app, the second is the
+      // frame the answer lands on, and the long pump covers the moment the gate
+      // used to open an updater of its own accord.
       await tester.pump();
-      // Another frame: the open is deferred out of the build phase, so it lands
-      // on the frame after the one that demanded it.
       await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
       expect(tester.takeException(), isNull);
 
-      // Now let the updater's own release lookup run. It is an HTTP request, and
-      // `pump` alone never completes one — the reply arrives on the real event
-      // loop — so the wait has to go through `runAsync`. Bounded, because a test
-      // that can hang is worse than a test that fails.
-      for (
-        var i = 0;
-        i < 10 && find.text('تعذّر إكمال التحديث').evaluate().isEmpty;
-        i++
-      ) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 20)),
-        );
-        await tester.pump();
-      }
-
-      // The updater is up and driving itself: `flutter_test` answers every HTTP
-      // request with 400, so its lookup fails and it says so. That failure is the
-      // proof it *ran* — a screen still waiting on a button would be sitting on
-      // the ready stage offering one.
-      expect(find.text('تعذّر إكمال التحديث'), findsOneWidget);
-      expect(find.text('صفحة الإصدارات'), findsOneWidget);
-      // The app is still replaced rather than usable behind it.
+      // `flutter_test` answers every HTTP request with 400, so a screen that had
+      // gone looking for a release would be sitting on its failure by now. It has
+      // not gone looking: the button is there and nothing has started — which is
+      // the whole change, since this launch used to reach that failure without
+      // anyone pressing anything.
+      expect(find.text('تعذّر إكمال التحديث'), findsNothing);
+      expect(find.text('تحديث الآن'), findsOneWidget);
+      // Still no way back into the app.
       expect(find.text('التطبيق'), findsNothing);
     });
   });
