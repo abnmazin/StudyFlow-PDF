@@ -5,6 +5,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../services/update_service.dart';
 import '../utils/responsive_utils.dart';
 
 class DeveloperModal extends StatefulWidget {
@@ -14,6 +15,11 @@ class DeveloperModal extends StatefulWidget {
   final String currentVersion;
   final String requiredVersion;
 
+  /// What the «تحديث الآن» button does. Null falls back to opening the release
+  /// page, which is the honest answer for a build that has no updater behind it
+  /// (this modal is also reachable from the developer's own tooling).
+  final VoidCallback? onUpdate;
+
   const DeveloperModal({
     super.key,
     bool? isVisible,
@@ -22,6 +28,7 @@ class DeveloperModal extends StatefulWidget {
     this.isForceUpdate = false,
     this.currentVersion = '',
     this.requiredVersion = '',
+    this.onUpdate,
   }) : isVisible = isVisible ?? isOpen ?? false;
 
   @override
@@ -40,9 +47,19 @@ class _DeveloperModalState extends State<DeveloperModal>
   void initState() {
     super.initState();
 
-    PackageInfo.fromPlatform().then((info) {
-      if (mounted) setState(() => _appVersion = info.version);
-    });
+    // The version this modal needs in its own words arrives as
+    // [DeveloperModal.currentVersion]; this is a second reading for the
+    // developer panel below it. So a failure here is not worth crashing a launch
+    // over — an unguarded `then` left the rejection unhandled, which is an
+    // uncaught async error rather than a shown message. `VersionCheckGate
+    // ._getCurrentVersion` wraps the same call for the same reason.
+    PackageInfo.fromPlatform()
+        .then((info) {
+          if (mounted) setState(() => _appVersion = info.version);
+        })
+        .catchError((_) {
+          // No version string; the panel shows nothing rather than guessing.
+        });
 
     _controller = AnimationController(
       vsync: this,
@@ -250,12 +267,17 @@ class _DeveloperModalState extends State<DeveloperModal>
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: const [
-                  Text(
-                    'تطبيق مصمم خصيصاً للبيت',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFFE2E8F0),
-                      fontWeight: FontWeight.w600,
+                  // `Flexible`, so the badge's sentence wraps rather than
+                  // overflowing the pill. It measured 3px too wide inside the
+                  // ~272px the modal leaves at its `dialogWidth` cap.
+                  Flexible(
+                    child: Text(
+                      'تطبيق مصمم خصيصاً للبيت',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFFE2E8F0),
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                   SizedBox(width: 8),
@@ -381,12 +403,19 @@ class _DeveloperModalState extends State<DeveloperModal>
             children: const [
               Icon(Icons.warning_rounded, color: Color(0xFFEF4444), size: 18),
               SizedBox(width: 8),
-              Text(
-                'يجب تحديث التطبيق للمتابعة',
-                style: TextStyle(
-                  color: Color(0xFFEF4444),
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
+              // `Flexible`, so the sentence wraps instead of pushing past the
+              // banner. The modal is capped at `dialogWidth` (380) minus the
+              // header's own padding, which leaves ~272px — narrower than this
+              // line needs, so it overflowed by 93px on the forced-update screen,
+              // the one screen nobody is allowed to scroll away from.
+              Flexible(
+                child: Text(
+                  'يجب تحديث التطبيق للمتابعة',
+                  style: TextStyle(
+                    color: Color(0xFFEF4444),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
                 ),
               ),
             ],
@@ -416,7 +445,8 @@ class _DeveloperModalState extends State<DeveloperModal>
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: () => _launchUrl('https://t.me/AnyDesire'),
+              onPressed:
+                  widget.onUpdate ?? () => _launchUrl(kUpdateReleasesPage),
               icon: const Icon(
                 Icons.download_rounded,
                 size: 16,

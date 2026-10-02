@@ -47,7 +47,7 @@ loaded automatically, so read it when a task touches those.
 git status                                     # before everything
 flutter analyze --no-pub                       # 0 errors expected; ~220 known infos
 flutter test test/tool_width_limits_test.dart  # one file while working
-flutter test                                   # full suite; 85 tests, green 2026-09-30
+flutter test                                   # full suite; 104 tests, green 2026-10-02
 flutter run -d windows                         # only when the user asks for it
 ```
 

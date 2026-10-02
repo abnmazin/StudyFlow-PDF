@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:studyflow_pdf/utils/responsive_utils.dart';
 import '../../models/models.dart';
 import '../../providers/app_state.dart';
+import '../dashboard/dashboard_palette.dart';
 
 class StudyFlowToolbar extends StatefulWidget {
   // NOTE: the search, drawing-tool and bookmark controls used to be props of
@@ -310,7 +311,10 @@ class _StudyFlowToolbarState extends State<StudyFlowToolbar> {
         : scheme.outlineVariant;
     return TextFieldTapRegion(
       child: Container(
-        height: 64,
+        // One of the three bands on the shell's top line (see
+        // `dashboard_palette.dart`): the viewer toolbar, the sidebar header and
+        // the dashboard navbar all take their height from the same constant.
+        height: kDashboardNavBarHeight,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         decoration: BoxDecoration(
           color: barBg,

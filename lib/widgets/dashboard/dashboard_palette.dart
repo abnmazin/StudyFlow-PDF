@@ -88,10 +88,13 @@ const double kDashboardSectionGap = 40;
 /// tall as the streak card that holds a 130px strip, and the navbar is measured
 /// against the height the design calls for.
 ///
-/// The navbar half is read by the dashboard's pinned header. The sidebar header
-/// and the viewer toolbar carry their own `64` literal, so the three bands — the
-/// dashboard's, the sidebar's and the viewer's — share one line only for as long
-/// as all three numbers agree.
+/// The navbar height is read by three bands that share one line in the shell
+/// (`main.dart:584` puts the sidebar beside the viewer, and the dashboard replaces
+/// the viewer): the dashboard's pinned header, the sidebar's header
+/// (`sidebar_w.dart`) and the viewer toolbar (`viewer_toolbar.dart`). They read
+/// this constant rather than each carrying a `64`, so they cannot drift apart —
+/// which is exactly what happened when the sidebar's literal and the dashboard's
+/// differed by 16px.
 const double kStatCardHeight = 130;
 const double kDashboardNavBarHeight = 64;
 

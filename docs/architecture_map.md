@@ -1,5 +1,53 @@
 # Architecture Map
 
+## In-App Update Flow (2026-10-02)
+- **Two halves, one number.** `VersionCheckService.check()`
+  (`lib/services/version_check_service.dart`) still owns `min_version` from
+  Firestore `app_config/version` (Remote Config as fallback), but it now takes a
+  `latestVersionOverride`, and the launch gate passes the newest GitHub release's
+  version into it. The release repository wins when it is *higher*: it is the only
+  side that can serve a file, and a `latest_version` typed into a database offers
+  an update nobody can install. The comparison lives once, in `lib/utils/semver.dart`
+  (`compareVersions` / `isVersionLessThan`) — the gate and the updater ask the same
+  question.
+- **The updater is a `Stack` overlay, not a dialog.** `VersionCheckGate`
+  (`lib/widgets/version_check_gate.dart`) sits *above* `MaterialApp` in
+  `main.dart`, so `showDialog` from there finds no `Navigator` and no
+  `MaterialLocalizations` above it — which is why the old soft-update offer's
+  «تحديث الآن» button was dead. The gate renders `UpdateScreen`
+  (`lib/widgets/update_screen.dart`) over the running app instead, which also
+  leaves a reader's open PDF in place. Forced update replaces the app with
+  `DeveloperModal` and opens the updater with no `onClose`, so a new version is the
+  only way out.
+- **`UpdateService`** (`lib/services/update_service.dart`) reads
+  `api.github.com/repos/<owner>/<repo>/releases/latest`, picks the `.exe` asset,
+  downloads it to `getTemporaryDirectory()` as `StudyFlowPDF_Setup_<version>.exe`
+  with progress, verifies the `sha256:` digest and `Content-Length` (hashed as a
+  stream, not `readAsBytes`), then starts it detached with `/VERYSILENT
+  /CLOSEAPPLICATIONS /NORESTART /SUPPRESSMSGBOXES /LOG`.
+  `ERROR_ELEVATION_REQUIRED` (740) retries through `powershell Start-Process -Verb
+  RunAs`. The app then calls `exit(0)`: Setup cannot replace files that are in use,
+  and Inno's `[Run]` entry starts the new build.
+- **The release repository is public and holds no source:**
+  `abnmazin/StudyFlow-PDF-Releases`, named by `kUpdateRepoOwner` /
+  `kUpdateRepoName` / `kUpdateReleasesPage`. The source repository is private, and
+  a private repository's releases need a token shipped inside the client — a token
+  in a client is a token given away. `tools/publish_release.ps1` is the publisher:
+  version from `pubspec.yaml`, `flutter build windows --release`,
+  `ISCC /DAppVersion=<version> installer.iss`, SHA-256, then the two GitHub REST
+  calls (release, then asset). `installer.iss` takes the version through that
+  define and keeps `1.1.0` only as a fallback, so Add/Remove Programs cannot
+  disagree with the build inside.
+- **`installer.iss` upgrade behaviour:** `AppId` is a fixed GUID (otherwise Inno
+  derives one from `AppName`, and a later rename installs *beside* the old build),
+  `CloseApplications=yes` is what makes `/CLOSEAPPLICATIONS` work, and
+  `RestartApplications=no` because Setup's own restart would race the `[Run]` entry
+  into a second instance — i.e. the "another instance is running" screen.
+  `CleanOldFiles` wipes `{app}` on upgrade; user data is untouched by design,
+  because it lives in `<Documents>\StudyFlowPdf` (`FileManagerService.init`), not
+  under `{app}`.
+- Deleted: `lib/widgets/update_dialog.dart` (the dead button's dialog).
+
 ## Dashboard Floating Panels (2026-10-01)
 - The three floating panels on the dashboard — the notification bell's panel
   (`dashboard_notifications.dart`), the search results (`dashboard_search.dart`)
@@ -18,7 +66,7 @@
   different positions is the "has no `ScrollPosition` attached" assert.
 
 ## Knowledge Graph Tooling (2026-09-27)
-- **Graphify** (`graphifyy` v0.9.69) builds a local, deterministic code graph at `graphify-out/graph.json` — no vector DB, no embeddings, no API key for the code path. Snapshot: **2309 nodes / 3021 edges / 86 communities, 100% `EXTRACTED`**, built from commit `001b0cd0` in 13.7s.
+- **Graphify** (`graphifyy` v0.9.69) builds a local, deterministic code graph at `graphify-out/graph.json` — no vector DB, no embeddings, no API key for the code path. Rebuilt **2026-10-02**: **3354 nodes / 4339 edges / 143 communities**, from commit `bb67018` plus the in-app updater work. (The first snapshot, 2026-09-27 from `001b0cd0`, was 2309 / 3021 / 86 in 13.7s — the numbers move, so read the JSON when a count matters.)
 - Edge vocabulary present in this repo: `defines` (1963), `references` (442), `imports` (439), `inherits` (93), `contains` (41), `configures` (11), `exports` (9), `extends` (8), `imports_from` (6), `mixes_in` (4), `reads_from` (2), `implements` (1).
 - Community hubs (navigation entry points): `app_state.dart` (242 nodes), `pdf_viewer_widget_w.dart` (112), `viewer_right_panel.dart` (108), `isar_models.dart` (89), `file_manager_service.dart` (65), `sync_service.dart` (62).
 - Cline integration: `graphify` MCP server (stdio) exposing 10 tools (`query_graph`, `get_node`, `get_neighbors`, `get_community`, `god_nodes`, `graph_stats`, `shortest_path` auto-approved; `list_prs`, `get_pr_impact`, `triage_prs` not); agent protocol in `.clinerules/graphify.md`, which is loaded automatically, plus the root `AGENTS.md`.

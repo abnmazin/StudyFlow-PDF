@@ -28,6 +28,16 @@ is reported. Read with `AGENTS.md`, which holds the four rules this file expands
 - The smallest change that fixes the reported behaviour. No refactor the user did
   not ask for, no "while I was here".
 - A shared constant or a palette colour instead of a new literal.
+- **`setState` never from inside `build`** — including from a helper that `build`
+  calls. Record what you learned and schedule the change with
+  `addPostFrameCallback`. This is not a style point: doing it threw
+  `setState() or markNeedsBuild() called during build` on the launch frame of
+  `VersionCheckGate`, and a `flutter test` that builds the widget is what proves
+  it cannot happen again.
+- Anything rendering **above** `MaterialApp` supplies its own `Directionality`.
+  That applies to a bare `Stack` too — it resolves `AlignmentDirectional.topStart`
+  for its default alignment, so it throws `No Directionality widget found`
+  without one, even when no `Text` is involved.
 - Keep the file's own voice: the comments around the edit explain *why*, with the
   same density as their neighbours.
 - Read the file back after editing. A diff preview is not the file.

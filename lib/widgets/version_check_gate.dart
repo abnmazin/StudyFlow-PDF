@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 
+import '../services/update_service.dart';
 import '../services/version_check_service.dart';
 import 'developer_modal_w.dart';
+import 'update_screen.dart';
 
-const String _kUpdateUrl =
-    ''; // TODO: Replace with your actual Windows installer download URL
 const String _kForceUpdateKey = 'force_update_active';
 const String _kForceUpdateMinVersionKey = 'force_update_min_version';
 const String _kForceUpdateLatestVersionKey = 'force_update_latest_version';
@@ -15,7 +14,20 @@ const String _kForceUpdateLatestVersionKey = 'force_update_latest_version';
 class VersionCheckGate extends StatefulWidget {
   final Widget child;
 
-  const VersionCheckGate({super.key, required this.child});
+  /// A check result to use instead of asking anything.
+  ///
+  /// Only a test passes this. The real check reaches Firestore, Remote Config and
+  /// `PackageInfo`, none of which exist in a widget test — and the forced path is
+  /// the one worth testing, because it is the one that once threw on the launch
+  /// frame. A field rather than a mock of three services: the gate's decision is
+  /// what is under test, not the fetching.
+  final VersionCheckResult? debugResultOverride;
+
+  const VersionCheckGate({
+    super.key,
+    required this.child,
+    this.debugResultOverride,
+  });
 
   @override
   State<VersionCheckGate> createState() => _VersionCheckGateState();
@@ -23,7 +35,39 @@ class VersionCheckGate extends StatefulWidget {
 
 class _VersionCheckGateState extends State<VersionCheckGate> {
   late final Future<VersionCheckResult?> _checkFuture;
-  bool _dialogShown = false;
+
+  /// True once the updater has offered itself on this launch.
+  ///
+  /// It is what keeps a soft update an *offer*: a reader who closes it has
+  /// answered, and the same panel coming back on every rebuild is not an offer,
+  /// it is a fight with the window. The forced case does not use it — there is
+  /// nothing to offer and nothing to close.
+  bool _autoOpened = false;
+
+  /// The release repository is asked alongside the database: the database names
+  /// what it wants, and this names what can actually be downloaded.
+  final UpdateService _updates = UpdateService();
+
+  /// The release the launch check already fetched, handed to the updater so one
+  /// launch does not ask GitHub the same question twice — the unauthenticated API
+  /// allows sixty requests an hour per address, and the second answer would be the
+  /// first one again.
+  UpdateRelease? _release;
+
+  /// The result of this launch's check, once it has arrived.
+  ///
+  /// A field and not only the `FutureBuilder`'s snapshot, because the forced
+  /// case is *also* opened from `_openUpdater` — which runs after a frame, not
+  /// during a build — and the blocking screen needs the same `VersionCheckResult`
+  /// at that moment.
+  VersionCheckResult? _result;
+
+  /// True while the updater is over the app.
+  bool _updaterOpen = false;
+
+  /// True when the app is blocked until the update happens, so the updater may
+  /// not be closed — the only way out of that state is a new version.
+  bool _isForcedUpdate = false;
 
   @override
   void initState() {
@@ -33,12 +77,26 @@ class _VersionCheckGateState extends State<VersionCheckGate> {
 
   // Returns null if we should not block and can continue startup.
   Future<VersionCheckResult?> _resolveVersionStatus() async {
+    // A test's answer, short-circuiting everything: no `SharedPreferences`, no
+    // Firestore, no `PackageInfo`. See [VersionCheckGate.debugResultOverride].
+    final injected = widget.debugResultOverride;
+    if (injected != null) return injected;
+
     final prefs = await SharedPreferences.getInstance();
     final wasForceBlocked = prefs.getBool(_kForceUpdateKey) ?? false;
 
     // Always try a live check first; if backend is fixed, unblock immediately.
     try {
-      final result = await VersionCheckService.check();
+      // The release repository decides *what* is newest, because only it knows
+      // whether there is a file to download; the database keeps `min_version`,
+      // which is the policy nobody else can express. Both are asked here so the
+      // status the app shows and the file the updater fetches agree.
+      final release = await _updates.latestRelease();
+      // Kept, not only read: the updater is handed this rather than asking again.
+      _release = release;
+      final result = await VersionCheckService.check(
+        latestVersionOverride: release?.version,
+      );
       if (result.status == VersionStatus.forceUpdate) {
         await prefs.setBool(_kForceUpdateKey, true);
         await prefs.setString(_kForceUpdateMinVersionKey, result.minVersion);
@@ -75,41 +133,68 @@ class _VersionCheckGateState extends State<VersionCheckGate> {
     }
   }
 
-  Future<void> _openUpdateUrl() async {
-    if (_kUpdateUrl.isEmpty) return;
-    final uri = Uri.parse(_kUpdateUrl);
-    await launchUrl(uri);
+  /// Puts [result] away and decides what has to happen with no button pressed.
+  ///
+  /// Called from the `FutureBuilder`'s builder — during a build — so it may not
+  /// put anything on screen. The field assignments are safe; the `setState` is
+  /// not, and is why the opening goes through a post-frame callback. Doing it in
+  /// both places rather than in `_openUpdater` alone keeps the shipping app
+  /// idempotent and testable: a test that builds the widget drives the real path
+  /// instead of only the callback the app itself would have reached.
+  void _remember(VersionCheckResult result) {
+    final isForced = result.status == VersionStatus.forceUpdate;
+    final isSoft = result.status == VersionStatus.softUpdate;
+    _result = result;
+
+    // The forced case comes up by itself: there is no choice to make, the only
+    // thing this launch can do is install the new version, and the old screen
+    // that asked the reader to find a button is how they ended up on a release
+    // page they did not understand. It is *not* hidden behind the modal — a
+    // forced launch has nothing usable to show underneath it anyway.
+    if (isForced) {
+      _requestUpdater(forced: true);
+      return;
+    }
+
+    // Soft update: the app runs, and the offer is laid over it once per launch.
+    // Once, because the reader who closes it has answered — the same offer coming
+    // back on every rebuild is not an offer.
+    if (isSoft && !_autoOpened) {
+      _autoOpened = true;
+      _requestUpdater();
+    }
   }
 
-  Future<void> _showSoftUpdateDialog(VersionCheckResult result) async {
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('تحديث متاح'),
-          content: Text(
-            'الإصدار ${result.latestVersion} متوفر. إصدارك الحالي ${result.currentVersion}.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-              },
-              child: const Text('لاحقاً'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                await _openUpdateUrl();
-                if (dialogContext.mounted) {
-                  Navigator.of(dialogContext).pop();
-                }
-              },
-              child: const Text('تحديث الآن'),
-            ),
-          ],
-        );
-      },
-    );
+  /// Opens the updater for whatever is on record.
+  ///
+  /// The asynchronous entry point, and the only one: the forced case opens on
+  /// its own and the modal's button opens by hand, and both arrive here so there
+  /// is one place that decides. [forced] is not taken as an argument — the
+  /// recorded [VersionCheckResult] decides, so a stale callback cannot block a
+  /// reader on a soft update.
+  void _openUpdater() {
+    final isForced = _result?.status == VersionStatus.forceUpdate;
+    _requestUpdater(forced: isForced);
+  }
+
+  /// The actual open. Safe to call inside a build, because the state change is
+  /// deferred to after the frame: `setState` during a build is what threw
+  /// `setState() or markNeedsBuild() called during build`.
+  void _requestUpdater({bool forced = false}) {
+    if (forced && _updaterOpen) return;
+    if (!forced && _updaterOpen) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _updaterOpen) return;
+      setState(() {
+        _updaterOpen = true;
+        _isForcedUpdate = forced;
+      });
+    });
+  }
+
+  void _closeUpdater() {
+    if (_isForcedUpdate) return;
+    setState(() => _updaterOpen = false);
   }
 
   // Force update: show frozen screen with developer modal open
@@ -125,6 +210,8 @@ class _VersionCheckGateState extends State<VersionCheckGate> {
               isForceUpdate: true,
               currentVersion: result.currentVersion,
               requiredVersion: result.minVersion,
+              // The button used to open a chat app and ask for the file by hand.
+              onUpdate: _openUpdater,
             ),
           ),
         ),
@@ -136,50 +223,69 @@ class _VersionCheckGateState extends State<VersionCheckGate> {
   Widget build(BuildContext context) {
     return FutureBuilder<VersionCheckResult?>(
       future: _checkFuture,
-      builder: (context, snapshot) {
-        // If no internet or check failed → don't block, show app normally
-        if (snapshot.hasError) return widget.child;
+      builder: (context, snapshot) => _withUpdater(_buildLaunch(snapshot)),
+    );
+  }
 
-        if (snapshot.connectionState == ConnectionState.done) {
-          final result = snapshot.data;
-          if (result == null) return widget.child;
+  /// What the app is allowed to show, before the updater is laid over it.
+  Widget _buildLaunch(AsyncSnapshot<VersionCheckResult?> snapshot) {
+    // No internet, or a check that failed → the app runs. An update offer is not
+    // worth a blocked reader.
+    if (snapshot.hasError) return widget.child;
+    if (snapshot.connectionState != ConnectionState.done) return widget.child;
 
-          // Force update: completely replace the app UI
-          if (result.status == VersionStatus.forceUpdate) {
-            return _buildForceUpdateScreen(result);
-          }
+    final result = snapshot.data;
+    if (result == null) return widget.child;
 
-          // Soft update: show app normally, trigger dialog once
-          if (result.status == VersionStatus.softUpdate && !_dialogShown) {
-            _dialogShown = true;
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (!mounted) return;
-              // Guard: only show the dialog if MaterialLocalizations is in the tree.
-              // VersionCheckGate sits above MaterialApp, so we need to wait one
-              // additional frame for the MaterialApp subtree to be fully mounted.
-              WidgetsBinding.instance.addPostFrameCallback((_) async {
-                if (!mounted) return;
-                // Verify that MaterialLocalizations are accessible via the
-                // context before calling showDialog (avoids the crash when this
-                // widget lives above MaterialApp in the widget tree).
-                final hasLocalization =
-                    Localizations.of<MaterialLocalizations>(
-                      context,
-                      MaterialLocalizations,
-                    ) !=
-                    null;
-                if (!hasLocalization) return;
-                await _showSoftUpdateDialog(result);
-              });
-            });
-          }
+    // Puts the result away and arranges the updater; see `_remember` for why the
+    // state change itself has to wait for the end of the frame.
+    _remember(result);
 
-          return widget.child;
-        }
+    if (result.status == VersionStatus.forceUpdate) {
+      // The blocking screen for as long as the updater is not up yet. It is
+      // behind the updater as soon as the frame ends, and its own button is the
+      // manual way in if the automatic open ever fails. `_isForcedUpdate` is not
+      // read here: until `_requestUpdater` runs, no updater is open at all, and
+      // the updater reads the flag from its own state once it is.
+      return _buildForceUpdateScreen(result);
+    }
 
-        // Still loading → show app normally, don't block
-        return widget.child;
-      },
+    return widget.child;
+  }
+
+  /// The updater, laid over whatever the app is showing.
+  ///
+  /// A `Stack` and not a replacement, because a reader with a PDF open must not
+  /// lose it to an update offer. In the forced case there is nothing underneath
+  /// worth keeping and the updater cannot be closed: the only way out of that
+  /// state is a new version.
+  ///
+  /// `autoInstall` in the forced case, so the update is not something the reader
+  /// has to agree to. `onClose` alone would not do it: its absence stops the
+  /// panel being dismissed, not the download from starting.
+  Widget _withUpdater(Widget app) {
+    if (!_updaterOpen) return app;
+
+    // `Stack` needs a `Directionality` to resolve its own default
+    // `AlignmentDirectional.topStart`, and this gate sits above the `MaterialApp`
+    // that would otherwise supply one — so without this the soft update threw
+    // `No Directionality widget found` on the frame the offer appeared. The
+    // updater below already wraps itself for the same reason; this is the shell
+    // around it.
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          app,
+          UpdateScreen(
+            service: _updates,
+            release: _release,
+            autoInstall: _isForcedUpdate,
+            onClose: _isForcedUpdate ? null : _closeUpdater,
+          ),
+        ],
+      ),
     );
   }
 }

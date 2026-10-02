@@ -20,7 +20,11 @@ makes this repository readable.
 - Anything two places must agree on gets a named constant in that same file —
   `kDashboardNavBarHeight`, `kStatCardHeight`, `kDashboardPagePadding`. Two bare
   `64`s in two files is exactly how the sidebar header and the dashboard navbar
-  ended up 16px apart.
+  ended up 16px apart. That pair is fixed now: `kDashboardNavBarHeight` is read by
+  all three bands that share the shell's top line — the dashboard navbar
+  (`dashboard_top_bar.dart`), the sidebar header (`sidebar_w.dart`) and the viewer
+  toolbar (`viewer_components/viewer_toolbar.dart`) — so none of them carries a
+  private `64` any more.
 - The sidebar and the dashboard stay dark in both themes, on purpose; the light
   theme belongs to the rest of the app.
 - A visual choice is the user's to make: propose the value, do not invent it, and

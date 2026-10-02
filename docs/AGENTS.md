@@ -33,7 +33,7 @@ Never use `npx` or Node.js for Dart codegen. The generated file is `lib/models/i
 
 ```bash
 flutter analyze --no-pub     # zero errors expected; ~220 info-level lints pre-existing (2026-09-30)
-flutter test                 # 6 files, 85 tests, all green (2026-09-30)
+flutter test                 # 7 files, 104 tests, all green (2026-10-02)
 flutter test test/<one>_test.dart   # one file is far cheaper while iterating
 ```
 

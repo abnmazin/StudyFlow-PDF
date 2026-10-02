@@ -1,6 +1,19 @@
 [Setup]
 AppName=StudyFlow PDF Reader
-AppVersion=1.1.0
+; Stable identity for the app, not for one install: Windows and Inno keep an
+; upgrade coupled to the *same* AppId. Without it Inno derives one from AppName,
+; and any later change to AppName (or a second copy installed under a different
+; name) would be treated as a different program — two entries in Add/Remove, and
+; a silent update that installs beside the old build instead of over it.
+AppId={{9F2C4E7A-6B31-4D8E-9A57-1C0B7F3E6D24}
+; The version this installer carries. `tools/publish_release.ps1` passes it from
+; `pubspec.yaml` (`/DAppVersion=1.2.0`), so the number in Add/Remove Programs
+; cannot drift from the build inside; the line below is the fallback for a
+; hand-run ISCC.
+#ifndef AppVersion
+  #define AppVersion "1.1.0"
+#endif
+AppVersion={#AppVersion}
 AppPublisher=StudyFlow
 AppComments=تم برمجة التطبيق بتاريخ 2 أبريل 2026 بواسطة Hassan Mazin
 AppCopyright=© 2026 Hassan Mazin. جميع الحقوق محفوظة.
@@ -13,6 +26,18 @@ SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64
 WizardStyle=modern
 ChangesAssociations=no
+; The updater starts Setup while the reader's own copy is still in the folder it
+; is about to overwrite. `/CLOSEAPPLICATIONS` (see
+; `update_service.dart::silentInstallArgs`) only has an effect because these are
+; on: Inno finds the running `StudyFlowPDF.exe` by its path under `{app}`, closes
+; it without asking, and then the file copy can succeed.
+CloseApplications=yes
+; Deliberately `no`, though Inno's default is `yes`. The only launch of the new
+; build is the `[Run]` entry below, which silent mode still honours; letting Inno
+; also restart the copy it closed would start two — and the second one finds port
+; 45678 taken and shows the "another instance is running" screen. The app is
+; already gone by the time Setup runs, so nothing is lost by turning this off.
+RestartApplications=no
 
 [Messages]
 WelcomeLabel1=مرحباً بك في معالج تثبيت StudyFlow PDF Reader

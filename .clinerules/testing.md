@@ -2,7 +2,7 @@
 
 ## What exists today
 
-Six files, 85 tests, all green (last full run 2026-09-30). Treat the count as a
+Seven files, 111 tests, all green (last full run 2026-10-02). Treat the count as a
 snapshot — read `test/` instead of trusting it.
 
 | File | Holds |
@@ -13,9 +13,10 @@ snapshot — read `test/` instead of trusting it.
 | `test/timetable_entry_test.dart` | Parsing and formatting a timetable entry |
 | `test/tool_width_limits_test.dart` | The single source of truth for stroke widths |
 | `test/university_downloaded_hashes_test.dart` | The rule behind the "downloaded" hash |
+| `test/update_flow_test.dart` | Version ordering, which release asset is picked, digest/length verification, that a forced update downloads and hands over to Setup with no button pressed, and that the gate never mutates state while building |
 
 `docs/AGENTS.md` used to claim there were no tests and told agents not to run
-them. That was true once and is false now — those six files are why this project
+them. That was true once and is false now — these files are why this project
 stopped shipping unverified UI. Do not repeat that claim.
 
 ## When a test is the right answer
@@ -41,6 +42,20 @@ explicit instruction, and it is also cheaper.
 - When the property is positional, assert against the render tree
   (`tester.getRect`) — an `expect` on widget fields passes while the row still
   overflows.
+- A widget whose own path touches the filesystem — writing a download, hashing it
+  back — **hangs under `pump` alone**. `pump` advances fake time while file I/O
+  completes on the real event loop, so the future never resolves and the test
+  times out with no failing assertion. Wrap the wait in
+  `tester.runAsync(() => Future.delayed(...))`, pump once, then check *after* the
+  call: a task entered by a post-frame callback is not running yet when a
+  pump-until helper first looks at it, and a helper that checks first steps over
+  it and hangs. This cost real time in `update_flow_test.dart` — the note is here
+  so the next person does not rediscover it.
+- Dispose the widget before deleting a temp directory it wrote to
+  (`await tester.pumpWidget(const SizedBox.shrink())`): Windows keeps the file
+  locked until then and the delete fails with `ERROR_SHARING_VIOLATION`, which
+  reads as a `PathAccessException` in `tearDown` and looks like a test failure in
+  an unrelated place.
 - Comments inside a test explain *why* the case matters, like the rest of the code.
 
 ## Running

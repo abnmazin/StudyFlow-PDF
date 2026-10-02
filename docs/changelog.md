@@ -1,5 +1,115 @@
 # Changelog
 
+## [2026-10-02] Added: a real in-app updater (dead button replaced)
+
+### What existed before
+The soft-update offer's «تحديث الآن» did nothing — `_kUpdateUrl` was the empty
+string — and the forced-update screen sent the reader to Telegram/WhatsApp to ask
+for the installer by hand. That is not an update, it is a support ticket, and it
+needed a human on the other end every time.
+
+### The failed attempt worth not repeating
+The offer was a `showDialog` from `VersionCheckGate`, and that gate wraps
+`MaterialApp` (`main.dart`) rather than living inside it. A dialog opened from
+above `MaterialApp` finds no `Navigator` **and** no `MaterialLocalizations` above
+it, so the old code's guard returned early and nothing appeared. Anything that
+must be shown from the gate has to be a widget in a `Stack` over the app — which
+also happens to be the right shape here, because a reader with a PDF open should
+not lose it to an update offer.
+
+### Added
+- `lib/utils/semver.dart` — `compareVersions` / `isVersionLessThan`. `1.10.0` vs
+  `1.9.0` is the pair a by-eye comparison gets wrong, and it is the pair that
+  decides whether a reader is offered an update. A leading `v`, `+build` and
+  `-beta` are all ignored; a non-number reads as zero rather than throwing, because
+  one side of the comparison is a tag typed by hand into a release.
+- `lib/services/update_service.dart` — GitHub Releases client: newest release,
+  `.exe` asset, download with progress to `getTemporaryDirectory()`, digest +
+  `Content-Length` verification (hashed as a stream), detached start with
+  `/VERYSILENT /CLOSEAPPLICATIONS /NORESTART /SUPPRESSMSGBOXES /LOG`, and a
+  `Start-Process -Verb RunAs` retry for `ERROR_ELEVATION_REQUIRED` (740). The
+  `http.Client` is injectable, like `AnnouncementComposer.pickImage`. The
+  `releases/latest` request carries a **10-second timeout**, because it runs on the
+  launch path: on a network that black-holes the connection `package:http` waits
+  forever, and a launch screen that never finishes is worse than not being told
+  about an update. The timeout falls into the same `catch` as "no internet".
+- `test/update_flow_test.dart` — 14 tests over the two silent failures above: the
+  version ordering (`1.10.0` vs `1.9.0`, `v`-tags, `+build`, a typo'd tag), which
+  asset is picked, a release with nothing attached, and the digest/length
+  verification against real temp files with a `MockClient`.
+- `lib/widgets/update_screen.dart` — one screen for every stage (checking, ready,
+  downloading, verifying, installing, failed), rendered by the gate as an overlay.
+  `onClose` null means the forced case, where it cannot be dismissed; `quit` is
+  injectable so a test does not call `exit(0)`.
+- `tools/publish_release.ps1` — the publishing half: version from `pubspec.yaml`,
+  `flutter build windows --release`, `ISCC /DAppVersion=<version>`, SHA-256, then
+  the GitHub REST calls. `gh` is not installed on this machine, so the two REST
+  calls are the whole of it. ASCII only, because PowerShell 5.1 reads a `.ps1` with
+  no BOM as ANSI.
+
+### Changed
+- `VersionCheckService.check()` takes `latestVersionOverride`. Firestore
+  `app_config/version` keeps `min_version` — the policy — while the release
+  repository owns `latest_version` when it is higher, because only it can serve a
+  file.
+- `installer.iss`: fixed `AppId` GUID (otherwise Inno derives one from `AppName`
+  and a rename installs *beside* the old build), `CloseApplications=yes` (what
+  makes `/CLOSEAPPLICATIONS` work), `RestartApplications=no` (Setup's restart would
+  race `[Run]` into a second instance and the "another instance is running"
+  screen), and `AppVersion={#AppVersion}` fed by the publish script.
+- `DeveloperModal` takes an `onUpdate` callback; null falls back to the release
+  page.
+- Deleted `lib/widgets/update_dialog.dart`.
+- Forced update now installs itself. `VersionCheckGate` opens `UpdateScreen`
+  **synchronously from `build`** on `forceUpdate`, in the same frame as the
+  blocking screen, so the app never appears usable. The screen takes
+  `autoInstall: true`, which means the download starts without a button press —
+  the old forced screen showed a button, and a reader who did not press it sat on
+  a release page. A failed attempt is shown once and offers the page; it is not
+  retried in a loop, because a down network is not fixed by retrying.
+- `UpdateScreen` panel `Column` now forces its body to the panel's width
+  (`Flexible` + `SingleChildScrollView` + `SizedBox(width: double.infinity)`),
+  with a height cap of `window height - 80`. Cause, measured: `Center` hands the
+  panel an unbounded width, and `MainAxisSize.min` makes the `Column`
+  shrink-wrap to its widest child, so a plain paragraph was laid out unbounded —
+  1232px inside a 418px panel, i.e. `RenderFlex overflowed by 708 pixels`. The
+  rows were all `Expanded` or controlled and reported 418, which is why only the
+  `installing` and `failed` messages exposed it. Action buttons became a `Wrap`
+  for the same reason (the ready stage overflowed by 128px sideways).
+- Removed `UpdateService.isNewerThan` (no reader) and its now-unused
+  `semver.dart` import.
+- `VersionCheckGate` no longer mutates state during `build`. `_remember` records
+  the result and `_requestUpdater` defers the `setState` to a post-frame callback.
+  Cause: the forced path called `_openUpdater(forced: true)` from inside
+  `_buildLaunch`, and the framework threw
+  `setState() or markNeedsBuild() called during build` on the launch frame — a
+  broken launch for every reader below `min_version`. `debugResultOverride` was
+  added to `VersionCheckGate` so that path is testable without Firestore.
+- `_withUpdater` wraps its `Stack` in a `Directionality`. `Stack` resolves its own
+  default `AlignmentDirectional.topStart`, which needs a direction, and the gate
+  sits above the `MaterialApp` — so the soft-update offer threw
+  `No Directionality widget found` on the frame it appeared.
+- `DeveloperModal`: the forced-update banner row and the badge row now wrap their
+  text in `Flexible`. At the modal's `dialogWidth` cap (380) minus its header
+  padding there is ~272px, and the banner overflowed by 93px while the badge
+  overflowed by 3px. The banner is on the one screen a reader cannot scroll away
+  from.
+- `DeveloperModal.initState` now catches a failing `PackageInfo.fromPlatform()`.
+  The unguarded `then` left the rejection unhandled, so a platform channel that
+  did not answer produced an uncaught async error on the launch path.
+- Header height consolidated: `sidebar_w.dart` and
+  `viewer_components/viewer_toolbar.dart` carried a bare `64` while the dashboard
+  navbar read `kDashboardNavBarHeight` — the literal pair `.clinerules/style.md`
+  names as the cause of the 16px drift. All three bands now read the one constant;
+  the value was already 64 in all three, so this is a correctness fix, not a visual
+  change.
+
+### Contract that matters
+The app reads `abnmazin/StudyFlow-PDF-Releases`, which must exist, be **public**,
+and hold no source. A private repository's releases need a token shipped inside the
+client, and a token in a client is a token given away. Until a release with an
+`.exe` is published there, the updater offers the release page and nothing else.
+
 ## [2026-10-01] Fixed: dashboard panels crashed — `CompositedTransformFollower` under an `OverlayPortal`
 
 ### Bug

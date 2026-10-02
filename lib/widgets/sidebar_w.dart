@@ -147,7 +147,11 @@ class _SidebarState extends State<Sidebar> {
             children: [
               // Header
               Container(
-                height: 64,
+                // The same constant the dashboard navbar is built from, because
+                // the two bands sit on one line across the shell (`main.dart:584`
+                // puts the sidebar beside the viewer). A bare `64` here is how
+                // the two drifted 16px apart before; the number now has one home.
+                height: kDashboardNavBarHeight,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 decoration: BoxDecoration(
                   border: Border(
