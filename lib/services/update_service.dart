@@ -8,11 +8,11 @@ import 'package:path_provider/path_provider.dart';
 
 /// Where releases are published.
 ///
-/// A repository of its own, holding nothing but the installer of each version.
-/// The app's source repository is private, and a private repository's releases
-/// cannot be read by a client without a token shipped inside it — a token in a
-/// client is a token given away. A public repository that contains no source is
-/// the cheap way to publish one file to everybody.
+/// The source repository itself, which is public — so `releases/latest` answers a
+/// client that carries no token, and a token shipped inside a client is a token
+/// given away. Verified against the GitHub API on 2026-10-02: `private: false`.
+/// The cost of putting an installer where the source already lives is that the
+/// release page shows the repository's own history beside it.
 const String kUpdateRepoOwner = 'abnmazin';
 const String kUpdateRepoName = 'StudyFlow-PDF';
 
@@ -150,8 +150,9 @@ class UpdateService {
   /// reached.
   ///
   /// Null is the normal answer on a machine with no internet and on a repository
-  /// that has published nothing yet — `StudyFlow-PDF-Releases` starts life empty
-  /// — so the caller must have something to do with it. It is deliberately not
+  /// that has published nothing yet — `abnmazin/StudyFlow-PDF` held no release and
+  /// no tag at all on 2026-10-02 — so the caller must have something to do with
+  /// it. It is deliberately not
   /// an exception: "nothing to offer" and "the download broke" are told to the
   /// reader differently.
   Future<UpdateRelease?> latestRelease() async {

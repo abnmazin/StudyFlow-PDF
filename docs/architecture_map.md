@@ -28,11 +28,11 @@
   `ERROR_ELEVATION_REQUIRED` (740) retries through `powershell Start-Process -Verb
   RunAs`. The app then calls `exit(0)`: Setup cannot replace files that are in use,
   and Inno's `[Run]` entry starts the new build.
-- **The release repository is public and holds no source:**
-  `abnmazin/StudyFlow-PDF-Releases`, named by `kUpdateRepoOwner` /
-  `kUpdateRepoName` / `kUpdateReleasesPage`. The source repository is private, and
-  a private repository's releases need a token shipped inside the client — a token
-  in a client is a token given away. `tools/publish_release.ps1` is the publisher:
+- **The release repository is the public source repository:**
+  `abnmazin/StudyFlow-PDF`, named by `kUpdateRepoOwner` / `kUpdateRepoName` /
+  `kUpdateReleasesPage`. It is public (`private: false`, verified 2026-10-02), so
+  the app reads `releases/latest` with no token; a token shipped inside a client
+  is a token given away. `tools/publish_release.ps1` is the publisher:
   version from `pubspec.yaml`, `flutter build windows --release`,
   `ISCC /DAppVersion=<version> installer.iss`, SHA-256, then the two GitHub REST
   calls (release, then asset). `installer.iss` takes the version through that

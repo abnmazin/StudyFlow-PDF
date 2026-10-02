@@ -1,5 +1,36 @@
 # Changelog
 
+## [2026-10-02] Fixed: the updater pointed at a repository that does not exist
+
+### The failed attempt worth not repeating
+The updater was split across two repositories on the assumption that the source
+repository is private, and that a private repository's releases cannot be read
+without a token shipped inside the client. Verified against the GitHub API on
+2026-10-02: `abnmazin/StudyFlow-PDF` answers `"private": false`. The premise was
+never checked, and it left two halves each wrong in a different direction:
+
+- the app (`kUpdateRepoName`) read `abnmazin/StudyFlow-PDF`, which is public but
+  held **zero releases and zero tags** — so the updater could never find anything,
+- `tools/publish_release.ps1` published to `abnmazin/StudyFlow-PDF-Releases`,
+  which does not exist at all (**404**) — so publishing failed at the first call.
+
+The check that would have caught it costs one unauthenticated `GET
+/repos/<owner>/<repo>`: ask what the repository is instead of reasoning about what
+it probably is.
+
+### Changed
+- `tools/publish_release.ps1` publishes to `abnmazin/StudyFlow-PDF` — the
+  repository the app already read.
+- The "the source repository is private" claim in `lib/services/update_service.dart`
+  and `docs/architecture_map.md` now states the verified fact and the date.
+- `pubspec.yaml` `1.1.0+3` -> `1.2.0+1`.
+
+### Still open
+GitHub is not the gate. `min_version` in Firestore `app_config/version` is: with
+no document there the release repository is never consulted, and publishing
+`1.2.0` while `min_version` still reads `1.1.0` updates nobody, because an
+installed `1.1.0` is not older than `1.1.0`. This is the version trap that made
+the flow look broken when it was working.
 ## [2026-10-02] Added: a real in-app updater (dead button replaced)
 
 ### What existed before

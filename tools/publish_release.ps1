@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     The updater in the app (`lib/services/update_service.dart`) asks GitHub for
-    `releases/latest` of `abnmazin/StudyFlow-PDF-Releases` and downloads the `.exe`
+    `releases/latest` of `abnmazin/StudyFlow-PDF` and downloads the `.exe`
     attached to it. Nothing else in this project produces that asset, so this
     script is the other half of the update flow: without it, the app offers an
     update nobody can install.
@@ -18,10 +18,10 @@
       2. `flutter build windows --release`,
       3. `ISCC /DAppVersion=<version> installer.iss` -> build\installer\*.exe,
       4. SHA-256 of the installer (printed; GitHub computes its own as well),
-      5. create the release `v<version>` in the release repository,
+      5. create the release `v<version>` in that repository,
       6. upload the installer as `StudyFlowPDF_Setup_<version>.exe`.
 
-    Needs `GITHUB_TOKEN` with `contents: write` on the release repository. `gh` is
+    Needs `GITHUB_TOKEN` with `contents: write` on the repository. `gh` is
     not used: it is not installed on this machine, and the two REST calls below are
     the whole of it.
 
@@ -47,8 +47,9 @@
     .\tools\publish_release.ps1 -Notes '<the Arabic note the reader will see>'
 
 .NOTES
-    `abnmazin/StudyFlow-PDF-Releases` has to exist and be public: the app reads it
-    with no token, and a token shipped inside a client is a token given away.
+    `abnmazin/StudyFlow-PDF` is the source repository itself, and it is public: the
+    app reads `releases/latest` from it with no token, and a token shipped inside a
+    client is a token given away.
 #>
 [CmdletBinding()]
 param(
@@ -63,7 +64,7 @@ $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $owner = 'abnmazin'
-$repo = 'StudyFlow-PDF-Releases'
+$repo = 'StudyFlow-PDF'
 $root = Split-Path -Parent $PSScriptRoot
 
 $token = $env:GITHUB_TOKEN
@@ -118,10 +119,41 @@ Write-Host ("Installer: {0} ({1:N1} MB)" -f $assetName, ($size / 1MB)) -Foregrou
 Write-Host "SHA-256:   $sha" -ForegroundColor Green
 
 # -- publish ------------------------------------------------------------------
-$headers = @{
-    Authorization = "Bearer $token"
-    'User-Agent'  = 'StudyFlow-PDF-Release-Script'
-    Accept        = 'application/vnd.github+json'
+# `curl.exe`, and not `Invoke-RestMethod`: on this machine the PowerShell 5.1 call
+# hangs with its socket in CloseWait - GitHub closes the connection, HttpWebRequest
+# never notices, and the script waits forever having created no release. That
+# happened once, silently, after a successful build. curl answers `--max-time`
+# instead, so a stall becomes an error.
+$curl = 'curl.exe'
+if (-not (Get-Command $curl -ErrorAction SilentlyContinue)) {
+    throw 'curl.exe not found. It ships with Windows 10 and 11.'
+}
+
+$common = @(
+    '-sS', '--max-time', '900',
+    # Revocation is checked when it can be. Without this, curl on this machine dies
+    # with CRYPT_E_NO_REVOCATION_CHECK: Windows Schannel cannot reach the CRL
+    # distribution points, and it treats that as a failure rather than an unknown.
+    # Best-effort keeps the check where it works and proceeds where it does not,
+    # which is weaker than `-k` and much weaker than nothing.
+    '--ssl-revoke-best-effort',
+    '-H', "Authorization: Bearer $token",
+    '-H', 'Accept: application/vnd.github+json',
+    '-H', 'User-Agent: StudyFlow-PDF-Release-Script'
+)
+
+function Invoke-GitHub {
+    param([string]$Url, [string[]]$Extra = @(), [string]$BodyFile)
+    $out = New-TemporaryFile
+    # Not `$args`: that name is PowerShell's own automatic array inside a function.
+    $curlArgs = $common + $Extra
+    if ($BodyFile) { $curlArgs += @('--data-binary', ('@"' + $BodyFile + '"')) }
+    $code = & $curl @curlArgs '-o' $out.FullName '-w' '%{http_code}' $Url
+    $body = Get-Content -Raw -Encoding UTF8 $out.FullName
+    Remove-Item $out.FullName -Force -ErrorAction SilentlyContinue
+    if ($LASTEXITCODE -ne 0) { throw "curl exit $LASTEXITCODE for $Url`n$body" }
+    if ([int]$code -ge 400) { throw "GitHub answered HTTP $code for $Url`n$body" }
+    return ($body | ConvertFrom-Json)
 }
 
 $payload = @{
@@ -132,21 +164,31 @@ $payload = @{
     prerelease = $false
 } | ConvertTo-Json
 
+# A file, not a command-line argument: the notes are Arabic and the bytes have to
+# go out as UTF-8. UTF-8 *without* a BOM, because a payload starting with one is
+# not JSON any more.
+$payloadFile = New-TemporaryFile
+[System.IO.File]::WriteAllText($payloadFile.FullName, $payload,
+    (New-Object System.Text.UTF8Encoding($false)))
+
 try {
-    $release = Invoke-RestMethod -Method Post -Headers $headers `
-        -ContentType 'application/json' -Body $payload `
-        -Uri "https://api.github.com/repos/$owner/$repo/releases"
+    $release = Invoke-GitHub -Url "https://api.github.com/repos/$owner/$repo/releases" `
+        -Extra @('-X', 'POST', '-H', 'Content-Type: application/json; charset=utf-8') `
+        -BodyFile $payloadFile.FullName
 } catch {
     throw ("Could not create the release $tag. If it already exists, the version " +
            "was not bumped - delete that release, or publish the next version. " +
            $_.Exception.Message)
+} finally {
+    Remove-Item $payloadFile.FullName -Force -ErrorAction SilentlyContinue
 }
 
 # `uploads.` and not `api.`: the asset endpoint is a different host, and the name
 # in the query is the name the app sees in the release.
 $uploadUri = "https://uploads.github.com/repos/$owner/$repo/releases/$($release.id)/assets?name=$assetName"
-$asset = Invoke-RestMethod -Method Post -Headers $headers `
-    -ContentType 'application/octet-stream' -InFile $assetPath -Uri $uploadUri
+$asset = Invoke-GitHub -Url $uploadUri `
+    -Extra @('-X', 'POST', '-H', 'Content-Type: application/octet-stream') `
+    -BodyFile $assetPath
 
 Write-Host ''
 Write-Host "Published: $($release.html_url)" -ForegroundColor Green
