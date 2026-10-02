@@ -383,6 +383,26 @@ void main() {
       expect(find.text('2 إعلان'), findsOneWidget);
       expect(find.textContaining('د. أحمد الشريف'), findsOneWidget);
     });
+    testWidgets('the newest note sits at the bottom of the feed', (
+      tester,
+    ) async {
+      // The list is reversed because the service hands the notes newest-first:
+      // index 0 is the newest and must land lowest, against the composer, the
+      // way a channel reads. Asserted on the render tree, not on the widget
+      // fields, because the order that matters is the one on screen.
+      final notes = [
+        _note('new', body: 'الأحدث', createdAt: DateTime(2026, 9, 30, 12)),
+        _note('old', body: 'الأقدم', createdAt: DateTime(2026, 9, 20, 12)),
+      ];
+
+      await pump(tester, announcements: notes);
+
+      expect(
+        tester.getTopLeft(find.text('الأحدث')).dy,
+        greaterThan(tester.getTopLeft(find.text('الأقدم')).dy),
+      );
+    });
+
     testWidgets('loading is not the same answer as empty', (tester) async {
       // The one that matters: "لا توجد إعلانات" drawn before the first snapshot
       // is a wrong answer wearing the clothes of a right one.
@@ -569,6 +589,96 @@ void main() {
       await tester.pump();
       expect(deleted, ['a1']);
     });
+
+    testWidgets('a tap on a picture opens it full-screen, where it can zoom', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        announcements: [
+          _note(
+            'a1',
+            body: 'جدول الاختبارات النهائية:',
+            imageUrl: 'https://cdn.example.com/images/10.png',
+          ),
+        ],
+      );
+
+      // The corner, not the centre: the fetch fails in a widget test, so the
+      // middle of the picture is the «إعادة المحاولة» button and tapping there
+      // would test the retry control instead of the way into the viewer.
+      await tester.tapAt(
+        tester.getTopLeft(find.byType(CachedNetworkImage)) +
+            const Offset(8, 8),
+      );
+      // `pump` twice, never `pumpAndSettle`: the viewer's own placeholder spins,
+      // and a spinner is an animation that never ends.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.byType(InteractiveViewer), findsOneWidget);
+      expect(find.text('100%'), findsOneWidget);
+
+      // The viewer draws the same picture the note drew, so the note's copy is
+      // still in the tree behind the route: the two are told apart by scoping
+      // the finder to the viewer.
+      expect(
+        find.descendant(
+          of: find.byType(InteractiveViewer),
+          matching: find.byType(CachedNetworkImage),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byTooltip('إغلاق'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.byType(InteractiveViewer), findsNothing);
+      expect(find.text('جدول الاختبارات النهائية:'), findsOneWidget);
+    });
+
+    testWidgets('the zoom controls move the zoom and say what it is', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        announcements: [_note('a1', imageUrl: 'https://cdn/1.png')],
+      );
+
+      await tester.tapAt(
+        tester.getTopLeft(find.byType(CachedNetworkImage)) +
+            const Offset(8, 8),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // The readout is the only thing on screen that answers "did the picture
+      // move", and it is the same number the wheel and a pinch would write: the
+      // matrix is the one source both read from.
+      await tester.tap(find.byTooltip('تكبير'));
+      await tester.pump();
+      expect(find.text('125%'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('تصغير'));
+      await tester.pump();
+      expect(find.text('100%'), findsOneWidget);
+
+      // Back at the fitted size the way down is spent, and «تصغير» says so by
+      // being disabled rather than by looking broken when pressed.
+      expect(
+        tester
+            .widget<IconButton>(
+              find.ancestor(
+                of: find.byTooltip('تصغير'),
+                matching: find.byType(IconButton),
+              ),
+            )
+            .onPressed,
+        isNull,
+      );
+    });
+
   });
 
   group('AnnouncementComposer', () {
@@ -585,24 +695,18 @@ void main() {
       return tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: SingleChildScrollView(
-              child: AnnouncementComposer(
-                folderName: 'انظمة القدرة',
-                isPublishing: isPublishing,
-                onPublish: onPublish,
-                pickImage: pickImage ?? () async => null,
-              ),
+            body: AnnouncementComposer(
+              isPublishing: isPublishing,
+              onPublish: onPublish,
+              pickImage: pickImage ?? () async => null,
             ),
           ),
         ),
       );
     }
 
-    /// Opens the collapsed bar.
-    Future<void> open(WidgetTester tester) async {
-      await tester.tap(find.textContaining('نشر إعلان جديد'));
-      await tester.pumpAndSettle();
-    }
+    /// The one field on the bar — the message.
+    Finder field() => find.byType(TextField);
 
     /// Attaches an image through the button, and lands on the frame the preview
     /// appears on.
@@ -611,26 +715,30 @@ void main() {
     /// a spinner is an animation that never ends — settling here would time out
     /// instead of showing the thumbnail.
     Future<void> tapAttach(WidgetTester tester) async {
-      await tester.tap(find.text('إرفاق صورة'));
+      await tester.tap(find.byTooltip('إرفاق صورة'));
       await tester.pump();
       await tester.pump();
     }
 
-    /// Publishes, and lets the bar's collapse play out.
+    /// Presses send, and advances a frame so the reset is visible.
     Future<void> tapPublish(WidgetTester tester) async {
-      await tester.tap(find.text('نشر'));
+      await tester.tap(find.byTooltip('نشر'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
     }
 
-    testWidgets('starts as a bar and opens on tap', (tester) async {
+    testWidgets('is one field with an attach and a send control', (
+      tester,
+    ) async {
+      // The channel composer has no collapsed state and no title field: one
+      // field to type in, and two icon buttons beside it whose words live only
+      // in their tooltips.
       await pumpComposer(tester, onPublish: (_, _, _) async {});
 
-      expect(find.textContaining('نشر إعلان جديد'), findsOneWidget);
-      expect(find.byType(TextField), findsNothing);
-
-      await open(tester);
-      expect(find.byType(TextField), findsNWidgets(2));
+      expect(find.byType(TextField), findsOneWidget);
+      expect(find.text('اكتب إعلاناً...'), findsOneWidget);
+      expect(find.byTooltip('إرفاق صورة'), findsOneWidget);
+      expect(find.byTooltip('نشر'), findsOneWidget);
     });
 
     testWidgets('an empty draft is refused with the model wording', (
@@ -643,18 +751,16 @@ void main() {
           calls++;
         },
       );
-      await open(tester);
 
-      await tester.tap(find.text('نشر'));
-      await tester.pumpAndSettle();
+      await tapPublish(tester);
 
       expect(calls, 0, reason: 'no write for a draft the model rejects');
       expect(find.text('اكتب نصاً أو أرفق صورة'), findsOneWidget);
-      // Still open, so nothing typed is lost while the reader fixes it.
-      expect(find.byType(TextField), findsNWidgets(2));
+      // The field is still there, so nothing typed is lost while the reader
+      // fixes it.
+      expect(find.byType(TextField), findsOneWidget);
     });
-
-    testWidgets('publishing sends the trimmed draft and resets the bar', (
+    testWidgets('publishing sends the text with no title and clears the bar', (
       tester,
     ) async {
       final sent = <String>[];
@@ -662,18 +768,18 @@ void main() {
         tester,
         onPublish: (title, body, _) async => sent.add('$title|$body'),
       );
-      await open(tester);
 
-      await tester.enterText(find.byType(TextField).first, '  موعد الاختبار  ');
-      await tester.enterText(find.byType(TextField).last, '  الأحد القادم.  ');
-      await tester.tap(find.text('نشر'));
-      await tester.pumpAndSettle();
+      await tester.enterText(field(), '  موعد الاختبار  ');
+      await tapPublish(tester);
 
-      expect(sent, ['موعد الاختبار|الأحد القادم.']);
-      // Collapsed again and empty, so the next note does not start from the
-      // previous one's text.
-      expect(find.textContaining('نشر إعلان جديد'), findsOneWidget);
-      expect(find.byType(TextField), findsNothing);
+      // The title is empty by design — the channel UI collects none, and the
+      // model treats an empty title as a finished note. The body is trimmed.
+      expect(sent, ['|موعد الاختبار']);
+      expect(
+        tester.widget<TextField>(field()).controller!.text,
+        isEmpty,
+        reason: 'the bar reset for the next note',
+      );
     });
 
     testWidgets('a failed publish keeps the draft and reports the reason', (
@@ -684,12 +790,9 @@ void main() {
         onPublish: (_, _, _) async =>
             throw UnsupportedError('نشر الإعلانات متاح للأستاذ والمدير فقط'),
       );
-      await open(tester);
 
-      await tester.enterText(find.byType(TextField).first, 'عنوان');
-      await tester.enterText(find.byType(TextField).last, 'نص');
-      await tester.tap(find.text('نشر'));
-      await tester.pumpAndSettle();
+      await tester.enterText(field(), 'نص');
+      await tapPublish(tester);
 
       // The exception's class name is stripped: the reader gets the sentence,
       // not `UnsupportedError: ` in front of it.
@@ -697,7 +800,7 @@ void main() {
         find.text('نشر الإعلانات متاح للأستاذ والمدير فقط'),
         findsOneWidget,
       );
-      expect(find.text('عنوان'), findsOneWidget);
+      expect(tester.widget<TextField>(field()).controller!.text, 'نص');
     });
 
     testWidgets('a note may be the picture alone', (tester) async {
@@ -708,14 +811,17 @@ void main() {
             sent.add('[${title.trim()}][${body.trim()}][$imageUrl]'),
         pickImage: () async => 'https://cdn.example.com/images/7.png',
       );
-      await open(tester);
 
       // Nothing typed and nothing to reject: the post is the photo.
       await tapAttach(tester);
       await tapPublish(tester);
 
       expect(sent, ['[][][https://cdn.example.com/images/7.png]']);
-      expect(find.byType(TextField), findsNothing, reason: 'the bar reset');
+      expect(
+        tester.widget<TextField>(field()).controller!.text,
+        isEmpty,
+        reason: 'the bar reset',
+      );
     });
 
     testWidgets('an attached picture is previewed, and can be removed', (
@@ -727,12 +833,11 @@ void main() {
         onPublish: (_, _, imageUrl) async => sent.add(imageUrl ?? 'بلا صورة'),
         pickImage: () async => 'https://cdn.example.com/images/8.png',
       );
-      await open(tester);
 
       await tapAttach(tester);
       // The control offers a change rather than a first attach, the picture
       // itself is on screen, and the picture carries the way out.
-      expect(find.text('تغيير الصورة'), findsOneWidget);
+      expect(find.byTooltip('تغيير الصورة'), findsOneWidget);
       final preview = tester.widget<CachedNetworkImage>(
         find.byType(CachedNetworkImage),
       );
@@ -742,26 +847,24 @@ void main() {
       await tester.tap(find.byTooltip('إزالة الصورة'));
       await tester.pump();
       expect(find.byTooltip('إزالة الصورة'), findsNothing);
-      expect(find.text('إرفاق صورة'), findsOneWidget);
+      expect(find.byTooltip('إرفاق صورة'), findsOneWidget);
 
       // Removed means removed: the note goes out as text.
-      await tester.enterText(find.byType(TextField).first, 'عنوان');
+      await tester.enterText(field(), 'نص');
       await tapPublish(tester);
       expect(sent, ['بلا صورة']);
     });
-
     testWidgets('a dismissed picker changes nothing', (tester) async {
       await pumpComposer(
         tester,
         onPublish: (_, _, _) async {},
         pickImage: () async => null,
       );
-      await open(tester);
 
       await tapAttach(tester);
 
       // No preview and no complaint: closing a dialog is not a failure.
-      expect(find.text('إرفاق صورة'), findsOneWidget);
+      expect(find.byTooltip('إرفاق صورة'), findsOneWidget);
       expect(find.byTooltip('إزالة الصورة'), findsNothing);
       expect(find.byType(CachedNetworkImage), findsNothing);
     });
@@ -775,16 +878,15 @@ void main() {
         pickImage: () async =>
             throw StateError('تعذّر رفع الصورة، حاول مرة أخرى'),
       );
-      await open(tester);
 
-      await tester.enterText(find.byType(TextField).first, 'عنوان');
+      await tester.enterText(field(), 'نص');
       await tapAttach(tester);
 
       // Said out loud: a button that does nothing and says nothing is the one
       // failure a reader cannot work around.
       expect(find.text('تعذّر رفع الصورة، حاول مرة أخرى'), findsOneWidget);
-      expect(find.text('تغيير الصورة'), findsNothing);
-      expect(find.text('عنوان'), findsOneWidget);
+      expect(find.byTooltip('تغيير الصورة'), findsNothing);
+      expect(tester.widget<TextField>(field()).controller!.text, 'نص');
     });
 
     testWidgets('while an upload runs the bar says so and refuses more', (
@@ -798,21 +900,21 @@ void main() {
         onPublish: (_, _, _) async {},
         pickImage: () => gate.future,
       );
-      await open(tester);
 
-      await tester.tap(find.text('إرفاق صورة'));
+      await tester.tap(find.byTooltip('إرفاق صورة'));
       await tester.pump();
-      expect(find.text('جارٍ رفع الصورة…'), findsOneWidget);
+      // The attach control has become a spinner — there is no second button to
+      // press, so no second upload can start on top of the first.
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
-      // A second tap cannot start a second upload on top of the first.
-      await tester.tap(find.text('جارٍ رفع الصورة…'));
+      await tester.tap(find.byTooltip('إرفاق صورة'), warnIfMissed: false);
       await tester.pump();
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
       gate.complete('https://cdn.example.com/images/11.png');
       await tester.pump();
       await tester.pump();
-      expect(find.text('تغيير الصورة'), findsOneWidget);
+      expect(find.byTooltip('تغيير الصورة'), findsOneWidget);
     });
   });
 }

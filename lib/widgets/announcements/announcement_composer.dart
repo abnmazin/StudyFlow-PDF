@@ -5,28 +5,27 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../models/folder_announcement.dart';
 import '../../utils/image_upload_helper.dart';
 
-/// The publish bar on the announcements page.
+/// The publish bar on the announcements page: the input row of a channel.
 ///
-/// It sits *under* the list, not over it: the page's job is to show the notes,
-/// and a composer on top pushes the newest one — the one the reader came for —
-/// below the fold. At the bottom the eye still finds the notes first, which is
-/// the order they are wanted in.
+/// It sits at the bottom edge and stays there, the way a chat app's input does.
+/// There is no collapsed state and no title field — a channel post is one line
+/// of text plus an optional picture, and the poster types it in the same place
+/// every time. The folder the note lands in is named by the header directly
+/// above, so the bar does not repeat it.
 ///
-/// Collapsed it is one row, and tapping it opens the fields plus an attach
-/// control. It starts collapsed on purpose: open, it holds four lines of height
-/// for the sake of a control that is used once a week.
+/// The whole row is one field (the message), two icon buttons (attach, send)
+/// and, once a picture is chosen, its preview above them. The field grows up to
+/// five lines and then scrolls, so a long note is not hidden behind a one-line
+/// box.
 ///
 /// Only rendered for staff. Whether the reader *may* publish is decided by the
 /// caller (`AppProvider.canPublishAnnouncement`, which is the same
 /// `AppUser.isLecturer` the Firestore rules check), so this widget never has to
 /// know about roles.
 class AnnouncementComposer extends StatefulWidget {
-  /// Names the folder in the bar, so it is obvious where the note will land.
-  final String folderName;
-
-  /// True while a publish is in flight. The button shows a spinner and stops
-  /// accepting taps, rather than letting a second write start on top of the
-  /// first.
+  /// True while a publish is in flight. The send button shows a spinner and
+  /// stops accepting taps, rather than letting a second write start on top of
+  /// the first.
   final bool isPublishing;
 
   /// Picks one image and returns its uploaded URL, or null when the dialog was
@@ -39,15 +38,18 @@ class AnnouncementComposer extends StatefulWidget {
   final Future<String?> Function() pickImage;
 
   /// Throws to report a failure. The composer catches it, prints the message
-  /// under the fields, and leaves the draft in place so nothing typed is lost.
-  /// The third argument is the attached image's URL, or null for a text-only
-  /// note.
+  /// under the field, and leaves the draft in place so nothing typed is lost.
+  ///
+  /// The first argument is the title, kept in the signature for the model and
+  /// the service even though the channel UI no longer collects one: it is sent
+  /// as the empty string, which `FolderAnnouncement` treats as a finished
+  /// note's shape rather than a half-filled draft. The third is the attached
+  /// image's URL, or null for a text-only note.
   final Future<void> Function(String title, String body, String? imageUrl)
   onPublish;
 
   const AnnouncementComposer({
     super.key,
-    required this.folderName,
     required this.isPublishing,
     required this.onPublish,
     this.pickImage = pickAndUploadImage,
@@ -58,10 +60,8 @@ class AnnouncementComposer extends StatefulWidget {
 }
 
 class _AnnouncementComposerState extends State<AnnouncementComposer> {
-  final TextEditingController _titleController = TextEditingController();
   final TextEditingController _bodyController = TextEditingController();
 
-  bool _expanded = false;
   String? _error;
 
   /// The uploaded URL of the image attached to the draft, or null.
@@ -75,17 +75,16 @@ class _AnnouncementComposerState extends State<AnnouncementComposer> {
 
   @override
   void dispose() {
-    _titleController.dispose();
     _bodyController.dispose();
     super.dispose();
   }
 
-  /// The sentence to show under the fields for [error].
+  /// The sentence to show under the field for [error].
   ///
   /// Read off the object rather than trimmed off `toString()`, because those
-  /// wrappers do not share their class name: `UnsupportedError('…').toString()`
-  /// is `"Unsupported operation: …"` and `ArgumentError('…').toString()` is
-  /// `"Invalid argument(s): …"`. Matching on the type is what makes this
+  /// wrappers do not share their class name: `UnsupportedError('...').toString()`
+  /// is `"Unsupported operation: ..."` and `ArgumentError('...').toString()` is
+  /// `"Invalid argument(s): ..."`. Matching on the type is what makes this
   /// survive a rewording of the framework's prefix.
   static String _messageOf(Object error) {
     // `UnsupportedError.message` is nullable in this SDK, so every branch is
@@ -103,13 +102,13 @@ class _AnnouncementComposerState extends State<AnnouncementComposer> {
   }
 
   Future<void> _submit() async {
-    final title = _titleController.text.trim();
     final body = _bodyController.text.trim();
 
     // The model's rule, not a copy of it — the service applies the same one and
-    // would otherwise have to reject what the form just accepted.
+    // would otherwise have to reject what the bar just accepted. The title is
+    // empty by design, so this reduces to "text or picture".
     final invalid = FolderAnnouncement.validationMessage(
-      title: title,
+      title: '',
       body: body,
       imageUrl: _imageUrl,
     );
@@ -120,12 +119,10 @@ class _AnnouncementComposerState extends State<AnnouncementComposer> {
 
     setState(() => _error = null);
     try {
-      await widget.onPublish(title, body, _imageUrl);
+      await widget.onPublish('', body, _imageUrl);
       if (!mounted) return;
-      _titleController.clear();
       _bodyController.clear();
       setState(() {
-        _expanded = false;
         // Cleared with the text: the next note starts from nothing, and an
         // image left in `_imageUrl` would attach itself to a note written
         // after the reader had already forgotten about it.
@@ -166,280 +163,230 @@ class _AnnouncementComposerState extends State<AnnouncementComposer> {
     }
   }
 
-  /// The attach control and, once something is attached, its preview.
-  ///
-  /// A thumbnail rather than a filename: the question a poster asks before
-  /// publishing is "is this the picture I meant", and `IMG_4821.jpg` never
-  /// answers it. Removing is one tap on the picture itself, because that is
-  /// where the eye already is and a form with no undo has to make the way out
-  /// obvious.
-  Widget _buildImageRow(ColorScheme scheme) {
-    final url = _imageUrl;
-    final busy = _isUploadingImage || widget.isPublishing;
-
-    return Row(
-      children: [
-        OutlinedButton.icon(
-          onPressed: busy ? null : _pickImage,
-          icon: _isUploadingImage
-              ? const SizedBox(
-                  width: 13,
-                  height: 13,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(LucideIcons.imagePlus, size: 15),
-          label: Text(
-            _isUploadingImage
-                ? 'جارٍ رفع الصورة…'
-                : (url == null ? 'إرفاق صورة' : 'تغيير الصورة'),
-            style: const TextStyle(fontSize: 12.5),
-          ),
-        ),
-        if (url != null) ...[
-          const SizedBox(width: 12),
-          Tooltip(
-            message: 'إزالة الصورة',
-            child: InkWell(
-              // Dropping the URL is the whole of "removed": the file is already
-              // in the bucket, and sweeping an orphan out of storage is a job
-              // for something that runs on a schedule, not for a form that may
-              // still be cancelled.
-              onTap: busy ? null : () => setState(() => _imageUrl = null),
-              borderRadius: BorderRadius.circular(10),
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: CachedNetworkImage(
-                      imageUrl: url,
-                      // The query string carries a per-request token, so a cache
-                      // key built from the whole URL would miss the disk cache
-                      // on every rebuild and re-download the same picture.
-                      cacheKey: url.contains('?') ? url.split('?').first : url,
-                      width: 56,
-                      height: 56,
-                      fit: BoxFit.cover,
-                      placeholder: (context, url) => const Center(
-                        child: SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      ),
-                      errorWidget: (context, url, error) => Icon(
-                        LucideIcons.imageOff,
-                        size: 18,
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                  // The X sits on the corner of the picture it undoes.
-                  Positioned(
-                    top: -5,
-                    left: -5,
-                    child: Container(
-                      width: 18,
-                      height: 18,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: scheme.error,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: scheme.surfaceContainerHigh,
-                          width: 1.5,
-                        ),
-                      ),
-                      child: Icon(
-                        LucideIcons.x,
-                        size: 11,
-                        color: scheme.onError,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
-    return Padding(
-      // Bottom padding, not top: the bar closes the page from underneath now,
-      // so its air belongs between it and the window's edge. The list above it
-      // has its own padding and does not need a gap added here.
-      padding: const EdgeInsets.fromLTRB(32, 0, 32, 16),
-      // `AnimatedSize` rather than an `AnimatedCrossFade`: the two states are
-      // the same container at two heights, and the bar should grow into the
-      // form rather than swap one widget for another.
-      child: AnimatedSize(
-        duration: const Duration(milliseconds: 160),
-        // It grows upwards, away from the bottom edge it is anchored to. With
-        // `topCenter` the open form would hang down over the edge instead of
-        // pushing the bar's own row down out of the way.
-        alignment: Alignment.bottomCenter,
-        child: Container(
-          decoration: BoxDecoration(
-            color: scheme.surfaceContainerHigh,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: scheme.outlineVariant),
+    return Container(
+      // A surface of its own, told apart from the feed above by tone and a
+      // hairline, the way a channel's input bar is its own strip. No shadow:
+      // a shadow on an already-toned strip reads as a smudge.
+      //
+      // `surface` and not a `surfaceContainer*` step: this page follows the app
+      // theme (`folder_announcements_view.dart` paints itself with
+      // `scaffoldBackgroundColor`), and the container roles the app never
+      // re-mapped — `High` among them, see `lib/main.dart` — still hold
+      // `ThemeData.light()`'s lavender neutrals, which sit apart from the
+      // slate palette. `surface` is the app's own bar colour, one step away
+      // from the field inside it, which is filled with
+      // `surfaceContainerHighest`.
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        border: Border(top: BorderSide(color: scheme.outlineVariant)),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_imageUrl != null) ...[
+            _buildImagePreview(scheme),
+            const SizedBox(height: 8),
+          ],
+          Row(
+            // The buttons stay level with the *bottom* of the field: as the note
+            // grows to several lines the send button should sit by the last line
+            // typed, not float beside the first. A chat input behaves this way.
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              _buildAttachButton(scheme),
+              const SizedBox(width: 8),
+              Expanded(child: _buildField(scheme)),
+              const SizedBox(width: 8),
+              _buildSendButton(scheme),
+            ],
           ),
-          child: _expanded
-              ? _buildExpanded(context, scheme)
-              : _buildBar(scheme),
+          if (_error != null) ...[
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsetsDirectional.only(start: 4),
+              child: Text(
+                _error!,
+                style: TextStyle(fontSize: 12, color: scheme.error),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// The one field: the note itself.
+  ///
+  /// `minLines: 1` / `maxLines: 5` with no visible border inside a rounded
+  /// pill — the shape every messaging app uses, and the shape that makes "type
+  /// and press send" obvious without a label.
+  Widget _buildField(ColorScheme scheme) {
+    return TextField(
+      controller: _bodyController,
+      enabled: !widget.isPublishing,
+      minLines: 1,
+      maxLines: 5,
+      keyboardType: TextInputType.multiline,
+      textInputAction: TextInputAction.newline,
+      maxLength: FolderAnnouncement.maxBodyLength,
+      style: TextStyle(fontSize: 13.5, color: scheme.onSurface),
+      decoration: InputDecoration(
+        hintText: 'اكتب إعلاناً...',
+        hintStyle: TextStyle(color: scheme.onSurfaceVariant),
+        // The counter would reserve a line under the field for a number nobody
+        // reads; the model's limit is still enforced by `maxLength` and reported
+        // by `validationMessage`.
+        counterText: '',
+        isDense: true,
+        filled: true,
+        fillColor: scheme.surfaceContainerHighest,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 10,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(22),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(22),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(22),
+          borderSide: BorderSide(color: scheme.primary, width: 1.2),
         ),
       ),
     );
   }
 
-  Widget _buildBar(ColorScheme scheme) {
-    return InkWell(
-      onTap: () => setState(() => _expanded = true),
-      borderRadius: BorderRadius.circular(14),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        child: Row(
+  /// The attach control: a paperclip-style icon, not a labelled button.
+  ///
+  /// Its tooltip changes once something is attached, so the same control reads
+  /// as "add" before and "change" after without a word ever appearing on screen.
+  Widget _buildAttachButton(ColorScheme scheme) {
+    final busy = _isUploadingImage || widget.isPublishing;
+    final hasImage = _imageUrl != null;
+
+    return IconButton(
+      onPressed: busy ? null : _pickImage,
+      icon: _isUploadingImage
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Icon(
+              hasImage ? LucideIcons.imagePlus : LucideIcons.image,
+              size: 20,
+              color: scheme.onSurfaceVariant,
+            ),
+      tooltip: hasImage ? 'تغيير الصورة' : 'إرفاق صورة',
+      style: IconButton.styleFrom(
+        backgroundColor: scheme.surfaceContainerHighest,
+        shape: const CircleBorder(),
+        padding: const EdgeInsets.all(10),
+      ),
+    );
+  }
+
+  /// The send control. Filled with the accent so it is the one thing on the bar
+  /// that reads as the action, and a spinner in its place while a write is out.
+  Widget _buildSendButton(ColorScheme scheme) {
+    return IconButton(
+      onPressed: widget.isPublishing ? null : _submit,
+      icon: widget.isPublishing
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(LucideIcons.send, size: 18),
+      tooltip: 'نشر',
+      style: IconButton.styleFrom(
+        backgroundColor: scheme.primary,
+        foregroundColor: scheme.onPrimary,
+        disabledBackgroundColor: scheme.primary.withOpacity(0.5),
+        shape: const CircleBorder(),
+        padding: const EdgeInsets.all(10),
+      ),
+    );
+  }
+
+  /// The attached picture, above the field, with a corner X that undoes it.
+  ///
+  /// A thumbnail rather than a filename: the question a poster asks before
+  /// sending is "is this the picture I meant", and `IMG_4821.jpg` never answers
+  /// it. Removing is one tap on the picture itself, because that is where the
+  /// eye already is and a bar with no undo has to make the way out obvious.
+  Widget _buildImagePreview(ColorScheme scheme) {
+    final url = _imageUrl!;
+    final busy = _isUploadingImage || widget.isPublishing;
+
+    return Tooltip(
+      message: 'إزالة الصورة',
+      child: InkWell(
+        // Dropping the URL is the whole of "removed": the file is already in
+        // the bucket, and sweeping an orphan out of storage is a job for
+        // something that runs on a schedule, not for a bar that may still be
+        // cancelled.
+        onTap: busy ? null : () => setState(() => _imageUrl = null),
+        borderRadius: BorderRadius.circular(12),
+        child: Stack(
+          clipBehavior: Clip.none,
           children: [
-            Icon(LucideIcons.megaphone, size: 18, color: scheme.primary),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'نشر إعلان جديد في «${widget.folderName}»',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 13.5,
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: CachedNetworkImage(
+                imageUrl: url,
+                // The query string carries a per-request token, so a cache key
+                // built from the whole URL would miss the disk cache on every
+                // rebuild and re-download the same picture.
+                cacheKey: url.contains('?') ? url.split('?').first : url,
+                width: 72,
+                height: 72,
+                fit: BoxFit.cover,
+                placeholder: (context, url) => const Center(
+                  child: SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+                errorWidget: (context, url, error) => Icon(
+                  LucideIcons.imageOff,
+                  size: 18,
                   color: scheme.onSurfaceVariant,
                 ),
               ),
             ),
-            Icon(
-              // Points up, where the form opens to.
-              LucideIcons.chevronUp,
-              size: 16,
-              color: scheme.onSurfaceVariant,
+            // The X sits on the corner of the picture it undoes.
+            Positioned(
+              top: -6,
+              right: -6,
+              child: Container(
+                width: 20,
+                height: 20,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: scheme.error,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: scheme.surfaceContainerHigh,
+                    width: 1.5,
+                  ),
+                ),
+                child: Icon(LucideIcons.x, size: 12, color: scheme.onError),
+              ),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildExpanded(BuildContext context, ColorScheme scheme) {
-    final theme = Theme.of(context);
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(LucideIcons.megaphone, size: 16, color: scheme.primary),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'إعلان جديد في «${widget.folderName}»',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w700,
-                    color: scheme.onSurface,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              IconButton(
-                onPressed: widget.isPublishing
-                    ? null
-                    : () => setState(() {
-                        _expanded = false;
-                        _error = null;
-                      }),
-                icon: Icon(
-                  LucideIcons.x,
-                  size: 16,
-                  color: scheme.onSurfaceVariant,
-                ),
-                tooltip: 'إلغاء',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _titleController,
-            enabled: !widget.isPublishing,
-            textInputAction: TextInputAction.next,
-            maxLength: FolderAnnouncement.maxTitleLength,
-            style: TextStyle(fontSize: 14, color: scheme.onSurface),
-            decoration: InputDecoration(
-              hintText: 'عنوان الإعلان (اختياري)',
-              // The counter would reserve a line under the field for a number
-              // nobody reads; the model's limit is still enforced by
-              // `maxLength` and reported by `validationMessage`.
-              counterText: '',
-              isDense: true,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _bodyController,
-            enabled: !widget.isPublishing,
-            minLines: 3,
-            maxLines: 6,
-            style: TextStyle(fontSize: 13.5, color: scheme.onSurface),
-            decoration: InputDecoration(
-              hintText: 'نص الإعلان…',
-              isDense: true,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          _buildImageRow(scheme),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              if (_error != null)
-                Expanded(
-                  child: Text(
-                    _error!,
-                    style: TextStyle(fontSize: 12, color: scheme.error),
-                  ),
-                )
-              else
-                const Spacer(),
-              const SizedBox(width: 12),
-              FilledButton.icon(
-                onPressed: widget.isPublishing ? null : _submit,
-                icon: widget.isPublishing
-                    ? const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(LucideIcons.send, size: 16),
-                label: Text(
-                  widget.isPublishing ? 'جارٍ النشر…' : 'نشر',
-                  style: const TextStyle(fontSize: 13),
-                ),
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }

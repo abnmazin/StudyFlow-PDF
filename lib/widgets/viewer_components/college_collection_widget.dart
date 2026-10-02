@@ -170,7 +170,19 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
   }
 
   void _openFolder(UniversityFolder folder) {
-    final nextId = _openFolderId == folder.id ? null : folder.id;
+    final app = context.read<AppProvider>();
+    // A file open in the reader turns the click into "take me back to this
+    // folder": the tree stays open and the announcements come up, instead of
+    // the click collapsing the folder and leaving the reader on screen. The
+    // announcements page only fills the main slot while no file is open
+    // (`pdf_viewer_widget_w.dart` picks the slot on `activePdf`, and hands it
+    // to the announcements only when that is null), so without this the second
+    // click on the same folder would collapse the tree and show the dashboard
+    // while the reader kept the slot.
+    final isReading = app.activePdf != null;
+    final nextId = (!isReading && _openFolderId == folder.id)
+        ? null
+        : folder.id;
     setState(() {
       _openFolderId = nextId;
       _files = [];
@@ -187,10 +199,14 @@ class _CollegeCollectionWidgetState extends State<CollegeCollectionWidget> {
     // dashboard back. Only this widget drives that — the local-files tree is a
     // different widget and never reaches here, which is what keeps the two
     // halves of the explorer behaving differently.
-    final app = context.read<AppProvider>();
     if (nextId == null) {
       app.closeFolderAnnouncements();
     } else {
+      // Releasing the reader is what makes the page reachable at all, so it is
+      // done here rather than from the page. This is the same release the
+      // viewer's X button performs; the difference is only that the folder is
+      // kept, so the announcements come up instead of the dashboard.
+      if (isReading) app.closeActivePdf();
       app.showFolderAnnouncements(folder);
     }
 

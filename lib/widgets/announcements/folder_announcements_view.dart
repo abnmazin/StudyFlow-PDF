@@ -5,8 +5,11 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../models/folder_announcement.dart';
 import '../../models/university_folder.dart';
 import '../../utils/relative_date.dart';
+// Still imported for `kDashboardNavBarHeight`: the header keeps matching the
+// dashboard's navbar height so the two pages line up when the content swaps.
 import '../dashboard/dashboard_palette.dart';
 import 'announcement_composer.dart';
+import 'image_lightbox.dart';
 
 /// The page that takes over the main content area when a folder under
 /// "المكتبة الجامعية" is opened in the sidebar.
@@ -109,12 +112,11 @@ class FolderAnnouncementsView extends StatelessWidget {
             color: theme.colorScheme.outlineVariant,
           ),
           Expanded(child: _buildBody(context)),
-          // Under the list, and after it in the tree as well as on screen: the
-          // notes are what the page is for, and the control that adds one is
-          // used once a week. The order here is the order the reader sees.
+          // Pinned to the bottom edge, the way a chat input is: the newest note
+          // in a channel sits directly above it, so posting is always one field
+          // away from reading. It closes the page rather than floating.
           if (canPublish && onPublish != null)
             AnnouncementComposer(
-              folderName: folder.name,
               isPublishing: isPublishing,
               onPublish: onPublish!,
             ),
@@ -143,19 +145,23 @@ class FolderAnnouncementsView extends StatelessWidget {
     }
 
     return ListView.builder(
-      // Same padding as the dashboard's content, so switching between the two
-      // does not shift the left edge of anything.
-      padding: const EdgeInsets.all(kDashboardPagePadding),
+      // `reverse: true` puts the newest note at the bottom, against the composer
+      // — the order of every chat app, and the order a channel is read in. The
+      // service hands the notes newest-first, and `reverse` reads that list
+      // bottom-up, so index 0 (the newest) lands lowest with no index arithmetic.
+      reverse: true,
+      // Tighter than the dashboard's page padding: a channel is a wall of
+      // bubbles, not a set of cards with air around each one.
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       itemCount: announcements.length,
       itemBuilder: (context, index) {
         final announcement = announcements[index];
         return Padding(
-          // A gap under every card but the last, rather than a separator item,
-          // so the count stays the notes' count.
-          padding: EdgeInsets.only(
-            bottom: index == announcements.length - 1 ? 0 : 14,
-          ),
-          child: _AnnouncementCard(
+          // A gap between bubbles rather than a separator item, so the count
+          // stays the notes' count. Symmetric, because the reversed list reads
+          // the same either way from an RTL layout.
+          padding: const EdgeInsets.only(bottom: 8),
+          child: _AnnouncementBubble(
             announcement: announcement,
             onDelete: canDelete(announcement) && onDelete != null
                 ? () => _confirmDelete(context, announcement)
@@ -316,11 +322,19 @@ class _AnnouncementsHeader extends StatelessWidget {
   }
 }
 
-/// One note, as a card: who wrote it and when across the top, the body under
-/// it. The card is the same rounded, outlined surface the dashboard's cards
-/// use, so the two pages do not look like two different apps.
-class _AnnouncementCard extends StatelessWidget {
-  const _AnnouncementCard({required this.announcement, this.onDelete});
+/// One note, as a chat bubble: who posted it and its fixed role badge across
+/// the top, the body under that, and the time tucked into the bottom corner.
+///
+/// A bubble rather than the outlined card this used to be, because the folder is
+/// read as a channel — a stream of the professor's posts, newest against the
+/// composer — and a channel is drawn in bubbles. The bubble hugs its content
+/// but is capped so a wide desktop window does not stretch a two-line note
+/// across the whole screen.
+///
+/// The one exception is a note that carries a picture: it drops the bubble, for
+/// the reason written into `build` where the surface is chosen.
+class _AnnouncementBubble extends StatelessWidget {
+  const _AnnouncementBubble({required this.announcement, this.onDelete});
 
   final FolderAnnouncement announcement;
 
@@ -329,103 +343,152 @@ class _AnnouncementCard extends StatelessWidget {
   /// should not be offered.
   final VoidCallback? onDelete;
 
+  /// The widest a bubble may grow.
+  ///
+  /// Past this a single line of prose is hard to scan — the eye loses the start
+  /// of the next line — so the bubble stops growing and the text wraps instead.
+  static const double maxWidth = 640;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: scheme.outlineVariant),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    return Align(
+      // Start is the right edge under RTL, where a channel's posts sit. Only the
+      // top-start corner is squared, so the bubble reads as having a source
+      // rather than floating in the middle.
+      alignment: AlignmentDirectional.centerStart,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: maxWidth),
+        child: Container(
+          // A note that carries a picture is not drawn in a bubble. The picture
+          // is the post, and a grey rectangle behind a photograph reads as a
+          // frame around a frame — with `BoxFit.contain` drawing two of its own
+          // edges inside the note's. Dropping the surface and the padding lets
+          // the picture and its caption use the full width of the note, and the
+          // picture is read at that size until it is tapped (`showImageLightbox`).
+          padding: announcement.hasImage
+              ? EdgeInsets.zero
+              : const EdgeInsets.fromLTRB(14, 10, 14, 10),
+          decoration: announcement.hasImage
+              ? null
+              : BoxDecoration(
+                  color: scheme.surfaceContainerHighest,
+                  borderRadius: const BorderRadiusDirectional.only(
+                    topStart: Radius.zero,
+                    topEnd: Radius.circular(16),
+                    bottomStart: Radius.circular(16),
+                    bottomEnd: Radius.circular(16),
+                  ),
+                ),
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 36,
-                height: 36,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: scheme.primary.withOpacity(0.14),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  LucideIcons.graduationCap,
-                  size: 17,
-                  color: scheme.primary,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Skipped rather than rendered empty: a note that is only a
-                    // picture would otherwise open with a blank bold line and a
-                    // gap where a headline should be.
-                    if (announcement.title.trim().isNotEmpty) ...[
-                      Text(
-                        announcement.title,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: scheme.onSurface,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                    ],
-                    // Author and date on one line: on a wide window the two
-                    // belong together, and reading them as a pair is faster
-                    // than scanning two separate columns.
-                    Text(
-                      '${announcement.authorName} · '
-                      '${formatRelativeDate(announcement.createdAt)}',
+              Row(
+                // `min` so the header hugs its text: a full-width row would
+                // stretch every bubble to the cap and there would be no bubble.
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Who posted it, in the accent colour, next to a fixed
+                  // «أستاذ» badge. The badge does not claim this author's role
+                  // — `FolderAnnouncement` stores no role — it states a fact
+                  // about the page: the Firestore rules let only a lecturer or
+                  // an admin post here, so every writer on it is one.
+                  Flexible(
+                    child: Text(
+                      announcement.authorName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodySmall?.copyWith(
-                        fontSize: 12,
-                        color: scheme.onSurfaceVariant,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: scheme.primary,
                       ),
                     ),
-                  ],
-                ),
-              ),
-              if (onDelete != null) ...[
-                const SizedBox(width: 8),
-                IconButton(
-                  onPressed: onDelete,
-                  icon: Icon(
-                    LucideIcons.trash2,
-                    size: 15,
-                    color: scheme.onSurfaceVariant,
                   ),
-                  tooltip: 'حذف الإعلان',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: scheme.primary.withOpacity(0.14),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      'أستاذ',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: scheme.primary,
+                      ),
+                    ),
+                  ),
+                  if (onDelete != null) ...[
+                    const SizedBox(width: 8),
+                    IconButton(
+                      onPressed: onDelete,
+                      icon: Icon(
+                        LucideIcons.trash2,
+                        size: 14,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                      tooltip: 'حذف الإعلان',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ],
+                ],
+              ),
+              // The title is an optional headline under the author line; a
+              // photo-only note simply has none and skips the row.
+              if (announcement.title.trim().isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  announcement.title,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w700,
+                    color: scheme.onSurface,
+                  ),
                 ),
               ],
+              if (announcement.body.trim().isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  announcement.body,
+                  // Taller than default: these are read as prose, not as labels.
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontSize: 13.5,
+                    height: 1.6,
+                    color: scheme.onSurface,
+                  ),
+                ),
+              ],
+              if (announcement.hasImage) ...[
+                const SizedBox(height: 10),
+                _AnnouncementImage(url: announcement.imageUrl!),
+              ],
+              const SizedBox(height: 6),
+              Align(
+                // The time tucks into the end corner, where a chat app stamps
+                // it: it belongs to the note, not to a header line.
+                alignment: AlignmentDirectional.centerEnd,
+                child: Text(
+                  formatRelativeDate(announcement.createdAt),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontSize: 11,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 14),
-          if (announcement.body.trim().isNotEmpty)
-            Text(
-              announcement.body,
-              // Taller than default: these are read as prose, not as labels.
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontSize: 13.5,
-                height: 1.7,
-                color: scheme.onSurfaceVariant,
-              ),
-            ),
-          if (announcement.hasImage) ...[
-            const SizedBox(height: 14),
-            _AnnouncementImage(url: announcement.imageUrl!),
-          ],
-        ],
+        ),
       ),
     );
   }
@@ -433,18 +496,40 @@ class _AnnouncementCard extends StatelessWidget {
 
 /// The image attached to a note.
 ///
-/// A fixed height with `BoxFit.contain`. A `ListView` gives each item unbounded
-/// height, so an image left to size itself would push the next card off screen
-/// on a portrait photo; and `cover` would crop a lecture schedule exactly where
-/// its last row is. `contain` at a fixed height shows all of it, letterboxed.
+/// Drawn at its own aspect ratio, capped in height. A `ListView` gives each item
+/// unbounded height, so a picture left to size itself would push the rest of the
+/// channel off screen on a portrait photo — the cap is what keeps the feed a
+/// feed. What the cap takes from a tall photo is not lost: a tap opens the same
+/// picture full-screen, where it can be enlarged (`showImageLightbox`).
+///
+/// `contain` rather than `cover` at the cap for the same reason the note exists:
+/// a lecture schedule cropped at its last row is worse than a small picture.
+///
+/// The cache key comes from `imageCacheKey` in `image_lightbox.dart`, shared
+/// with the full-screen view so one picture is filed and fetched once.
 class _AnnouncementImage extends StatefulWidget {
   const _AnnouncementImage({required this.url});
 
   final String url;
 
+  /// The tallest a picture may draw in the feed.
+  ///
   /// Tall enough to read a schedule on, short enough to leave the top of the
-  /// next card visible on a laptop window.
-  static const double height = 300;
+  /// next note visible on a laptop window.
+  static const double maxHeight = 420;
+
+  /// The box reserved while the picture is on its way, and the box the failure
+  /// message draws in.
+  ///
+  /// Without it the note would be a spinner's 20px tall and then jump to a
+  /// photo's height, dragging everything under it up the screen once the picture
+  /// lands.
+  static const double placeholderHeight = 200;
+
+  /// The picture's corners. Nothing else shares this number on purpose: it is a
+  /// photo, and a rounded edge is what separates it from the page behind it now
+  /// that it has no bubble.
+  static const double cornerRadius = 14;
 
   @override
   State<_AnnouncementImage> createState() => _AnnouncementImageState();
@@ -460,71 +545,52 @@ class _AnnouncementImageState extends State<_AnnouncementImage> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final url = widget.url;
-    // The query string carries a per-request token, so a key built from the
-    // whole URL would miss the disk cache on every rebuild and re-download the
-    // same picture — the same treatment `DraggableTextWidget` gives an
-    // attachment.
-    final stableCacheKey = url.contains('?') ? url.split('?').first : url;
+    final cacheKey = imageCacheKey(url);
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        height: _AnnouncementImage.height,
-        width: double.infinity,
-        color: scheme.surfaceContainerHighest,
-        child: CachedNetworkImage(
-          imageUrl: url,
-          cacheKey: stableCacheKey,
-          key: ValueKey('$stableCacheKey-$_retryCount'),
-          fit: BoxFit.contain,
-          placeholder: (context, url) => const Center(
-            child: SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
+      borderRadius: BorderRadius.circular(_AnnouncementImage.cornerRadius),
+      child: MouseRegion(
+        // Desktop-first: without this the picture is the one thing on the page
+        // that gives no sign it can be pressed.
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          // Opaque, so the whole picture is the target and not only the pixels
+          // the photo happens to draw. The retry control inside the error state
+          // stays reachable: it sits deeper in the tree, and the deeper
+          // recogniser is the one that wins the tap.
+          behavior: HitTestBehavior.opaque,
+          onTap: () => showImageLightbox(context, url: url),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxHeight: _AnnouncementImage.maxHeight,
+            ),
+            child: CachedNetworkImage(
+              imageUrl: url,
+              cacheKey: cacheKey,
+              key: ValueKey('$cacheKey-$_retryCount'),
+              fit: BoxFit.contain,
+              placeholder: (context, url) => const SizedBox(
+                width: double.infinity,
+                height: _AnnouncementImage.placeholderHeight,
+                child: Center(
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+              ),
+              errorWidget: (context, url, error) => SizedBox(
+                width: double.infinity,
+                height: _AnnouncementImage.placeholderHeight,
+                child: ImageErrorView(
+                  onRetry: () => setState(() => _retryCount++),
+                ),
+              ),
             ),
           ),
-          errorWidget: (context, url, error) =>
-              _ImageError(onRetry: () => setState(() => _retryCount++)),
         ),
-      ),
-    );
-  }
-}
-
-/// What a note shows when its image will not load: a reason and a way to ask
-/// again. A blank rectangle would read as "the professor attached nothing".
-class _ImageError extends StatelessWidget {
-  const _ImageError({required this.onRetry});
-
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(LucideIcons.imageOff, size: 24, color: scheme.onSurfaceVariant),
-          const SizedBox(height: 8),
-          Text(
-            'فشل تحميل الصورة',
-            style: theme.textTheme.bodySmall?.copyWith(
-              fontSize: 12.5,
-              color: scheme.onSurfaceVariant,
-            ),
-          ),
-          TextButton.icon(
-            onPressed: onRetry,
-            icon: const Icon(LucideIcons.refreshCw, size: 14),
-            label: const Text('إعادة المحاولة', style: TextStyle(fontSize: 12)),
-          ),
-        ],
       ),
     );
   }
