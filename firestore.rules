@@ -428,5 +428,41 @@ service cloud.firestore {
             || (userRole() == 'lecturer'
                 && resource.data.authorUid == request.auth.uid));
     }
+
+    // ================================================================
+    // 20. DASHBOARD QUOTES
+    //     - The quotations the dashboard's quote panel rotates through:
+    //       dashboard_quotes/{quoteId}
+    //     - Read: any signed-in user, for the same reason as section 18 —
+    //       the panel is on every reader's dashboard.
+    //     - Create/update/delete: admin only, matching
+    //       `QuoteService._assertAdmin`. That check is a convenience that turns
+    //       a mistake into an Arabic sentence; this rule is the boundary.
+    //     - The shape is checked here field for field, mirroring
+    //       `DashboardQuote.validationMessage`, because the admin's editor
+    //       shows the same message inline before it lets a save through.
+    //     - `pinned` is a field on the quote and the panel picks whichever
+    //       document has it, so the rule does not try to enforce "only one":
+    //       that is `QuoteService.setPinned`'s batch, and a second pinned
+    //       document written by a hand-edited console call is a state the panel
+    //       still renders (the first by id order) rather than a permission
+    //       question this file can answer.
+    // ================================================================
+    match /dashboard_quotes/{quoteId} {
+      allow read, list: if isAuthenticated();
+
+      allow create, update: if isAuthenticated()
+        && isManager()
+        && request.resource.data.text is string
+        && request.resource.data.author is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size()
+            <= 280   // DashboardQuote.maxTextLength
+        && request.resource.data.author.size() > 0
+        && request.resource.data.author.size()
+            <= 80;  // DashboardQuote.maxAuthorLength
+
+      allow delete: if isAuthenticated() && isManager();
+    }
   }
 }

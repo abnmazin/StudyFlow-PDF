@@ -10,8 +10,11 @@ import 'dashboard_top_bar.dart';
 
 /// The redesigned dashboard.
 ///
-/// One scroll view, one pinned navbar, then the sections in the order the design
-/// lists them: quick actions, reading statistics, and tasks beside the schedule.
+/// One scroll view, one pinned navbar, then the sections in the order the page
+/// shows them: quick actions, today's tasks beside the schedule, and the reading
+/// statistics last — the day's plan is what the user opens the dashboard for,
+/// and the statistics are history, so they sit at the bottom, read on purpose
+/// rather than on the way past.
 /// The library is not here any more — it is reached from the app's own sidebar —
 /// and announcements are behind the navbar's bell.
 ///
@@ -107,9 +110,9 @@ class _DashboardPageState extends State<DashboardPage> {
                       children: [
                         const DashboardQuickActions(),
                         const SizedBox(height: kDashboardSectionGap),
-                        DashboardReadingStats(isWide: isWide),
-                        const SizedBox(height: kDashboardSectionGap),
                         DashboardTasksAndSchedule(isWide: isWide),
+                        const SizedBox(height: kDashboardSectionGap),
+                        DashboardReadingStats(isWide: isWide),
                       ],
                     ),
                   ),

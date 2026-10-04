@@ -83,20 +83,72 @@ class DashboardColors {
 const double kDashboardPagePadding = 32;
 const double kDashboardSectionGap = 40;
 
-/// The reading-stat card height, and the navbar's own height. Stated once each
-/// because both are contracts rather than preferences: the four cards must be as
-/// tall as the streak card that holds a 130px strip, and the navbar is measured
-/// against the height the design calls for.
+/// The quote panel's height, and with it the row's height. 80.
 ///
-/// The navbar height is read by three bands that share one line in the shell
-/// (`main.dart:584` puts the sidebar beside the viewer, and the dashboard replaces
-/// the viewer): the dashboard's pinned header, the sidebar's header
-/// (`sidebar_w.dart`) and the viewer toolbar (`viewer_toolbar.dart`). They read
-/// this constant rather than each carrying a `64`, so they cannot drift apart —
-/// which is exactly what happened when the sidebar's literal and the dashboard's
-/// differed by 16px.
-const double kStatCardHeight = 130;
+/// Sized to the text rather than to a grid: the quotation at [kQuoteFontSize]
+/// with a 1.35 leading (≈23px) + a gap (6px) + the author at [kQuoteAuthorFontSize]
+/// with a 1.2 leading (≈17px) = 46px of content, and the vertical padding (12 each
+/// side) puts it at 70 — so 80 leaves 10px of slack, which is what makes it read
+/// as a card with room in it rather than as a box of text.
+///
+/// The three figure cards derive their height from this one rather than stating
+/// a second number: two literals that must agree is how the sidebar header and
+/// the dashboard navbar ended up 16px apart.
+const double kQuotesPanelHeight = 80;
+const double kStatCardHeight = kQuotesPanelHeight;
+
+/// The vertical padding inside the quote panel.
+///
+/// Half of what the panel had at 190px, because 40px of padding in an 80px card
+/// would leave 40 for the text — and a sentence set at [kQuoteFontSize] does not
+/// fit in 40 with an author line under it.
+const double kQuotesPanelPadding = 12;
+
+/// The quote panel's share of the row's width.
+///
+/// The three figure cards take what is left. Stated as a share rather than as a
+/// pixel width because the panel is the only card here whose content is prose:
+/// it needs room to wrap a sentence over two lines, and the figures need a
+/// label and a digit. Roughly two fifths for the panel reads as a quote card
+/// rather than as a fourth statistic, which is the whole point of the change.
+const double kQuotesPanelWidthShare = 0.42;
+
+/// The navbar's own height, in its own constant rather than sharing
+/// [kStatCardHeight]'s declaration: the two are unrelated numbers that happen
+/// to live near each other, and a reader who sees them declared as one value
+/// will eventually change both together.
 const double kDashboardNavBarHeight = 64;
+
+/// How long one quotation stays on the panel before the next takes its place,
+/// and how long the cross-fade between them runs.
+///
+/// Long enough to read a two-line quotation at the size it is drawn, and short
+/// enough that a reader who looks up again finds a different sentence rather than
+/// the same one. The fade is named separately because it is a different job — it
+/// is what stops the swap reading as a flicker — but it is a fraction of the hold
+/// on purpose: a fade longer than the hold would cut into the next quotation's
+/// time and the two would drift into each other.
+const Duration kQuoteHold = Duration(seconds: 12);
+const Duration kQuoteFadeDuration = Duration(milliseconds: 600);
+
+/// The quotation's size, its author's, and the floor the quotation shrinks to
+/// when the card gets too narrow to hold the sentence the admin wrote.
+///
+/// 14 and 12 rather than 17 and 13: the panel came down from 190 to 80, and at 17
+/// a sentence plus its author would need 46px of text inside a card with 24px of
+/// content left after the padding — it would have clipped, and the shrink below
+/// only measures the sentence, not the author line under it.
+///
+/// The floor is the same rule as [kSectionTitleFontSize]: a quotation is the
+/// one piece of prose on the dashboard, and prose that shrinks past this stops
+/// reading as a quotation and starts reading as a caption.
+const double kQuoteFontSize = 14;
+const double kQuoteMinFontSize = 11;
+
+/// The author line's size, named apart from [kQuoteFontSize] because it is a
+/// different job: an attribution is set smaller than what it attributes, and at
+/// the same size the two lines read as one block of equal weight.
+const double kQuoteAuthorFontSize = 12;
 
 /// The gap between two cards of the reading-stat grid. Named rather than written
 /// twice because the row that lays the cards out and [statCardWidth], which
@@ -114,13 +166,29 @@ const double kStatCardGap = 16;
 const double kSectionTitleFontSize = 18;
 const double kSectionTitleMinFontSize = 12;
 
+/// The figure's size inside a reading-stat card, and its label's.
+///
+/// 24 rather than 30: the card came down from 190 to 80 with the quote panel, and
+/// a 30px digit in an 80px card is nearly half the height of the thing it sits
+/// in. At 24 it still reads as the figure — it is the largest type on the card —
+/// while leaving room for the label above it.
+///
+/// Named rather than written inline because the quote panel sets a second pair
+/// of sizes at a different scale in the same row, and two sets of literals in
+/// one file is how a card's figure ends up larger than the quotation beside it.
+const double kStatFigureFontSize = 24;
+const double kStatLabelFontSize = 12;
+
 /// The width of one reading-stat card when [perRow] of them share
 /// [contentWidth].
 ///
 /// The row does not divide the width itself: it asks for the same number the
-/// cards are built with, so the last card cannot end a gap past the row's edge.
-/// Four across on a desktop width, two below it, and never one — a column of
-/// four fixed-height cards is half a screen of scrolling for four figures.
+/// cards are built with, so the last card in the row cannot end a gap past the
+/// row's edge.
+///
+/// [contentWidth] is the row's whole width *including* the quote panel's share,
+/// so this subtracts the panel before dividing — the three figures are what is
+/// left of the row, and a fourth of that would be a fourth card nobody drew.
 double statCardWidth(double contentWidth, {required int perRow}) =>
     (contentWidth - kStatCardGap * (perRow - 1)) / perRow;
 

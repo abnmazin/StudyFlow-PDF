@@ -1,8 +1,10 @@
 ﻿import 'package:flutter/material.dart';
 
+import '../../models/dashboard_quote.dart';
 import '../../models/isar_models.dart';
 import '../../services/reading_stats_service.dart';
 import 'dashboard_palette.dart';
+import 'dashboard_quotes_card.dart';
 
 /// "إحصائيات ونشاط القراءة" — the section that makes the reading history
 /// visible.
@@ -13,12 +15,25 @@ import 'dashboard_palette.dart';
 /// placeholder, because a fake number on a real dashboard is worse than a blank
 /// one.
 ///
-/// Layout: a heading with the period selector, then four equal cards in a grid —
-/// four across when [isWide], two-up below that. Two rather than one because a
-/// column of four fixed-height cards is a screen of scrolling for four figures,
-/// and the figures are read together or not at all.
+/// Layout: a heading with the period selector, then one row holding the three
+/// figure cards and the quote panel.
+///
+/// The panel is the row's *last* child and therefore on the left: the tree runs
+/// right-to-left, so the first child is the rightmost. The figures sit beside it
+/// and divide what is left of the row, which is less than they used to have — a
+/// quotation is prose and a figure is a label and a digit.
+///
+/// One row rather than two, at every width. That is why [isWide] no longer
+/// changes anything here — it is kept as a parameter because the section above
+/// still passes it, and a grid that was two-up on a narrow window cannot hold a
+/// panel beside it.
 class DashboardReadingStats extends StatefulWidget {
-  const DashboardReadingStats({super.key, required this.isWide, this.days});
+  const DashboardReadingStats({
+    super.key,
+    required this.isWide,
+    this.days,
+    this.quotes,
+  });
 
   final bool isWide;
 
@@ -27,6 +42,12 @@ class DashboardReadingStats extends StatefulWidget {
   /// in a way no unit test could see, because the number that broke it was
   /// rendered, not returned. Production always leaves this null and reads Isar.
   final List<ReadingDay>? days;
+
+  /// Forwarded to the quote panel, which reads `AppProvider.quotes` when this is
+  /// null. Exists so this section can be pumped with no Firebase behind it: the
+  /// panel is inside this section, and it would otherwise be the one widget in
+  /// the dashboard that cannot be tested at all.
+  final List<DashboardQuote>? quotes;
 
   @override
   State<DashboardReadingStats> createState() => _DashboardReadingStatsState();
@@ -55,14 +76,6 @@ class _DashboardReadingStatsState extends State<DashboardReadingStats> {
       builder: (context, constraints) => StreamBuilder<List<ReadingDay>>(
         stream: _days,
         builder: (context, snapshot) {
-          // Four across on a desktop width, two below it — never one. This is
-          // the grid the section's own layout note describes; the row below is
-          // what makes it true.
-          final perRow = widget.isWide ? 4 : 2;
-          final cardWidth = statCardWidth(
-            constraints.maxWidth,
-            perRow: perRow,
-          );
           final days = snapshot.data ?? const <ReadingDay>[];
           final inPeriod = _daysInPeriod(days);
 
@@ -87,14 +100,6 @@ class _DashboardReadingStatsState extends State<DashboardReadingStats> {
               icon: Icons.menu_book,
               iconColor: DashboardColors.success,
             ),
-            _StreakCardData(
-              label: 'سلسلة الالتزام',
-              streak: _streak(days),
-              days: ReadingStatsService().lastSevenDays(),
-              secondsByDate: {
-                for (final day in days) day.dateKey: day.focusSeconds,
-              },
-            ),
           ];
 
           return Column(
@@ -108,46 +113,50 @@ class _DashboardReadingStatsState extends State<DashboardReadingStats> {
                 ),
               ),
               const SizedBox(height: 20),
-              // `IntrinsicHeight` per row rather than one over all four: each row
-              // equalises its own pair. The cards carry a fixed height, so this is
-              // belt-and-braces today — but it is the row that has no bounded
-              // height inside a sliver to divide, and the pair is what the design
-              // means by four equal cards.
-              for (var start = 0; start < cards.length; start += perRow) ...[
-                if (start > 0) const SizedBox(height: kStatCardGap),
-                IntrinsicHeight(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      for (
-                        var i = start;
-                        i < start + perRow && i < cards.length;
-                        i++
-                      ) ...[
-                        if (i > start) const SizedBox(width: kStatCardGap),
-                        // `SizedBox` with the shared card width rather than
-                        // `Expanded`: `Expanded` divides whatever width the row
-                        // happened to get, and the streak card's strip is sized
-                        // from the number this function returns.
-                        SizedBox(width: cardWidth, child: _buildCard(cards[i])),
-                      ],
-                    ],
-                  ),
+              // One row: the three figures, then the quote panel.
+              //
+              // The panel is the *last* child on purpose. The tree runs
+              // right-to-left, so the first child is the rightmost and the last
+              // is the leftmost — the panel is wanted on the left, beside the
+              // section's own left edge, and putting it first would have put it
+              // under the section title where the figures used to start.
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // The figures take what is left of the row after the panel has
+                    // had its share. Stated here rather than through
+                    // `statCardWidth`'s `perRow` because the row now has a
+                    // non-figure member in it, and a helper dividing the row's
+                    // whole width would hand the panel's share to the figures and
+                    // overflow the row by exactly that much.
+                    Expanded(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          for (var i = 0; i < cards.length; i++) ...[
+                            if (i > 0) const SizedBox(width: kStatCardGap),
+                            Expanded(child: _StatCard(data: cards[i])),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: kStatCardGap),
+                    // The panel takes `kQuotesPanelWidthShare` of the row, so a
+                    // quotation gets the width prose needs and a figure gets what
+                    // a label and a digit need — which is less.
+                    SizedBox(
+                      width: constraints.maxWidth * kQuotesPanelWidthShare,
+                      child: DashboardQuotesCard(quotes: widget.quotes),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ],
           );
         },
       ),
     );
-  }
-
-  Widget _buildCard(Object card) {
-    return switch (card) {
-      _StatCardData data => _StatCard(data: data),
-      _StreakCardData data => _StreakCard(data: data),
-      _ => const SizedBox.shrink(),
-    };
   }
 
   // ─── Derivation from the stored days ───────────────────────────────────────
@@ -189,33 +198,6 @@ class _DashboardReadingStatsState extends State<DashboardReadingStats> {
     final active = days.where((d) => d.focusSeconds > 0).toList();
     if (active.isEmpty) return 0;
     return active.fold(0, (sum, d) => sum + d.focusSeconds) ~/ active.length;
-  }
-
-  /// Consecutive qualifying days ending today, or yesterday when today has not
-  /// reached the threshold yet — a streak should not read as broken at 9am.
-  int _streak(List<ReadingDay> days) {
-    final byKey = {for (final d in days) d.dateKey: d.focusSeconds};
-    int secondsOn(DateTime date) =>
-        byKey[ReadingStatsService.dateKeyOf(date)] ?? 0;
-
-    var cursor = DateTime.now();
-    final today = ReadingStatsService.startOfDay(cursor);
-    if (secondsOn(today) < ReadingStatsService.streakMinimumSeconds) {
-      cursor = today.subtract(const Duration(days: 1));
-      if (secondsOn(cursor) < ReadingStatsService.streakMinimumSeconds) {
-        return 0;
-      }
-    } else {
-      cursor = today;
-    }
-
-    var streak = 0;
-    for (var i = 0; i < 3650; i++) {
-      if (secondsOn(cursor) < ReadingStatsService.streakMinimumSeconds) break;
-      streak++;
-      cursor = cursor.subtract(const Duration(days: 1));
-    }
-    return streak;
   }
 }
 
@@ -278,31 +260,38 @@ class _StatCardData {
   final Color iconColor;
 }
 
-class _StreakCardData {
-  const _StreakCardData({
-    required this.label,
-    required this.streak,
-    required this.days,
-    required this.secondsByDate,
-  });
-
-  final String label;
-  final int streak;
-  final List<DateTime> days;
-  final Map<String, int> secondsByDate;
-}
-
 /// One figure: label, value, icon. Shared by the three scalar cards.
 class _StatCard extends StatelessWidget {
   const _StatCard({required this.data});
 
   final _StatCardData data;
 
+  /// The figure's style, from the palette rather than written here.
+  ///
+  /// `height: 1.0` is load-bearing: the app's global theme sets `height: 1.4` on
+  /// every `bodyMedium`, and a bare `TextStyle` would inherit it, so a 30px figure
+  /// would occupy 42px of the card's 176px instead of 30. A figure is not body
+  /// copy and does not need the leading; stating it is what keeps these cards
+  /// inside their fixed height.
+  static const _figureStyle = TextStyle(
+    fontSize: kStatFigureFontSize,
+    fontWeight: FontWeight.w800,
+    color: DashboardColors.title,
+    height: 1.0,
+  );
+
+  /// The label's style, for the same reason it is named: the quote panel sets a
+  /// second label next to this one, and two inline copies of 13px drift.
+  static const _labelStyle = TextStyle(
+    fontSize: kStatLabelFontSize + 1,
+    color: DashboardColors.subtitle,
+  );
+
   @override
   Widget build(BuildContext context) {
     return Container(
       height: kStatCardHeight,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(10),
       decoration: DashboardColors.card(radius: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -315,10 +304,7 @@ class _StatCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   data.label,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: DashboardColors.subtitle,
-                  ),
+                  style: _labelStyle,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -327,199 +313,10 @@ class _StatCard extends StatelessWidget {
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: AlignmentDirectional.centerStart,
-            child: Text(
-              data.value,
-              style: const TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.w800,
-                color: DashboardColors.title,
-                // The app's global theme sets `height: 1.4` on every
-                // `bodyMedium`, and a bare `TextStyle` here would inherit it, so
-                // a 26px figure would occupy 36px of the card's 88px instead of
-                // 26. A figure is not body copy and does not need the leading;
-                // stating it is what keeps these cards inside their fixed height.
-                height: 1.0,
-              ),
-            ),
+            child: Text(data.value, style: _figureStyle),
           ),
         ],
       ),
-    );
-  }
-}
-
-/// Streak length plus the seven-day strip. The strip is the honest part: it
-/// shows which of the last seven days actually cleared the threshold, so a long
-/// streak cannot hide a gap in the middle.
-class _StreakCard extends StatelessWidget {
-  const _StreakCard({required this.data});
-
-  final _StreakCardData data;
-
-  /// The figure's style, shared by the number and its unit so the two are one
-  /// line of text rather than two labels side by side.
-  ///
-  /// `height: 1.0` is doing the same job here as in `_StatCard`: without it both
-  /// runs inherit the theme's 1.4 leading, and the three rows of this card stop
-  /// fitting inside its fixed height.
-  static const _figureStyle = TextStyle(
-    fontSize: 26,
-    fontWeight: FontWeight.w800,
-    color: DashboardColors.title,
-    height: 1.0,
-  );
-
-  /// The space between the number and its unit.
-  static const double _unitGap = 8;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: kStatCardHeight,
-      padding: const EdgeInsets.all(20),
-      decoration: DashboardColors.card(radius: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              Icon(
-                Icons.local_fire_department,
-                size: 16,
-                color: DashboardColors.streak,
-              ),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'سلسلة الالتزام',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: DashboardColors.subtitle,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-          const Spacer(),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: AlignmentDirectional.centerStart,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              // One baseline for the two runs. The digits and the Arabic word can
-              // be drawn by two different fonts, and those two do not share an
-              // ascent — centring them instead would leave the number floating.
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
-              children: [
-                Text(
-                  '${data.streak}',
-                  key: const ValueKey('streak-value'),
-                  style: _figureStyle,
-                ),
-                // The gap is a box, not a space written into the string. A space
-                // between the two runs is the one character at that seam with no
-                // direction of its own, and how wide it reads depends on the font
-                // that ends up covering it; eight logical pixels are the same in
-                // every font, and are the width the rest of this card already puts
-                // between an icon and its label.
-                //
-                // `Padding` rather than a bare `SizedBox` so the gap is carried by
-                // a box that has a child to take a baseline from.
-                Padding(
-                  padding: const EdgeInsetsDirectional.only(start: _unitGap),
-                  child: Text(
-                    data.streak == 1 ? 'يوم' : 'أيام',
-                    key: const ValueKey('streak-unit'),
-                    style: _figureStyle,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Spacer(),
-          // The brief puts the week strip along the bottom of the card, so it
-          // sits under the figure rather than beside it.
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              // `Flexible` + `FittedBox` around the chip rather than the chip on
-              // its own: seven 20px circles are 140px of hard width, and a card
-              // in a two-up row can have less than that inside its padding. At a
-              // desk width the `Flexible` is inert — the chip keeps its 20px and
-              // `spaceBetween` spreads the row exactly as before — and on a
-              // narrow one the circles scale instead of overflowing a card whose
-              // height is fixed.
-              for (final day in data.days)
-                Flexible(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: _StreakDayChip(
-                      date: day,
-                      seconds: data.secondsByDate[
-                              ReadingStatsService.dateKeyOf(day)] ??
-                          0,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// A single day in the streak strip: its Arabic initial over a bar that is
-/// filled when the day cleared [ReadingStatsService.streakMinimumSeconds].
-class _StreakDayChip extends StatelessWidget {
-  const _StreakDayChip({required this.date, required this.seconds});
-
-  final DateTime date;
-  final int seconds;
-
-  @override
-  Widget build(BuildContext context) {
-    final qualifies = seconds >= ReadingStatsService.streakMinimumSeconds;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // The brief's 20×20 circle, not a 4px bar. A filled disc with a tick for a
-        // day that cleared the threshold and an empty ring for one that did not:
-        // the strip is read at a glance across seven days, and a hairline under a
-        // letter does not survive being that small.
-        Container(
-          width: 20,
-          height: 20,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: qualifies ? DashboardColors.streak : Colors.transparent,
-            border: Border.all(
-              color: qualifies
-                  ? DashboardColors.streak
-                  : DashboardColors.border,
-              width: 1.5,
-            ),
-          ),
-          child: qualifies
-              ? const Icon(Icons.check, size: 12, color: Colors.white)
-              : null,
-        ),
-        const SizedBox(height: 4),
-        Text(
-          arabicWeekdayInitials[date.weekday - 1],
-          style: TextStyle(
-            fontSize: 10,
-            color: qualifies ? DashboardColors.title : DashboardColors.subtitle,
-            fontWeight: qualifies ? FontWeight.w700 : FontWeight.w400,
-            // One glyph under a 20px circle, so the theme's 1.4 leading is
-            // what pushes the strip 4px past the card.
-            height: 1.0,
-          ),
-        ),
-      ],
     );
   }
 }

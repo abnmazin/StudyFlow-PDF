@@ -7,7 +7,7 @@ import '../../providers/app_state.dart';
 import 'dashboard_palette.dart';
 import 'dashboard_schedule_editor.dart';
 
-/// Section C: today's tasks beside the day's schedule, 1:1 with a 32px gap.
+/// Section B: today's tasks beside the day's schedule, 1:1 with a 32px gap.
 ///
 /// The tasks column is the user's real `StudyTask` list through
 /// `AppProvider.tasks`. The schedule column is [LectureSlot] rows built from the

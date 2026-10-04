@@ -11,7 +11,7 @@ AppId={{9F2C4E7A-6B31-4D8E-9A57-1C0B7F3E6D24}
 ; cannot drift from the build inside; the line below is the fallback for a
 ; hand-run ISCC.
 #ifndef AppVersion
-  #define AppVersion "1.1.0"
+  #define AppVersion "2.0.0"
 #endif
 AppVersion={#AppVersion}
 AppPublisher=StudyFlow

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,10 +7,19 @@ import 'package:studyflow_pdf/models/lecture_slot.dart';
 import 'package:studyflow_pdf/services/reading_stats_service.dart';
 import 'package:studyflow_pdf/widgets/dashboard/dashboard_palette.dart';
 import 'package:studyflow_pdf/widgets/dashboard/dashboard_quick_actions.dart';
+import 'package:studyflow_pdf/widgets/dashboard/dashboard_quotes_card.dart';
 import 'package:studyflow_pdf/widgets/dashboard/dashboard_reading_stats.dart';
 import 'package:studyflow_pdf/widgets/dashboard/dashboard_tasks_schedule.dart';
 
 /// Fixtures, so the tests read as behaviour rather than as data.
+///
+/// `DashboardReadingStats` is pumped throughout with both of its data props —
+/// `days` for the figures and `quotes: const []` for the panel under them —
+/// because it is normally fed by a `StreamBuilder` over Isar and a
+/// `context.watch` on the provider, and a test can open neither. The panel's
+/// list is passed empty rather than left null on purpose: a null prop means
+/// "read the provider", and that read would throw here before the first
+/// assertion ran.
 class LectureFixture {
   const LectureFixture._();
 
@@ -340,7 +349,7 @@ void main() {
           child: Scaffold(
             body: SizedBox(
               width: 1200,
-              child: DashboardReadingStats(isWide: true, days: days),
+              child: DashboardReadingStats(isWide: true, days: days, quotes: const []),
             ),
           ),
         ),
@@ -353,15 +362,16 @@ void main() {
     // only way this ever shows up again.
     expect(tester.takeException(), isNull);
 
-    // And the cards must still be the 130px the design specifies, rather than
-    // being silently grown to fit the content.
+    // And the cards must still be the height the design specifies, rather than
+    // being silently grown to fit the content. Three, not four: the fourth card
+    // in that row was the streak, and its row is now the quote panel below.
     final card = find.byWidgetPredicate(
       (w) => w is Container && w.constraints?.maxHeight == kStatCardHeight,
     );
-    expect(card, findsNWidgets(4));
+    expect(card, findsNWidgets(3));
   });
 
-  testWidgets('the streak figure keeps the number and its unit apart', (
+  testWidgets('the quote panel sits under the figures, spanning their row', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(1400, 800));
@@ -374,57 +384,42 @@ void main() {
           child: Scaffold(
             body: SizedBox(
               width: 1200,
-              child: DashboardReadingStats(isWide: true, days: _activeWeek()),
+              child: DashboardReadingStats(isWide: true, days: _activeWeek(), quotes: const []),
             ),
           ),
         ),
       ),
     );
     await tester.pumpAndSettle();
-
-    final valueFinder = find.byKey(const ValueKey('streak-value'));
-    final unitFinder = find.byKey(const ValueKey('streak-unit'));
-    expect(valueFinder, findsOneWidget);
-    expect(unitFinder, findsOneWidget);
     expect(tester.takeException(), isNull);
 
-    // The number carries the number and nothing else. This is the assertion that
-    // holds the fix: while the pair was one string, the separation lived in a
-    // space glyph, and a space at a script boundary is the one character there
-    // with no direction of its own — how wide it reads is the font's decision.
-    // Splitting the runs means no font can close the gap.
-    expect(
-      tester.widget<Text>(valueFinder).data,
-      matches(RegExp(r'^\d+$')),
-      reason: 'the value must be digits only, with the unit in its own run',
+    final cards = find.byWidgetPredicate(
+      (w) => w is Container && w.constraints?.maxHeight == kStatCardHeight,
     );
-    expect(
-      tester.widget<Text>(unitFinder).data,
-      anyOf('يوم', 'أيام'),
-      reason: 'the unit must be its own run, not glued onto the digits',
-    );
+    final panel = find.byType(DashboardQuotesCard);
+    expect(panel, findsOneWidget);
+    expect(cards, findsNWidgets(3));
 
-    // A real gap, measured. The number is on the right in RTL, so the distance
-    // is between the number's left edge and the unit's right edge.
-    final valueRect = tester.getRect(valueFinder);
-    final unitRect = tester.getRect(unitFinder);
+    final panelRect = tester.getRect(panel);
+    // Below the figures, not beside them: this is the layout contract the change
+    // exists to hold, and a widget-level `expect` on the child list would pass
+    // while the panel sat in the same row.
     expect(
-      valueRect.left - unitRect.right,
-      greaterThanOrEqualTo(7.5),
-      reason: 'the gap is carried by a box, so it cannot render narrower',
+      panelRect.top,
+      greaterThan(tester.getRect(cards.first).bottom),
+      reason: 'the panel is its own row under the figures',
     );
-
-    // And the two read as one line rather than as two labels at different
-    // heights: the digits sit on the word's baseline.
+    // And full width of the content, which is what "spanning their row" means:
+    // a third of it would leave the figures' own width unrepresented.
     expect(
-      (baselineOf(tester, valueFinder) - baselineOf(tester, unitFinder)).abs(),
-      lessThan(0.5),
+      panelRect.width,
+      closeTo(tester.getSize(find.byType(DashboardReadingStats)).width, 0.5),
     );
   });
 
-  // The narrow window used to lay the four figures out one card per row — a
-  // screen of scrolling for four numbers, and the one place where this section's
-  // own layout note ("two-up below that") was not what the code did.
+  // The narrow window used to lay the figures out one card per row — a screen of
+  // scrolling for four numbers, and the one place where this section's own layout
+  // note ("two-up below that") was not what the code did.
   testWidgets('the stats grid is two-up on a narrow window, never one', (
     tester,
   ) async {
@@ -438,7 +433,7 @@ void main() {
           child: Scaffold(
             body: SizedBox(
               width: 700,
-              child: DashboardReadingStats(isWide: false, days: _activeWeek()),
+              child: DashboardReadingStats(isWide: false, days: _activeWeek(), quotes: const []),
             ),
           ),
         ),
@@ -451,18 +446,22 @@ void main() {
     final cards = find.byWidgetPredicate(
       (w) => w is Container && w.constraints?.maxHeight == kStatCardHeight,
     );
-    expect(cards, findsNWidgets(4));
+    expect(cards, findsNWidgets(3));
 
     // Asserted on the render tree rather than on the widget list: an `expect` on
     // the children passes while the row still stacks one per line.
-    final rects = [for (var i = 0; i < 4; i++) tester.getRect(cards.at(i))];
+    final rects = [for (var i = 0; i < 3; i++) tester.getRect(cards.at(i))];
     expect(
       rects.map((r) => r.top).toSet().length,
       2,
-      reason: 'four cards in two rows, not four',
+      reason: 'three cards in two rows, not three',
     );
     expect(rects[0].top, rects[1].top, reason: 'the first two share a row');
-    expect(rects[2].top, rects[3].top, reason: 'the last two share a row');
+    expect(
+      rects[2].top,
+      greaterThan(rects[0].bottom),
+      reason: 'the third starts a row of its own',
+    );
     expect(rects[0].left, rects[2].left, reason: 'and the rows share columns');
     expect(rects[0].width, rects[1].width);
   });

@@ -20,6 +20,7 @@ import '../models/models.dart';
 import '../models/app_user.dart';
 import '../models/lecture_slot.dart';
 import '../models/timetable_entry.dart';
+import '../models/dashboard_quote.dart';
 import '../models/folder_announcement.dart';
 import '../models/isar_models.dart' hide PdfDocument;
 import 'package:isar/isar.dart';
@@ -30,6 +31,7 @@ import '../services/sync_service.dart';
 import '../services/pdf_mutation_service.dart';
 import '../services/reading_stats_service.dart';
 import '../services/timetable_service.dart';
+import '../services/quote_service.dart';
 import '../services/folder_announcement_service.dart';
 import '../services/university_service.dart';
 import '../services/library_sync_service.dart';
@@ -133,6 +135,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     _stopUserMonitor();
     _syncDebounce?.cancel();
     _disposeTimetable();
+    _disposeQuotes();
     _disposeAnnouncements();
     unawaited(_syncService.dispose());
     for (var timer in _syncTimers.values) {
@@ -1190,10 +1193,13 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       _preloadLecturerSessions(user.username);
     }
 
-    // The timetable is read by everyone, so the subscription starts for every
-    // role — but the service's copy of the user is what decides who may write, so
-    // it has to be handed over here rather than at construction.
+    // The timetable and the quote panel are read by everyone, so their
+    // subscriptions start for every role — but each service's copy of the user
+    // is what decides who may write, so it has to be handed over here rather
+    // than at construction. One call per list, both for the reason
+    // `_beginTimetableSession` gives.
     _beginTimetableSession(user);
+    _beginQuotesSession(user);
 
     _notify();
   }
@@ -1788,6 +1794,12 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
             // with "يجب تسجيل الدخول أولاً" while the app was demonstrably signed
             // in. One method for both paths is what stops them drifting apart.
             _beginTimetableSession(restored);
+            // The quote panel rides on the same handover rather than opening its
+            // own subscription later: the admin's right-click calls
+            // `ensureQuotesWatched`, which would otherwise start a stream with no
+            // user in the service — the same failure this paragraph describes,
+            // one list over.
+            _beginQuotesSession(restored);
             debugPrint('✅ Auto-Login: Loaded user ${_currentUser?.username}');
           }
         } catch (e) {
@@ -4850,6 +4862,158 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       return a.startMinutes.compareTo(b.startMinutes);
     });
     return copy;
+  }
+
+  // ─── DASHBOARD QUOTES ──────────────────────────────────────────────────────
+  //
+  // The quotations the dashboard's quote panel rotates through, backed by the
+  // shared `dashboard_quotes` list in Firestore (see `QuoteService`). The same
+  // split as the timetable above and for the same reason: an admin writes the
+  // list once and every signed-in reader sees it, so this is not personal data
+  // and does not belong in Isar.
+  //
+  // One stream for the same reason as the others: `watchQuotes` is a
+  // `snapshots()` subscription, and calling it inside the dashboard's `build`
+  // would re-subscribe it on every frame.
+
+  final QuoteService _quoteService = QuoteService();
+  QuoteService get quoteService => _quoteService;
+
+  StreamSubscription<List<DashboardQuote>>? _quoteSubscription;
+  List<DashboardQuote> _quotes = const [];
+  List<DashboardQuote> get quotes => _quotes;
+
+  /// True once a subscription is live. The quote panel uses this to tell "there
+  /// are no quotations" apart from "we have not asked yet" — drawing the empty
+  /// state during the first round trip would flash a wrong answer on every
+  /// launch, the same trap `isTimetableLoaded` was added for.
+  bool _quotesLoaded = false;
+  bool get isQuotesLoaded => _quotesLoaded;
+
+  /// True when the live subscription has reported an error: a rule that is not
+  /// deployed, a denied read, a dead network.
+  bool _quotesFailed = false;
+  bool get isQuotesFailed => _quotesFailed;
+
+  /// Hands [user] to the service and starts the shared stream.
+  ///
+  /// One method because there are two auth paths that must run it — a fresh
+  /// login through [setCurrentUser] and the auto-login restore that assigns
+  /// `_currentUser` directly — and inlining it in both was exactly what let the
+  /// timetable's second path ship without it. See [_beginTimetableSession] for
+  /// the full account of that failure.
+  void _beginQuotesSession(AppUser user) {
+    _quoteService.currentUser = user;
+    initQuotes();
+  }
+
+  /// Subscribes to the shared list. Idempotent: calling it again after a login
+  /// replaces the old subscription rather than stacking a second one.
+  void initQuotes() {
+    _quotesFailed = false;
+    _quoteSubscription?.cancel();
+    _quoteSubscription = _quoteService.watchQuotes().listen(
+      (quotes) {
+        _quotes = quotes;
+        _quotesLoaded = true;
+        _quotesFailed = false;
+        _notify();
+      },
+      // A failed read leaves whatever was on screen and logs, rather than
+      // blanking the panel: the last quote the reader saw is better than an
+      // empty card that looks like the admin removed everything.
+      onError: (Object e) {
+        debugPrint('⚠️ [AppProvider] Quote stream error: $e');
+        _quotesFailed = true;
+        _notify();
+      },
+    );
+  }
+
+  /// Starts the stream when nothing has started it yet.
+  ///
+  /// Paid at the admin's own right-click rather than in a `build`, for the reason
+  /// `ensureTimetableWatched` is: it is idempotent but still a side effect, and a
+  /// side effect in a build is one refactor away from running per frame.
+  void ensureQuotesWatched() {
+    if (_quoteSubscription != null) return;
+    initQuotes();
+  }
+
+  void _disposeQuotes() {
+    _quoteSubscription?.cancel();
+    _quoteSubscription = null;
+  }
+
+  /// Puts this provider's user back into the service immediately before a write.
+  ///
+  /// The service holds a *copy* of the user, exactly as `TimetableService` does,
+  /// so a write can be refused for a role but never for a login handover a third
+  /// auth path forgot to perform.
+  void _authorQuoteWrite() {
+    _quoteService.currentUser = _currentUser;
+  }
+
+  /// Saves a quote and mirrors the result locally.
+  ///
+  /// The local write is what makes the admin's own list update instantly: the
+  /// stream will echo the same document back a moment later, and without this the
+  /// edit would appear to do nothing until the round trip completed. A new
+  /// document has no id yet, so it is appended with the empty one and replaced
+  /// when the stream reports the real id back.
+  Future<void> saveQuote(DashboardQuote quote) async {
+    _authorQuoteWrite();
+    final before = _quotes;
+    final next = before.any((q) => q.id == quote.id && quote.id.isNotEmpty)
+        ? before.map((q) => q.id == quote.id ? quote : q).toList()
+        : [...before, quote];
+    _quotes = next;
+    _notify();
+    try {
+      await _quoteService.saveQuote(quote);
+    } catch (e) {
+      // Put it back, so a rejected write does not leave a row in the manager
+      // that no other user will ever see.
+      _quotes = before;
+      _notify();
+      rethrow;
+    }
+  }
+
+  Future<void> deleteQuote(String id) async {
+    _authorQuoteWrite();
+    final before = _quotes;
+    _quotes = before.where((q) => q.id != id).toList();
+    _notify();
+    try {
+      await _quoteService.deleteQuote(id);
+    } catch (e) {
+      _quotes = before;
+      _notify();
+      rethrow;
+    }
+  }
+
+  /// Pins [id], or clears the pin when it is null or empty.
+  ///
+  /// The local mirror flips every row in one go rather than only [id], because
+  /// the write is a batch over all of them: leaving the old pin lit on screen
+  /// until the stream came back would show two "pinned" quotes in the manager,
+  /// which is the state the panel cannot render.
+  Future<void> setQuotePinned(String? id) async {
+    _authorQuoteWrite();
+    final before = _quotes;
+    _quotes = before
+        .map((q) => q.copyWith(pinned: id != null && q.id == id))
+        .toList();
+    _notify();
+    try {
+      await _quoteService.setPinned(id);
+    } catch (e) {
+      _quotes = before;
+      _notify();
+      rethrow;
+    }
   }
 
   /// Tomorrow's lectures, and only tomorrow's.

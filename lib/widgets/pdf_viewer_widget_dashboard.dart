@@ -6,7 +6,7 @@ part of 'pdf_viewer_widget_w.dart';
 ///
 /// The screens themselves moved to `widgets/dashboard/` when the dashboard was
 /// redesigned — header with search, bell and today's focus; the services row;
-/// reading statistics; tasks beside notes. The library went back to the app's
-/// sidebar and announcements are behind the bell, so none of the previous
-/// in-page sections have a home here any more.
+/// tasks beside the schedule; reading statistics last. The library went back to
+/// the app's sidebar and announcements are behind the bell, so none of the
+/// previous in-page sections have a home here any more.
 Widget _buildDashboard(BuildContext context) => const DashboardPage();

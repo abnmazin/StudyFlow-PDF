@@ -1,5 +1,89 @@
 # Changelog
 
+## [2026-10-03] The streak card became a rotating quote panel, and the three figures shrank to pay for it
+
+### The decision
+The dashboard's fourth reading-statistic card — "سلسلة الالتزام" — is gone, and
+the row it held is now a full-width quote panel. The three figures above it went
+from 130px to 96px ([kStatCardHeight](lib/widgets/dashboard/dashboard_palette.dart)),
+and the panel is 190px ([kQuotesPanelHeight]). `statCardWidth`'s doc went from
+"four across" to "three across" in the same edit, because the row it divides no
+longer holds four cards.
+
+### Why the rotation is a local timer and not a shared clock
+Every reader turns the page on their own `kQuoteHold` (12s), so two people looking
+at two dashboards are reading two different sentences. A shared clock would make
+the panel an announcement, and the admin already has one. What *is* shared is the
+list: `dashboard_quotes` is one Firestore collection read by everyone, because a
+quotation typed by an admin has to reach every other device, which is the same
+split the timetable and the folder announcements made.
+
+### Why the pin is a batch and not a field write
+"Only one quote is pinned" is a claim about *every other document*, so it cannot
+be one `update`. Two separate writes that half-succeeded would leave two pinned
+quotes and a panel with no rule about which one wins, so `QuoteService.setPinned`
+reads the collection and applies one `WriteBatch`. This is the expensive-to-reverse
+part: `firestore.rules` section 20 deliberately does **not** enforce it, because a
+rule cannot ask "is any other document pinned" and a half-answer there would have
+been worse than none.
+
+### Added
+- **`lib/models/dashboard_quote.dart`** — `DashboardQuote`, with
+  `validationMessage` as the single wording for the editor and the service, and a
+  `fromFirestore` that tolerates a missing body rather than throwing inside a
+  stream.
+- **`lib/services/quote_service.dart`** — `watchQuotes()` for the shared list,
+  `saveQuote` / `deleteQuote` / `setPinned` for the admin writes, and the
+  `_assertAdmin` that turns a mistake into an Arabic sentence. The Firestore rule
+  is still the boundary; this one is the courtesy.
+- **`lib/widgets/dashboard/dashboard_quotes_card.dart`** — the panel. Rotation,
+  the fade, the pinned override, and a right-click that opens the manager for an
+  admin and does nothing at all for anyone else.
+- **`lib/widgets/dashboard/quote_manager_dialog.dart`** — the admin's page:
+  list, pin, edit, delete with a confirmation, and one form for both adding and
+  editing.
+- **`firestore.rules` section 20** — `dashboard_quotes/{quoteId}`, read by any
+  signed-in user, written by an admin, with the 280/80 ceilings mirrored field
+  for field from `DashboardQuote`.
+- **`AppProvider` quote section** — the same shape as the timetable's, including
+  `_beginQuotesSession` on both auth paths and `_disposeQuotes` in `dispose`.
+- **`test/dashboard_quotes_test.dart`** — 5 cases: the author stays on the card, a
+  quotation at the Firestore ceiling shrinks but never past `kQuoteMinFontSize`,
+  the rotation turns the page while a pinned one does not, an empty list says so
+  instead of inventing a quotation, and the model's own refusal of an
+  unattributed sentence.
+
+### Failed attempts worth not repeating
+- **Arming the rotation from `initState`.** The first version called
+  `_scheduleNext()` there, and `_scheduleNext` reads the quote list — which comes
+  from `context.watch<AppProvider>`. Reading an inherited widget before `initState`
+  has finished throws `dependOnInheritedWidgetOfExactType was called before
+  initState() completed`. It surfaced by running the app, not in the tests: the
+  tests inject `quotes` and never reach the provider, so a `pump` was perfectly
+  happy while the real dashboard threw on the launch frame. The arming now happens
+  in `build` through `_syncRotation`, deferred by one post-frame callback.
+- **`widget.quotes ?? context.watch<AppProvider>().quotes`.** Correct-looking, and
+  it reads the provider even when the prop is supplied, because `??` evaluates
+  its right side only on null — the injected list short-circuits the *value*, not
+  the *read*. Every widget test that injected quotations still threw
+  `ProviderNotFoundException`. The two paths are separate `if`s now.
+- **Inserting new top-level classes with a line number.** Three times, an insert
+  landed *inside* the class above it rather than after it, and the analyzer's
+  cascade (`'class' can't be used as an identifier`, then forty lines of noise
+  pointing at unrelated symbols) made each fix worse than the last. Reading the
+  file before inserting, and appending at EOF after truncating the tail, was the
+  reliable path. A structural error is worth reading, not patching.
+
+### Changed
+- `kStatCardHeight` 130 → 96, plus new named constants `kQuotesPanelHeight`,
+  `kQuoteHold`, `kQuoteFadeDuration`, `kQuoteFontSize`, `kQuoteMinFontSize`,
+  `kStatFigureFontSize`, `kStatLabelFontSize`. The stat figure dropped 26 → 22 to
+  match the shorter card; `height: 1.0` is still what keeps it inside.
+- `DashboardReadingStats` gained a `quotes` prop, and the streak's `_StreakCard`,
+  `_StreakCardData`, `_StreakDayChip` and the `_streak()` derivation are deleted.
+  `ReadingStatsService.currentStreak` and `lastSevenDays` are left in place — other
+  callers exist and deleting a service method is not this change's business.
+
 ## [2026-10-03] Added: a separate 104 KB downloader, and the link moved into Firestore
 
 ### The decision
@@ -55,6 +139,27 @@ it is one unauthenticated `GET /repos/<owner>/<repo>`, which prints
 ### Verified
 - `build.ps1` → compiles clean, 106,496 bytes.
 - The window opens and stays open (`Start-Process`, 4 s, no exit).
+- **The happy path was then run on a real account, and it failed — the first bug
+  this entry records.** Sign-in, the `users/{uid}` check and the document read all
+  succeeded (the window showed the version, the size and the Arabic notes), then the
+  download threw `An error occurred while sending the request.` Measured cause, not a
+  guess: a plain .NET Framework process on this machine starts with
+  `ServicePointManager.SecurityProtocol` = **`Ssl3, Tls`**, TLS 1.2 switched off, and
+  github.com answers that with `SecureChannelFailure` /
+  `WebExceptionStatus.SecureChannelFailure`. The reason the symptom points nowhere
+  useful is that `identitytoolkit.googleapis.com` and `firestore.googleapis.com` still
+  accept TLS 1.0, so every request except the one to GitHub works from the same
+  window, in the same second. `tools/publish_release.ps1` already sets the same flag
+  for the same reason, one layer down.
+- Fixes: `Account.EnableModernTls()` is called from **both** `HttpClient` factories
+  (one per class, since a static constructor may not run first in a given path), and
+  `DownloaderForm.Describe()` walks to the innermost `InnerException`, because the
+  outer message of a network failure names no cause at all — that English sentence is
+  what made this cost an afternoon rather than a minute.
+- Re-verified after the fix, through the app's own code: 23,481,887 bytes streamed,
+  on-disk length equal, SHA-256 `410ba237…15d0` equal to the Firestore document. The
+  same probe fails on `SecureChannelFailure` when `EnableModernTls` is not called,
+  which is what makes this a fix and not a coincidence.
 - The email derivation is right: `accounts:signInWithPassword` with
   `abnmazin@users.studyflow.app` and a deliberately wrong password answers
   `INVALID_LOGIN_CREDENTIALS`, not `EMAIL_NOT_FOUND` — so the address is well formed
@@ -66,9 +171,11 @@ it is one unauthenticated `GET /repos/<owner>/<repo>`, which prints
   `Value` reference), which is why `Account.ReadLongField` parses text.
 
 ### Still open
-- **Nobody has run the happy path.** A real account has not signed in to this
-  downloader, so the sign-in response shape, the download progress and the hand-off
-  to Setup are unproven end to end.
+- **The download is proven; the install is not.** Bytes, length and hash are
+  verified against the real document, and Setup is started with the in-app updater's
+  five switches — but nobody has watched the hand-off finish on a machine that does
+  not already have the app installed, so `/VERYSILENT /CLOSEAPPLICATIONS` and the
+  self-delete are still unproven.
 - **The Supabase signing branch is dead and unverified.** No bucket named
   `app-installers` exists and no `select` policy on `storage.objects` is deployed,
   so `path` can never be non-empty today. It is written and shipped disabled so the
