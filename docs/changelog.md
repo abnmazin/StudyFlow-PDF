@@ -1,5 +1,28 @@
 # Changelog
 
+## [2026-10-04] v2.0.0 went out, and the background-redirect trap that stopped the first attempt
+
+### Released
+- Version moved `1.1.0+1 -> 2.0.0+1` (`pubspec.yaml`, and the `installer.iss`
+  fallback). It had to move: the last published release was `v1.2.0`, so a publish at
+  `1.1.0` would have offered nobody an update.
+- `v2.0.0` is on `abnmazin/StudyFlow-PDF` — asset `StudyFlowPDF_Setup_2.0.0.exe`,
+  23,209,997 bytes, sha256
+  `55c24bfa3f440f56aa99b9b0028fc0449d05495e052ae722b634dcd6907f4c99`. `app_config/installer`
+  now names it; `latest_version` was already `2.0.0` and was kept (`2.0.0 is not
+  higher`).
+
+### Failed attempt worth not repeating
+Wrapping `tools/publish_release.ps1` in a background process as
+`& script *>&1 | Out-File ...` turns a native tool's **stderr warning** into a
+terminating error. `flutter build windows` always prints `Nuget is not installed.`
+from `webview_windows`' CMake — a warning, the build still succeeds — and against the
+script's own `$ErrorActionPreference = 'Stop'` the merged stream stopped the publish
+right after the build. Do not `*>&1` around this script: capture with
+`Start-Transcript`, or redirect at the process level. The build survived the first
+attempt, so the recovery was `ISCC /DAppVersion=2.0.0 installer.iss` then a re-run
+with `-SkipBuild`.
+
 ## [2026-10-03] The streak card became a rotating quote panel, and the three figures shrank to pay for it
 
 ### The decision
