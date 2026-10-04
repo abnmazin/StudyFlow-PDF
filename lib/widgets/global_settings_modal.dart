@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../screens/auth/login_screen.dart';
 import '../services/mcp_client_service.dart';
+import '../services/tutorial_settings_service.dart';
 import '../utils/sync_naming_utils.dart';
 import 'developer_dashboard_v.dart';
 
@@ -27,7 +28,11 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
   bool _mcpAuthenticated = false;
 
   final TextEditingController _joinCodeController = TextEditingController();
+  final TextEditingController _tutorialUrlController =
+      TextEditingController();
   bool _isJoining = false;
+  bool _isTutorialLoading = false;
+  bool _isTutorialSaving = false;
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
@@ -38,13 +43,49 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
       if (!mounted) return;
       final app = context.read<AppProvider>();
       if (app.aiProvider == 'mcp') await _checkMcpStatus();
+      if (app.currentUser?.isAdmin ?? false) await _loadTutorialUrl();
     });
   }
 
   @override
   void dispose() {
     _joinCodeController.dispose();
+    _tutorialUrlController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadTutorialUrl() async {
+    setState(() => _isTutorialLoading = true);
+    try {
+      final config = await TutorialSettingsService().getTutorial();
+      if (mounted) _tutorialUrlController.text = config.youtubeUrl;
+    } catch (_) {
+      // The dashboard remains usable when the optional remote setting is unavailable.
+    } finally {
+      if (mounted) setState(() => _isTutorialLoading = false);
+    }
+  }
+
+  Future<void> _saveTutorialUrl(AppProvider app) async {
+    setState(() => _isTutorialSaving = true);
+    try {
+      await TutorialSettingsService(currentUser: app.currentUser).saveTutorialUrl(
+        _tutorialUrlController.text,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تم حفظ رابط شرح التطبيق')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تعذّر حفظ الرابط: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isTutorialSaving = false);
+    }
   }
 
   Future<void> _checkMcpStatus() async {
@@ -704,6 +745,20 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
                       if (app.currentUser?.isAdmin ?? false) ...[
                         const SizedBox(height: 24),
                         _buildSectionHeader(
+                          'شرح استخدام التطبيق',
+                          LucideIcons.youtube,
+                          textMuted,
+                        ),
+                        const SizedBox(height: 12),
+                        _buildTutorialSettings(
+                          app,
+                          surfaceAlt,
+                          panelBorder,
+                          textPrimary,
+                          textMuted,
+                        ),
+                        const SizedBox(height: 24),
+                        _buildSectionHeader(
                           'خيارات المطور المتقدمة',
                           LucideIcons.code,
                           textMuted,
@@ -728,6 +783,60 @@ class _GlobalSettingsModalState extends State<GlobalSettingsModal> {
               ],
             ),
     );
+  }
+
+  Widget _buildTutorialSettings(
+    AppProvider app,
+    Color surface,
+    Color border,
+    Color textPrimary,
+    Color textMuted,
+  ) {
+    return _buildSettingsCard(surface, border, [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        child: TextField(
+          controller: _tutorialUrlController,
+          enabled: !_isTutorialLoading && !_isTutorialSaving,
+          keyboardType: TextInputType.url,
+          textDirection: TextDirection.ltr,
+          style: TextStyle(color: textPrimary, fontSize: 13),
+          decoration: InputDecoration(
+            labelText: 'رابط فيديو يوتيوب',
+            hintText: 'https://www.youtube.com/watch?v=...',
+            hintStyle: TextStyle(color: textMuted, fontSize: 12),
+            prefixIcon: const Icon(LucideIcons.link2, size: 18),
+            border: const OutlineInputBorder(),
+          ),
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                'يظهر الرابط لجميع المستخدمين في أسفل الداشبورد.',
+                style: TextStyle(color: textMuted, fontSize: 11),
+              ),
+            ),
+            FilledButton.icon(
+              onPressed: _isTutorialLoading || _isTutorialSaving
+                  ? null
+                  : () => _saveTutorialUrl(app),
+              icon: _isTutorialSaving
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(LucideIcons.save, size: 15),
+              label: const Text('حفظ'),
+            ),
+          ],
+        ),
+      ),
+    ]);
   }
 
   void _confirmLogout(BuildContext context, AppProvider app) {

@@ -220,6 +220,7 @@
 | `dashboard_quotes/{quoteId}` | The quotations the dashboard's quote panel rotates through, one row per sentence. `text` (≤280), `author` (≤80, required — an unattributed aphorism reads as the app's own claim), `pinned`, `updatedBy`, `createdAt`, `updatedAt`. Read by any signed-in user, written by an admin. "Only one is pinned" is enforced by `QuoteService.setPinned`'s write batch, **not** by the rules — a rule cannot ask whether any *other* document is pinned. Served by the default single-field index (`orderBy createdAt`) — no composite index needed | Rules section 20 |
 | `pdfs/{fileHash}/mutations` | Live page mutations | Authenticated + university check |
 | `app_config/installer` | Where the installer is, and the hash it must be: `version`, `url`, `path`, `pageUrl`, `sha256`, `size`, `notes`, `updatedAt`. Written by `tools/publish_installer_doc.mjs`, read by the standalone downloader (`E:\Programing\flutter\downloader`). `path` empty means the link is the public GitHub asset | Rules section 13 — any signed-in user reads, admins write |
+| `app_config/tutorial` | The shared dashboard tutorial link: `youtube_url`, `updatedAt`, `updatedBy`. The dashboard reads it for every signed-in user; the global settings panel lets admins replace or clear it. | Rules section 13 — any signed-in user reads, admins write |
 
 ### Required Firestore Composite Indices
 | Collection | Fields | Purpose |

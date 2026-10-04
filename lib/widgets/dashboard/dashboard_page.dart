@@ -1,5 +1,10 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 
+import '../../models/tutorial_video_config.dart';
+import '../../models/university_video.dart';
+import '../../services/tutorial_settings_service.dart';
+import '../../services/university_service.dart';
 import '../../utils/responsive_utils.dart';
 import 'dashboard_notifications.dart';
 import 'dashboard_palette.dart';
@@ -7,6 +12,7 @@ import 'dashboard_quick_actions.dart';
 import 'dashboard_reading_stats.dart';
 import 'dashboard_tasks_schedule.dart';
 import 'dashboard_top_bar.dart';
+import '../viewer_components/youtube_player_w.dart';
 
 /// The redesigned dashboard.
 ///
@@ -113,6 +119,13 @@ class _DashboardPageState extends State<DashboardPage> {
                         DashboardTasksAndSchedule(isWide: isWide),
                         const SizedBox(height: kDashboardSectionGap),
                         DashboardReadingStats(isWide: isWide),
+                        const SizedBox(height: kDashboardSectionGap),
+                        StreamBuilder<TutorialVideoConfig>(
+                          stream: TutorialSettingsService().watchTutorial(),
+                          builder: (context, snapshot) => _TutorialButton(
+                            config: snapshot.data,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -121,6 +134,109 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+class _TutorialButton extends StatelessWidget {
+  const _TutorialButton({this.config});
+
+  final TutorialVideoConfig? config;
+
+  @override
+  Widget build(BuildContext context) {
+    final url = config?.youtubeUrl ?? '';
+    final videoId = UniversityService.videoIdFromUrl(url);
+    final enabled = videoId != null;
+
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: 'شرح استخدام التطبيق',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          key: const ValueKey('dashboard-tutorial-button'),
+          onTap: enabled
+              ? () => showYouTubeVideoPlayer(
+                  context,
+                  UniversityVideo(
+                    id: 'dashboard-tutorial',
+                    universityId: '',
+                    folderId: '',
+                    title: 'شرح استخدام التطبيق',
+                    videoId: videoId,
+                    videoUrl: url,
+                    uploadedBy: '',
+                    uploadedAt: DateTime.now(),
+                  ),
+                )
+              : null,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 104),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            decoration: DashboardColors.card(
+              radius: 16,
+              fill: enabled
+                  ? DashboardColors.accent.withValues(alpha: 0.16)
+                  : DashboardColors.surface,
+            ).copyWith(
+              border: Border.all(
+                color: enabled
+                    ? DashboardColors.accent
+                    : DashboardColors.border,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  LucideIcons.youtube,
+                  size: 32,
+                  color: enabled
+                      ? DashboardColors.accentSoft
+                      : DashboardColors.subtitle,
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'شرح استخدام التطبيق',
+                        style: TextStyle(
+                          color: enabled
+                              ? DashboardColors.title
+                              : DashboardColors.subtitle,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        enabled
+                            ? 'شاهد الفيديو التعريفي داخل التطبيق'
+                            : 'سيظهر الفيديو هنا عند إضافته من الإعدادات',
+                        style: const TextStyle(
+                          color: DashboardColors.subtitle,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  LucideIcons.chevronLeft,
+                  color: enabled
+                      ? DashboardColors.accentSoft
+                      : DashboardColors.subtitle,
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

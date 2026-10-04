@@ -277,7 +277,11 @@ service cloud.firestore {
     // ================================================================
     match /app_config/{configId} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && userRole() == 'admin';
+      allow write: if isAuthenticated()
+        && userRole() == 'admin'
+        && (configId != 'tutorial'
+            || (request.resource.data.youtube_url is string
+                && request.resource.data.youtube_url.size() <= 512));
     }
 
     // ================================================================

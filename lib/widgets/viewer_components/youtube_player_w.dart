@@ -98,7 +98,9 @@ const String _ytEmbedWrapperHtml = r'''<!DOCTYPE html>
 /// Injected into every document WebView2 creates (including the cross-origin
 /// YouTube iframe) to keep playback inside the app: refuses clicks on links
 /// that leave for YouTube, suppresses the context menu / drag-out and hides the
-/// player top bar (video title link and share buttons).
+/// player top bar (video title link and share buttons). The settings button is
+/// the one deliberate exception: quality, captions and playback speed remain
+/// useful without giving the reader a route out of the app.
 const String _ytEmbedGuardScript = r'''
 (function () {
   function harden() {
@@ -110,6 +112,15 @@ const String _ytEmbedGuardScript = r'''
     }, true);
     document.addEventListener('click', function (e) {
       var node = e.target;
+      var settings = node;
+      while (settings && settings.nodeType === 1) {
+        if (settings.classList &&
+            (settings.classList.contains('ytp-settings-button') ||
+             settings.classList.contains('ytp-settings-menu'))) {
+          return;
+        }
+        settings = settings.parentNode;
+      }
       while (node && node.nodeType === 1) {
         var href = node.getAttribute && (node.getAttribute('href') || '');
         if (href && /youtube\.com|youtu\.be|googlevideo/i.test(href)) {
@@ -125,7 +136,9 @@ const String _ytEmbedGuardScript = r'''
       style.textContent =
         '.ytp-chrome-top,.ytp-gradient-top,.ytp-title,.ytp-share-button,' +
         '.ytp-watch-later-button,.ytp-youtube-button,.ytp-watermark' +
-        '{display:none !important}';
+        '{display:none !important}' +
+        '.ytp-settings-button{display:block !important;pointer-events:auto !important}' +
+        '.ytp-settings-menu{pointer-events:auto !important}';
       (document.head || document.documentElement).appendChild(style);
     } catch (err) {}
   }
